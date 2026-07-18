@@ -113,7 +113,7 @@ class AudioBridge: ObservableObject {
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
-        let pathLen = min(socketPath.count, Int(sizeof(of: addr.sun_path)) - 1)
+        let pathLen = min(socketPath.count, MemoryLayout.size(ofValue: addr.sun_path) - 1)
         socketPath.withCString { cPath in
             withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
                 let raw = UnsafeMutableRawPointer(ptr)

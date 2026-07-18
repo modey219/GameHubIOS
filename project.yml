@@ -29,6 +29,8 @@ targets:
           - "**/*.xcassets"
           - "**/*.plist"
           - "**/*.a"
+          - "**/*.o"
+          - "Native/Box64Lib/**"
     resources:
       - path: GameHub/Resources/Assets.xcassets
     settings:

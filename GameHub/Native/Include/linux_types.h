@@ -4,6 +4,12 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifdef __APPLE__
+#include <signal.h>
+#undef sa_handler
+#undef sa_mask
+#endif
+
 typedef int8_t __s8;
 typedef uint8_t __u8;
 typedef int16_t __s16;

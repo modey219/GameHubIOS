@@ -50,16 +50,8 @@ typedef void *timer_t;
 #define CLOCK_MONOTONIC_COARSE 6
 #endif
 
-/* ======== Dl_info struct (not on iOS by default) ======== */
-#ifndef _DL_INFO_DEFINED
-#define _DL_INFO_DEFINED
-typedef struct {
-    const char *dli_fname;
-    void *dli_fbase;
-    const char *dli_sname;
-    void *dli_sbase;
-} Dl_info;
-#endif
+/* ======== Dl_info — provided by <dlfcn.h> with _DARWIN_C_SOURCE ======== */
+/* No need to define; <dlfcn.h> above already provides it on iOS/macOS */
 
 /* ======== __jmp_buf / __jmp_buf_tag ======== */
 /* On macOS/iOS, jmp_buf IS __jmp_buf_tag[1], so __jmp_buf_tag exists

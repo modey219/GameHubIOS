@@ -1,7 +1,6 @@
 import Foundation
 import AVFoundation
 import AudioToolbox
-import Network
 
 class AudioBridge: ObservableObject {
     static let shared = AudioBridge()
@@ -16,10 +15,12 @@ class AudioBridge: ObservableObject {
     private var audioSession: AVAudioSession?
 
     private var socketPath: String
-    private var audioSocketConnection: NWConnection?
-    private var audioBuffer: Data = Data()
-    private var bufferLock = NSLock()
+    private var serverSocket: Int32 = -1
+    private var clientSocket: Int32 = -1
+    var audioBuffer = Data()
+    var bufferLock = NSLock()
     private var audioThread: DispatchQueue?
+    private var isServerRunning = false
 
     private var format: AudioStreamBasicDescription?
 
@@ -73,7 +74,7 @@ class AudioBridge: ObservableObject {
     func startAudioServer() {
         audioThread = DispatchQueue(label: "com.gamehub.audio", qos: .userInteractive)
         audioThread?.async { [weak self] in
-            self?.setupAudioSocket()
+            self?.startPosixSocketServer()
         }
         startAudioQueue()
         isPlaying = true
@@ -82,74 +83,102 @@ class AudioBridge: ObservableObject {
 
     func stopAudio() {
         isPlaying = false
+        isServerRunning = false
         if let queue = audioQueue {
             AudioQueueStop(queue, true)
             AudioQueueDispose(queue, true)
             audioQueue = nil
         }
-        audioSocketConnection?.cancel()
-        audioSocketConnection = nil
+        if clientSocket >= 0 {
+            close(clientSocket)
+            clientSocket = -1
+        }
+        if serverSocket >= 0 {
+            close(serverSocket)
+            serverSocket = -1
+        }
         try? FileManager.default.removeItem(atPath: socketPath)
     }
 
-    private func setupAudioSocket() {
-        let params = NWParameters()
-        params.allowLocalEndpointReuse = true
+    private func startPosixSocketServer() {
+        isServerRunning = true
 
-        let url = URL(fileURLWithPath: socketPath)
-        let endpoint = NWEndpoint.unix(path: url.path)
+        unlink(socketPath)
 
-        do {
-            let listener = try NWListener(using: params, on: endpoint)
-            listener.newConnectionHandler = { [weak self] connection in
-                self?.handleAudioConnection(connection)
+        serverSocket = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard serverSocket >= 0 else {
+            print("[Audio] Failed to create socket")
+            return
+        }
+
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let pathLen = min(socketPath.count, Int(sizeof(of: addr.sun_path)) - 1)
+        socketPath.withCString { cPath in
+            withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
+                let raw = UnsafeMutableRawPointer(ptr)
+                _ = raw.copyMemory(from: cPath, byteCount: pathLen)
             }
-            listener.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    print("[Audio] Socket server ready")
-                case .failed(let error):
-                    print("[Audio] Socket server failed: \(error)")
-                default:
-                    break
+        }
+
+        let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+        let bindResult = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                bind(serverSocket, sa, addrLen)
+            }
+        }
+
+        guard bindResult == 0 else {
+            print("[Audio] Bind failed: \(errno)")
+            close(serverSocket)
+            serverSocket = -1
+            return
+        }
+
+        guard listen(serverSocket, 1) == 0 else {
+            print("[Audio] Listen failed")
+            close(serverSocket)
+            serverSocket = -1
+            return
+        }
+
+        print("[Audio] Socket server listening on \(socketPath)")
+
+        while isServerRunning {
+            var clientAddr = sockaddr_un()
+            var clientLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+            let client = withUnsafeMutablePointer(to: &clientAddr) { ptr in
+                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                    accept(serverSocket, sa, &clientLen)
                 }
             }
-            listener.start(queue: audioThread!)
-        } catch {
-            print("[Audio] Failed to create socket: \(error)")
-        }
-    }
 
-    private func handleAudioConnection(_ connection: NWConnection) {
-        audioSocketConnection = connection
-        connection.stateUpdateHandler = { state in
-            switch state {
-            case .ready:
-                print("[Audio] Wine audio connected")
-                self.receiveAudioData()
-            case .failed(let error):
-                print("[Audio] Wine audio disconnected: \(error)")
-            default:
-                break
+            if client >= 0 {
+                clientSocket = client
+                print("[Audio] Wine audio client connected")
+                receiveAudioData()
             }
         }
-        connection.start(queue: audioThread!)
     }
 
     private func receiveAudioData() {
-        audioSocketConnection?.receive(
-            minimumIncompleteLength: 1,
-            maximumLength: 65536
-        ) { [weak self] data, _, isComplete, error in
+        let bufferSize = 65536
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
 
-            if let data = data, !data.isEmpty {
-                self?.bufferLock.lock()
-                self?.audioBuffer.append(data)
-                self?.bufferLock.unlock()
-            }
-
-            if !isComplete && error == nil {
-                self?.receiveAudioData()
+        while clientSocket >= 0 && isServerRunning {
+            let bytesRead = recv(clientSocket, &buffer, bufferSize, 0)
+            if bytesRead > 0 {
+                bufferLock.lock()
+                audioBuffer.append(contentsOf: buffer.prefix(bytesRead))
+                bufferLock.unlock()
+            } else if bytesRead == 0 {
+                print("[Audio] Client disconnected")
+                break
+            } else {
+                if errno != EINTR {
+                    print("[Audio] Recv error: \(errno)")
+                    break
+                }
             }
         }
     }
@@ -175,10 +204,10 @@ class AudioBridge: ObservableObject {
 
         audioQueue = queue
 
-        let bufferByteSize = bufferSize * fmt.mBytesPerFrame
+        let bufferByteSize = UInt32(bufferSize) * fmt.mBytesPerFrame
         for _ in 0..<3 {
             var buffer: AudioQueueBufferRef?
-            AudioQueueAllocateBuffer(queue, UInt32(bufferByteSize), &buffer)
+            AudioQueueAllocateBuffer(queue, bufferByteSize, &buffer)
             if let buffer = buffer {
                 AudioQueueEnqueueBuffer(queue, buffer, 0, nil)
             }

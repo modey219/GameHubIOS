@@ -221,7 +221,7 @@ class RuntimeDownloadManager: ObservableObject {
         try? fm.removeItem(at: tempDir)
     }
 
-    private func setupEnvironment() {
+    func setupEnvironment() {
         overallStatus = .settingUpEnvironment
         statusMessage = "Configuring environment..."
 

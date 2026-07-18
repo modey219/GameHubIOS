@@ -5,7 +5,7 @@ class Box64Bridge {
 
     private var isInitialized = false
     private var box64InstallPath: String = ""
-    private var ctx: OpaquePointer?
+    private var ctx: UnsafeMutablePointer<box64_context_t>?
 
     struct Box64Config {
         var enableDynarec: Bool = true

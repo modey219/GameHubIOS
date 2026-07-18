@@ -159,14 +159,18 @@ jobs:
       - name: Show build errors
         if: failure()
         run: |
-          echo "=== LAST 80 LINES OF BUILD LOG ==="
-          tail -80 build.log || true
+          echo "### BUILD LOG (last 100 lines):" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -100 build.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No build log found" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Error lines:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -i "error\|fatal\|cannot\|missing\|not found" build.log | tail -40 >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No error lines found" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
           echo ""
-          echo "=== GREP FOR ERRORS ==="
-          grep -i "error:" build.log | tail -30 || true
-          echo ""
-          echo "=== GREP FOR FATAL ==="
-          grep -i "fatal" build.log | tail -10 || true
+          echo "=== BUILD ERRORS ==="
+          grep -i "error\|fatal\|cannot\|missing\|not found" build.log | tail -40 || true
 
       - name: Verify build output
         run: |

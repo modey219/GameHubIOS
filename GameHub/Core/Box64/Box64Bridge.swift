@@ -77,11 +77,8 @@ class Box64Bridge {
         wineInstallPath = docs.appendingPathComponent("Wine").path
         graphicsInstallPath = docs.appendingPathComponent("Graphics").path
 
-        // Only create Graphics dirs (Wine/Box64 are created by their extract functions)
-        let dirs = ["Graphics", "Graphics/MoltenVK", "Graphics/DXVK"]
-        for dir in dirs {
-            try fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
-        }
+        // Only create Graphics parent dir (subdirs created by their extract functions)
+        try fm.createDirectory(at: docs.appendingPathComponent("Graphics"), withIntermediateDirectories: true)
 
         progressCallback?("Extracting Box64...")
         try extractBox64()
@@ -157,15 +154,24 @@ class Box64Bridge {
 
     private func extractMoltenVK() throws {
         let fm = FileManager.default
-        let mvkDest = (graphicsInstallPath as NSString).appendingPathComponent("MoltenVK/libMoltenVK.dylib")
+        let mvkDir = (graphicsInstallPath as NSString).appendingPathComponent("MoltenVK")
+        let mvkDest = mvkDir + "/libMoltenVK.dylib"
 
-        if fm.fileExists(atPath: mvkDest) { return }
+        if fm.fileExists(atPath: mvkDest) {
+            print("[Box64] MoltenVK already extracted")
+            return
+        }
 
         guard let bundledMVK = findBundledResource("MoltenVK", isDirectory: true) else {
             print("[Box64] MoltenVK not found in bundle, skipping")
             return
         }
-        try fm.copyItem(atPath: bundledMVK, toPath: (graphicsInstallPath as NSString).appendingPathComponent("MoltenVK"))
+        print("[Box64] Found bundled MoltenVK at: \(bundledMVK)")
+
+        if fm.fileExists(atPath: mvkDir) {
+            try? fm.removeItem(atPath: mvkDir)
+        }
+        try fm.copyItem(atPath: bundledMVK, toPath: mvkDir)
         print("[Box64] Extracted MoltenVK")
     }
 
@@ -173,11 +179,19 @@ class Box64Bridge {
         let fm = FileManager.default
         let dxvkDir = (graphicsInstallPath as NSString).appendingPathComponent("DXVK")
 
-        if let contents = try? fm.contentsOfDirectory(atPath: dxvkDir), !contents.isEmpty { return }
+        if let contents = try? fm.contentsOfDirectory(atPath: dxvkDir), !contents.isEmpty {
+            print("[Box64] DXVK already extracted")
+            return
+        }
 
         guard let bundledDXVK = findBundledResource("DXVK", isDirectory: true) else {
             print("[Box64] DXVK not found in bundle, skipping")
             return
+        }
+        print("[Box64] Found bundled DXVK at: \(bundledDXVK)")
+
+        if fm.fileExists(atPath: dxvkDir) {
+            try? fm.removeItem(atPath: dxvkDir)
         }
         try fm.copyItem(atPath: bundledDXVK, toPath: dxvkDir)
         print("[Box64] Extracted DXVK")

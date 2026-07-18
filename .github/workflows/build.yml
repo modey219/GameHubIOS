@@ -367,15 +367,15 @@ jobs:
           chmod 755 "$BIN_DST/box64"
           
           echo "=== Copying Wine ==="
-          cp -r "$BIN_SRC/Wine/." "$BIN_DST/Wine/"
+          cp -R "$BIN_SRC/Wine" "$BIN_DST/"
           
           echo "=== Copying MoltenVK ==="
-          find "$BIN_SRC/MoltenVK" -type f -name "*.dylib" -o -name "libvulkan*" | head -5
-          cp -r "$BIN_SRC/MoltenVK/." "$BIN_DST/MoltenVK/"
+          find "$BIN_SRC/MoltenVK" -type f | head -10
+          cp -R "$BIN_SRC/MoltenVK" "$BIN_DST/"
           
           echo "=== Copying DXVK ==="
           find "$BIN_SRC/DXVK" -type f -name "*.dll" | head -5
-          cp -r "$BIN_SRC/DXVK/." "$BIN_DST/DXVK/"
+          cp -R "$BIN_SRC/DXVK" "$BIN_DST/"
           
           echo "=== App size after injection ==="
           du -sh "$APP_PATH"

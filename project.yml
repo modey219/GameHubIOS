@@ -31,6 +31,9 @@ targets:
           - "**/*.a"
           - "**/*.o"
           - "Native/Box64Lib/**"
+          - "Native/Box64/**"
+          - "Native/Compat/**"
+      - path: GameHub/Native/Box64/box64_bridge.c
     resources:
       - path: GameHub/Resources/Assets.xcassets
     settings:

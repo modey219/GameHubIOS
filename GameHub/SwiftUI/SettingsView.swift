@@ -18,25 +18,17 @@ struct SettingsView: View {
         NavigationView {
             List {
                 Picker("Section", selection: $selectedSection) {
-                    ForEach(SettingsSection.allCases, id: \.self) { section in
-                        Text(section.rawValue).tag(section)
-                    }
+                    ForEach(SettingsSection.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.menu)
 
                 switch selectedSection {
-                case .general:
-                    generalSettings
-                case .graphics:
-                    graphicsSettings
-                case .audio:
-                    audioSettings
-                case .input:
-                    inputSettings
-                case .advanced:
-                    advancedSettings
-                case .about:
-                    aboutSection
+                case .general: generalSettings
+                case .graphics: graphicsSettings
+                case .audio: audioSettings
+                case .input: inputSettings
+                case .advanced: advancedSettings
+                case .about: aboutSection
                 }
             }
             .navigationTitle("Settings")
@@ -44,112 +36,66 @@ struct SettingsView: View {
     }
 
     private var generalSettings: some View {
-        Section(header: Text("General")) {
-            Toggle("Dark Mode", isOn: $settingsManager.darkMode)
-            Toggle("Haptic Feedback", isOn: $settingsManager.hapticFeedback)
+        Section("General") {
             Toggle("Show FPS Overlay", isOn: $settingsManager.showFPS)
-            Toggle("Auto-save Settings", isOn: $settingsManager.autoSave)
-
-            Stepper("Default Resolution Scale", value: $settingsManager.resolutionScale, in: 0.5...2.0, step: 0.1)
-                .textCase(nil)
+            Toggle("Haptic Feedback", isOn: $settingsManager.hapticFeedback)
+            Stepper("Resolution Scale", value: $settingsManager.resolutionScale, in: 0.5...2.0, step: 0.1)
         }
     }
 
     private var graphicsSettings: some View {
-        Section(header: Text("Graphics")) {
+        Section("Graphics") {
             Picker("GPU Driver", selection: $settingsManager.gpuDriver) {
-                ForEach(GraphicsBridge.GPUDriver.allCases, id: \.self) { driver in
-                    Text(driver.displayName).tag(driver)
-                }
+                ForEach(GraphicsBridge.GPUDriver.allCases, id: \.self) { Text($0.displayName).tag($0) }
             }
-
-            Toggle("Use DXVK", isOn: $settingsManager.useDXVK)
-            Toggle("Use VKD3D", isOn: $settingsManager.useVKD3D)
+            Toggle("DXVK (DX11→Vulkan)", isOn: $settingsManager.useDXVK)
+            Toggle("VKD3D (DX12→Vulkan)", isOn: $settingsManager.useVKD3D)
             Toggle("VSync", isOn: $settingsManager.vsync)
-            Toggle("Frame Interpolation", isOn: $settingsManager.frameInterpolation)
-
             Stepper("Max FPS: \(settingsManager.maxFrameRate)", value: $settingsManager.maxFrameRate, in: 30...120, step: 10)
-                .textCase(nil)
-
-            Stepper("MSAA: \(settingsManager.msAA)x", value: $settingsManager.msAA, in: 0...8, step: 2)
-                .textCase(nil)
-
-            Stepper("Anisotropic Filtering: \(settingsManager.anisotropicFiltering)x", value: $settingsManager.anisotropicFiltering, in: 1...16, step: 2)
-                .textCase(nil)
         }
     }
 
     private var audioSettings: some View {
-        Section(header: Text("Audio")) {
+        Section("Audio") {
             Picker("Audio Driver", selection: $settingsManager.audioDriver) {
-                ForEach(AudioManager.AudioDriver.allCases, id: \.self) { driver in
-                    Text(driver.displayName).tag(driver)
-                }
+                ForEach(AudioManager.AudioDriver.allCases, id: \.self) { Text($0.displayName).tag($0) }
             }
-
             Slider(value: $settingsManager.volume, in: 0...1, step: 0.1) {
                 Text("Volume: \(Int(settingsManager.volume * 100))%")
             }
-
-            Stepper("Audio Buffer: \(settingsManager.audioBufferSize) samples", value: $settingsManager.audioBufferSize, in: 256...4096, step: 256)
-                .textCase(nil)
         }
     }
 
     private var inputSettings: some View {
-        Section(header: Text("Input")) {
+        Section("Input") {
             Toggle("Virtual Gamepad", isOn: $settingsManager.virtualGamepad)
-            Toggle("Enable Vibration", isOn: $settingsManager.vibration)
-
+            Toggle("Vibration", isOn: $settingsManager.vibration)
             Picker("Gamepad Type", selection: $settingsManager.gamepadType) {
-                Text("Xbox").tag("xbox")
-                Text("PlayStation").tag("playstation")
-                Text("Nintendo").tag("nintendo")
+                Text("Xbox").tag("xbox"); Text("PlayStation").tag("playstation"); Text("Nintendo").tag("nintendo")
             }
-
             Slider(value: $settingsManager.sensitivity, in: 0.5...2.0, step: 0.1) {
                 Text("Sensitivity: \(String(format: "%.1f", settingsManager.sensitivity))x")
-            }
-
-            Slider(value: $settingsManager.deadzone, in: 0...0.5, step: 0.05) {
-                Text("Deadzone: \(String(format: "%.2f", settingsManager.deadzone))")
             }
         }
     }
 
     private var advancedSettings: some View {
         Group {
-            Section(header: Text("Box64")) {
-                Toggle("Dynarec (JIT)", isOn: $settingsManager.enableDynarec)
+            Section("Box64 Dynarec") {
+                Toggle("Enable Dynarec", isOn: $settingsManager.enableDynarec)
                 Toggle("Big Block", isOn: $settingsManager.dynarecBigBlock)
                 Toggle("Strong Memory", isOn: $settingsManager.dynarecStrongMem)
                 Toggle("Safe Flags", isOn: $settingsManager.dynarecSafeFlags)
-                Toggle("Call/Ret Optimization", isOn: $settingsManager.dynarecCallRet)
-                Toggle("Dirty Optimization", isOn: $settingsManager.dynarecDirty)
             }
-
-            Section(header: Text("Wine")) {
+            Section("Wine") {
                 Toggle("ESync", isOn: $settingsManager.wineESync)
                 Toggle("FSync", isOn: $settingsManager.wineFSync)
                 Toggle("CSMT", isOn: $settingsManager.wineCSMT)
-
-                Picker("Debug Channels", selection: $settingsManager.wineDebugChannels) {
-                    Text("Off").tag("")
-                    Text("All").tag("+all")
-                    Text("WineD3D").tag("+wined3d")
-                    Text("Vulkan").tag("+vulkan")
-                    Text("Sound").tag("+sound")
-                }
             }
-
-            Section(header: Text("Data")) {
-                Button(action: exportSettings) {
-                    Label("Export Settings", systemImage: "square.and.arrow.up")
-                }
-                Button(action: importSettings) {
-                    Label("Import Settings", systemImage: "square.and.arrow.down")
-                }
-                Button(role: .destructive, action: resetSettings) {
+            Section("Data") {
+                Button("Export Settings") { exportSettings() }
+                Button("Import Settings") { importSettings() }
+                Button(role: .destructive) { settingsManager.resetToDefaults() } label: {
                     Label("Reset All Settings", systemImage: "trash")
                 }
             }
@@ -157,62 +103,72 @@ struct SettingsView: View {
     }
 
     private var aboutSection: some View {
-        Section(header: Text("About")) {
-            HStack {
-                Text("GameHub iOS")
-                    .font(.headline)
-                Spacer()
-                Text("1.0.0")
-                    .foregroundColor(.secondary)
-            }
-
-            HStack {
-                Text("Box64")
-                    .font(.subheadline)
-                Spacer()
-                Text("0.4.0")
-                    .foregroundColor(.secondary)
-            }
-
-            HStack {
-                Text("Wine")
-                    .font(.subheadline)
-                Spacer()
-                Text("9.0")
-                    .foregroundColor(.secondary)
-            }
-
-            HStack {
-                Text("MoltenVK")
-                    .font(.subheadline)
-                Spacer()
-                Text("1.2.5")
-                    .foregroundColor(.secondary)
-            }
-
-            Link("GitHub Repository", destination: URL(string: "https://github.com/gamehub-ios")!)
+        Section("About") {
+            HStack { Text("GameHub iOS"); Spacer(); Text("1.0.0").foregroundColor(.secondary) }
+            HStack { Text("Box64"); Spacer(); Text("0.4.0").foregroundColor(.secondary) }
+            HStack { Text("Wine"); Spacer(); Text("9.0").foregroundColor(.secondary) }
+            HStack { Text("MoltenVK"); Spacer(); Text("1.2.5").foregroundColor(.secondary) }
+            HStack { Text("DXVK"); Spacer(); Text("2.4.1").foregroundColor(.secondary) }
+            Link("GitHub", destination: URL(string: "https://github.com/modey219/GameHubIOS")!)
         }
     }
 
     private func exportSettings() {
-        let defaults = UserDefaults.standard
-        guard let data = try? JSONSerialization.data(withJSONObject: defaults.dictionaryRepresentation(), options: .prettyPrinted) else { return }
-        let activityVC = UIActivityViewController(activityItems: [data], applicationActivities: nil)
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let root = scene.windows.first?.rootViewController {
-            root.present(activityVC, animated: true)
-        }
+        let settings: [String: Any] = [
+            "darkMode": settingsManager.darkMode,
+            "hapticFeedback": settingsManager.hapticFeedback,
+            "showFPS": settingsManager.showFPS,
+            "resolutionScale": settingsManager.resolutionScale,
+            "gpuDriver": settingsManager.gpuDriver.rawValue,
+            "useDXVK": settingsManager.useDXVK,
+            "useVKD3D": settingsManager.useVKD3D,
+            "vsync": settingsManager.vsync,
+            "maxFrameRate": settingsManager.maxFrameRate,
+            "volume": settingsManager.volume,
+            "virtualGamepad": settingsManager.virtualGamepad,
+            "enableDynarec": settingsManager.enableDynarec,
+            "wineESync": settingsManager.wineESync,
+            "wineFSync": settingsManager.wineFSync,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: settings, options: .prettyPrinted) else { return }
+        let vc = UIActivityViewController(activityItems: [data], applicationActivities: nil)
+        UIApplication.shared.connectedScenes.first { $0.activationState == .foregroundActive }
+            .flatMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows.first }
+            .flatMap { $0.rootViewController }?.present(vc, animated: true)
     }
 
     private func importSettings() {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.json])
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let root = scene.windows.first?.rootViewController {
-            root.present(picker, animated: true)
-        }
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.json], asCopy: true)
+        picker.delegate = SettingsImportDelegate.shared
+        UIApplication.shared.connectedScenes.first { $0.activationState == .foregroundActive }
+            .flatMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows.first }
+            .flatMap { $0.rootViewController }?.present(picker, animated: true)
     }
+}
 
-    private func resetSettings() {
-        settingsManager.resetToDefaults()
+class SettingsImportDelegate: NSObject, UIDocumentPickerDelegate, ObservableObject {
+    static let shared = SettingsImportDelegate()
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let url = urls.first,
+              let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+
+        if let v = json["darkMode"] as? Bool { UserDefaults.standard.set(v, forKey: "darkMode") }
+        if let v = json["hapticFeedback"] as? Bool { UserDefaults.standard.set(v, forKey: "hapticFeedback") }
+        if let v = json["showFPS"] as? Bool { UserDefaults.standard.set(v, forKey: "showFPS") }
+        if let v = json["resolutionScale"] as? Double { UserDefaults.standard.set(v, forKey: "resolutionScale") }
+        if let v = json["gpuDriver"] as? String { UserDefaults.standard.set(v, forKey: "gpuDriver") }
+        if let v = json["useDXVK"] as? Bool { UserDefaults.standard.set(v, forKey: "useDXVK") }
+        if let v = json["useVKD3D"] as? Bool { UserDefaults.standard.set(v, forKey: "useVKD3D") }
+        if let v = json["vsync"] as? Bool { UserDefaults.standard.set(v, forKey: "vsync") }
+        if let v = json["maxFrameRate"] as? Int { UserDefaults.standard.set(v, forKey: "maxFrameRate") }
+        if let v = json["volume"] as? Float { UserDefaults.standard.set(v, forKey: "volume") }
+        if let v = json["virtualGamepad"] as? Bool { UserDefaults.standard.set(v, forKey: "virtualGamepad") }
+        if let v = json["enableDynarec"] as? Bool { UserDefaults.standard.set(v, forKey: "enableDynarec") }
+        if let v = json["wineESync"] as? Bool { UserDefaults.standard.set(v, forKey: "wineESync") }
+        if let v = json["wineFSync"] as? Bool { UserDefaults.standard.set(v, forKey: "wineFSync") }
     }
 }

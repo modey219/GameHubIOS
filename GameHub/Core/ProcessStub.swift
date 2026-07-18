@@ -1,4 +1,3 @@
-#if os(iOS)
 import Foundation
 
 class iOSPipe {
@@ -32,24 +31,20 @@ class Process {
             throw NSError(domain: "Process", code: -1, userInfo: [NSLocalizedDescriptionKey: "No executable URL"])
         }
 
-        guard FileManager.default.isExecutableFile(atPath: url.path) else {
-            throw NSError(domain: "Process", code: -2, userInfo: [NSLocalizedDescriptionKey: "Not executable: \(url.path)"])
+        let path = url.path
+        guard FileManager.default.fileExists(atPath: path) else {
+            throw NSError(domain: "Process", code: -2, userInfo: [NSLocalizedDescriptionKey: "Binary not found: \(path)"])
         }
 
-        let path = url.path
         let args = arguments ?? []
         let env = environment ?? [:]
 
         var cArgs: [UnsafeMutablePointer<CChar>?] = [strdup(path)]
-        for arg in args {
-            cArgs.append(strdup(arg))
-        }
+        for arg in args { cArgs.append(strdup(arg)) }
         cArgs.append(nil)
 
         var cEnv: [UnsafeMutablePointer<CChar>?] = []
-        for (key, value) in env {
-            cEnv.append(strdup("\(key)=\(value)"))
-        }
+        for (key, value) in env { cEnv.append(strdup("\(key)=\(value)")) }
         cEnv.append(nil)
 
         var fileActions: posix_spawn_file_actions_t?
@@ -59,13 +54,13 @@ class Process {
             posix_spawn_file_actions_adddup2(&fileActions, outPipe.writeHandle.fileDescriptor, STDOUT_FILENO)
             posix_spawn_file_actions_addclose(&fileActions, outPipe.writeHandle.fileDescriptor)
         }
-
         if let errPipe = standardError as? iOSPipe {
             posix_spawn_file_actions_adddup2(&fileActions, errPipe.writeHandle.fileDescriptor, STDERR_FILENO)
             posix_spawn_file_actions_addclose(&fileActions, errPipe.writeHandle.fileDescriptor)
         }
 
-        let result = posix_spawn(&pid, path, &fileActions, nil, cArgs, cEnv)
+        var localPid: pid_t = 0
+        let result = posix_spawn(&localPid, path, &fileActions, nil, cArgs, cEnv)
 
         for arg in cArgs { if let a = arg { free(a) } }
         for e in cEnv { if let v = e { free(v) } }
@@ -76,14 +71,11 @@ class Process {
                           userInfo: [NSLocalizedDescriptionKey: "posix_spawn failed: \(result)"])
         }
 
+        pid = localPid
         _isRunning = true
 
-        if let outPipe = standardOutput as? iOSPipe {
-            outPipe.writeHandle.closeFile()
-        }
-        if let errPipe = standardError as? iOSPipe {
-            errPipe.writeHandle.closeFile()
-        }
+        if let outPipe = standardOutput as? iOSPipe { outPipe.writeHandle.closeFile() }
+        if let errPipe = standardError as? iOSPipe { errPipe.writeHandle.closeFile() }
 
         DispatchQueue.global().async { [weak self] in
             guard let self = self else { return }
@@ -91,9 +83,7 @@ class Process {
             waitpid(self.pid, &status, 0)
             self.terminationStatus = Int32((status >> 8) & 0xFF)
             self._isRunning = false
-            DispatchQueue.main.async {
-                self.terminationHandler?(self)
-            }
+            DispatchQueue.main.async { self.terminationHandler?(self) }
         }
     }
 
@@ -109,21 +99,15 @@ class Process {
     func terminate() {
         if pid > 0 && _isRunning {
             kill(pid, SIGTERM)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                if self._isRunning {
-                    kill(self.pid, SIGKILL)
-                }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                if self?._isRunning == true, let pid = self?.pid { kill(pid, SIGKILL) }
             }
         }
     }
 
-    var isRunning: Bool { return _isRunning }
+    var isRunning: Bool { _isRunning }
 
     deinit {
-        if pid > 0 && _isRunning {
-            kill(pid, SIGKILL)
-            waitpid(pid, nil, 0)
-        }
+        if pid > 0 && _isRunning { kill(pid, SIGKILL) }
     }
 }
-#endif

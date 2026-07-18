@@ -28,7 +28,10 @@
         <integer>2</integer>
     </array>
     <key>UILaunchScreen</key>
-    <dict/>
+    <dict>
+        <key>UIColorName</key>
+        <string>SystemBackgroundColor</string>
+    </dict>
     <key>UISupportedInterfaceOrientations~ipad</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
@@ -42,14 +45,9 @@
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
-    <key>UIStatusBarHidden</key>
-    <true/>
-    <key>UIViewControllerBasedStatusBarAppearance</key>
-    <false/>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
         <string>arm64</string>
-        <string>metal</string>
     </array>
     <key>UIFileSharingEnabled</key>
     <true/>
@@ -58,8 +56,6 @@
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>GameHub uses local network for multiplayer and file transfer.</string>
-    <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>GameHub uses Bluetooth for controller support.</string>
+    <string>GameHub uses local network for file transfer.</string>
 </dict>
 </plist>

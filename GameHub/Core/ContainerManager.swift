@@ -58,7 +58,6 @@ class ContainerManager: ObservableObject {
             graphicsConfig: Container.GraphicsConfig(),
             inputConfig: Container.InputConfig()
         )
-
         setupContainerFiles(container: container)
         containers.append(container)
         saveContainers()
@@ -67,98 +66,53 @@ class ContainerManager: ObservableObject {
 
     private func setupContainerFiles(container: Container) {
         let containerDir = containersPath + "/\(container.id.uuidString)"
-        let driveC = containerDir + "/drive_c"
-
-        try? fileManager.createDirectory(atPath: driveC, withIntermediateDirectories: true)
-
-        let dirs = [
-            "drive_c/windows/system32",
-            "drive_c/Program Files",
-            "drive_c/Program Files (x86)",
-            "drive_c/users",
-            "drive_c/games",
-        ]
-
+        let dirs = ["drive_c", "drive_c/windows/system32", "drive_c/Program Files",
+                     "drive_c/Program Files (x86)", "drive_c/users",
+                     "drive_c/users/winuser", "drive_c/users/winuser/AppData/Local",
+                     "drive_c/users/winuser/AppData/Roaming",
+                     "drive_c/users/winuser/Desktop", "drive_c/users/winuser/Documents",
+                     "drive_c/games"]
         for dir in dirs {
             try? fileManager.createDirectory(atPath: containerDir + "/" + dir, withIntermediateDirectories: true)
         }
 
-        let dxvkConfig = """
-        [dxvk]
-        dxvk.numAsyncThreads = 2
-        dxvk.numCompilerThreads = 4
-        dxvk.enableAsync = true
-        dxvk.hud = fps
-        dxvk.maxFrameRate = \(container.graphicsConfig.maxFrameRate)
-        """
-        try? dxvkConfig.write(toFile: containerDir + "/dxvk.conf", atomically: true, encoding: .utf8)
+        let systemReg = "Windows Registry Editor Version 5.00\n\n" +
+        "[HKEY_CURRENT_USER\\Software\\Wine\\Direct3D]\n" +
+        "\"UseGLSL\"=\"enabled\"\n" +
+        "\"VideoMemorySize\"=\"2048\"\n" +
+        "\"CSMT\"=\"enabled\"\n" +
+        "\"OffscreenRenderingMode\"=\"fbo\"\n\n" +
+        "[HKEY_CURRENT_USER\\Software\\Wine\\DllOverrides]\n" +
+        "\"dxgi\"=\"native,builtin\"\n" +
+        "\"d3d11\"=\"native,builtin\"\n" +
+        "\"d3d9\"=\"native,builtin\"\n"
+        try? systemReg.write(toFile: containerDir + "/system.reg", atomically: true, encoding: .utf8)
 
-        let wineConfig = """
-        [wine]
-        UseGLSL = enabled
-        CSMT = enabled
-        VideoMemorySize = 2048
-        OffscreenRenderingMode = fbo
-        StrictDrawOrdering = disabled
-        MaxFrameLatency = 1
-        """
-        try? wineConfig.write(toFile: containerDir + "/system.reg", atomically: true, encoding: .utf8)
+        let dxvkConfig = "[dxvk]\ndxvk.enableAsync = true\ndxvk.hud = fps\n"
+        try? dxvkConfig.write(toFile: containerDir + "/dxvk.conf", atomically: true, encoding: .utf8)
     }
 
     func deleteContainer(_ container: Container) {
-        let containerDir = containersPath + "/\(container.id.uuidString)"
-        try? fileManager.removeItem(atPath: containerDir)
-
+        try? fileManager.removeItem(atPath: containersPath + "/\(container.id.uuidString)")
         containers.removeAll { $0.id == container.id }
-        if selectedContainer?.id == container.id {
-            selectedContainer = nil
-        }
+        if selectedContainer?.id == container.id { selectedContainer = nil }
         saveContainers()
-    }
-
-    func duplicateContainer(_ container: Container, newName: String) -> Container {
-        var newContainer = container
-        newContainer.id = UUID()
-        newContainer.name = newName
-        newContainer.createdAt = Date()
-        newContainer.lastPlayed = nil
-
-        let srcDir = containersPath + "/\(container.id.uuidString)"
-        let dstDir = containersPath + "/\(newContainer.id.uuidString)"
-
-        try? fileManager.copyItem(atPath: srcDir, toPath: dstDir)
-
-        containers.append(newContainer)
-        saveContainers()
-        return newContainer
     }
 
     func launchGame(_ container: Container) {
-        guard let process = WineBridge.shared.launchGame(
-            executablePath: container.executablePath,
-            arguments: [],
-            containerPath: containersPath + "/\(container.id.uuidString)"
-        ) else {
-            return
-        }
-
-        var updatedContainer = container
-        updatedContainer.lastPlayed = Date()
-        if let index = containers.firstIndex(where: { $0.id == container.id }) {
-            containers[index] = updatedContainer
+        guard !container.executablePath.isEmpty else { return }
+        var updated = container
+        updated.lastPlayed = Date()
+        if let idx = containers.firstIndex(where: { $0.id == container.id }) {
+            containers[idx] = updated
             saveContainers()
-        }
-
-        process.terminationHandler = { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.objectWillChange.send()
-            }
         }
     }
 
     func installGameFiles(containerID: UUID, files: [(source: URL, destination: String)]) {
         let containerDir = containersPath + "/\(containerID.uuidString)"
-
+        let gamesDir = containerDir + "/drive_c/games"
+        try? fileManager.createDirectory(atPath: gamesDir, withIntermediateDirectories: true)
         for file in files {
             let destPath = containerDir + "/" + file.destination
             let destDir = (destPath as NSString).deletingLastPathComponent
@@ -168,36 +122,29 @@ class ContainerManager: ObservableObject {
     }
 
     func getContainerSize(_ container: Container) -> Int64 {
-        let containerDir = containersPath + "/\(container.id.uuidString)"
-        let url = URL(fileURLWithPath: containerDir)
-        return getDirectorySize(url: url)
-    }
-
-    private func getDirectorySize(url: URL) -> Int64 {
-        let fileManager = FileManager.default
-        guard let enumerator = fileManager.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else {
-            return 0
-        }
-
-        var totalSize: Int64 = 0
+        let url = URL(fileURLWithPath: containersPath + "/\(container.id.uuidString)")
+        guard let enumerator = fileManager.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
+        var total: Int64 = 0
         for case let fileURL as URL in enumerator {
             if let attrs = try? fileManager.attributesOfItem(atPath: fileURL.path),
-               let size = attrs[.size] as? Int64 {
-                totalSize += size
-            }
+               let size = attrs[.size] as? Int64 { total += size }
         }
-        return totalSize
+        return total
     }
 
-    func getCommonDlls() -> [String] {
-        return [
-            "d3d11.dll", "d3d10.dll", "d3d9.dll", "d3d8.dll",
-            "dxgi.dll", "dinput8.dll", "xinput1_3.dll",
-            "msvcrt.dll", "msvcp140.dll", "vcruntime140.dll",
-            "ole32.dll", "oleaut32.dll", "shell32.dll",
-            "kernel32.dll", "ntdll.dll", "user32.dll",
-            "gdi32.dll", "advapi32.dll", "winmm.dll",
-        ]
+    func duplicateContainer(_ container: Container, newName: String) -> Container {
+        var newContainer = container
+        newContainer.id = UUID()
+        newContainer.name = newName
+        newContainer.createdAt = Date()
+        newContainer.lastPlayed = nil
+        try? fileManager.copyItem(
+            atPath: containersPath + "/\(container.id.uuidString)",
+            toPath: containersPath + "/\(newContainer.id.uuidString)"
+        )
+        containers.append(newContainer)
+        saveContainers()
+        return newContainer
     }
 
     private func saveContainers() {
@@ -208,30 +155,7 @@ class ContainerManager: ObservableObject {
 
     private func loadContainers() {
         guard let data = UserDefaults.standard.data(forKey: containersKey),
-              let loaded = try? JSONDecoder().decode([Container].self, from: data) else {
-            return
-        }
+              let loaded = try? JSONDecoder().decode([Container].self, from: data) else { return }
         containers = loaded
-    }
-
-    func getInstalledGames() -> [(name: String, path: String, size: Int64)] {
-        var games: [(name: String, path: String, size: Int64)] = []
-
-        for container in containers {
-            let containerDir = containersPath + "/\(container.id.uuidString)/drive_c"
-            let gamesDir = containerDir + "/games"
-
-            if let files = try? fileManager.contentsOfDirectory(atPath: gamesDir) {
-                for file in files {
-                    let filePath = gamesDir + "/" + file
-                    if file.hasSuffix(".exe") {
-                        let size = getDirectorySize(url: URL(fileURLWithPath: filePath))
-                        games.append((name: (file as NSString).deletingPathExtension, path: filePath, size: size))
-                    }
-                }
-            }
-        }
-
-        return games
     }
 }

@@ -123,18 +123,14 @@ class RuntimeDownloadManager: ObservableObject {
             downloadStatus[component.id] = .completed
             return
         }
-
         downloadStatus[component.id] = .downloading(progress: 0)
         overallStatus = .downloadingComponents
-
         guard let url = URL(string: component.url) else {
             downloadStatus[component.id] = .failed("Invalid URL")
             return
         }
-
         let task = URLSession.shared.downloadTask(with: url) { [weak self] tempURL, response, error in
             guard let self = self else { return }
-
             if let error = error {
                 DispatchQueue.main.async {
                     self.downloadStatus[component.id] = .failed(error.localizedDescription)
@@ -142,39 +138,32 @@ class RuntimeDownloadManager: ObservableObject {
                 }
                 return
             }
-
             guard let tempURL = tempURL else {
                 DispatchQueue.main.async {
                     self.downloadStatus[component.id] = .failed("No data received")
                 }
                 return
             }
-
             DispatchQueue.main.async {
                 self.downloadStatus[component.id] = .extracting
                 self.statusMessage = "Extracting \(component.name)..."
             }
-
             self.extractComponent(component: component, from: tempURL)
-
             DispatchQueue.main.async {
                 self.downloadStatus[component.id] = .completed
                 self.statusMessage = "\(component.name) installed!"
-
                 if self.isAllRequiredInstalled() {
                     self.overallStatus = .ready
                     self.setupEnvironment()
                 }
             }
         }
-
         task.resume()
     }
 
     func downloadAllRequired() {
         overallStatus = .downloadingComponents
         let required = components.filter { $0.isRequired }
-
         for component in required {
             if !isComponentInstalled(component.id) {
                 downloadComponent(component)
@@ -185,22 +174,33 @@ class RuntimeDownloadManager: ObservableObject {
     private func extractComponent(component: ComponentInfo, from tempURL: URL) {
         let fm = FileManager.default
         let destDir = documentsPath.appendingPathComponent(component.extractTo)
-
         if !fm.fileExists(atPath: destDir.path) {
             try? fm.createDirectory(at: destDir, withIntermediateDirectories: true)
         }
 
         let tempDir = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try? fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
-
         let tempFile = tempDir.appendingPathComponent(component.fileName)
         try? fm.moveItem(at: tempURL, to: tempFile)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-        process.arguments = ["--zstd", "-xf", tempFile.path, "-C", destDir.path]
-        try? process.run()
-        process.waitUntilExit()
+        let tarExists = fm.fileExists(atPath: "/usr/bin/tar")
+        if tarExists {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+            if component.fileName.hasSuffix(".tzst") || component.fileName.hasSuffix(".tar.zst") {
+                process.arguments = ["--zstd", "-xf", tempFile.path, "-C", destDir.path]
+            } else if component.fileName.hasSuffix(".tar.gz") {
+                process.arguments = ["-xzf", tempFile.path, "-C", destDir.path]
+            } else {
+                process.arguments = ["-xf", tempFile.path, "-C", destDir.path]
+            }
+            try? process.run()
+            process.waitUntilExit()
+        } else {
+            DispatchQueue.main.async {
+                self.statusMessage = "tar not available. Please extract \(component.fileName) manually via Files app."
+            }
+        }
 
         if component.id == "box64" || component.id == "wine" {
             let binaries: [String]
@@ -209,7 +209,6 @@ class RuntimeDownloadManager: ObservableObject {
             } else {
                 binaries = ["wine64", "wineserver"]
             }
-
             for binary in binaries {
                 let binaryPath = destDir.appendingPathComponent(binary)
                 if fm.fileExists(atPath: binaryPath.path) {
@@ -217,17 +216,16 @@ class RuntimeDownloadManager: ObservableObject {
                 }
             }
         }
-
         try? fm.removeItem(at: tempDir)
     }
 
     func setupEnvironment() {
         overallStatus = .settingUpEnvironment
         statusMessage = "Configuring environment..."
-
         WinePrefixManager.shared.initializePrefix()
         GraphicsBridge.shared.initialize()
-
+        Box64Bridge.shared.initialize()
+        WineBridge.shared.initialize()
         overallStatus = .ready
         statusMessage = "Ready to play!"
     }
@@ -257,7 +255,6 @@ class RuntimeDownloadManager: ObservableObject {
         guard let enumerator = FileManager.default.enumerator(
             at: url, includingPropertiesForKeys: [.fileSizeKey]
         ) else { return 0 }
-
         var total: Int64 = 0
         for case let fileURL as URL in enumerator {
             if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),

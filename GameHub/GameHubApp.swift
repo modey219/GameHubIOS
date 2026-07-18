@@ -12,8 +12,9 @@ struct GameHubApp: App {
                 .environmentObject(containerManager)
                 .environmentObject(jitManager)
                 .environmentObject(settingsManager)
-                .onAppear {
-                    performSetup()
+                .onAppear { performSetup() }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    jitManager.checkJITStatus()
                 }
         }
     }
@@ -24,24 +25,28 @@ struct GameHubApp: App {
 
         let dirs = ["Box64", "Wine", "Wine/rootfs", "Containers", "Graphics", "Wine/input"]
         for dir in dirs {
-            let path = docs.appendingPathComponent(dir)
-            if !fm.fileExists(atPath: path.path) {
-                try? fm.createDirectory(at: path, withIntermediateDirectories: true)
-            }
+            try? fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
+        }
+
+        if !fm.fileExists(atPath: docs.appendingPathComponent("Graphics/MoltenVK").path) {
+            try? fm.createDirectory(at: docs.appendingPathComponent("Graphics/MoltenVK"), withIntermediateDirectories: true)
         }
 
         GraphicsBridge.shared.initialize()
 
-        let box64Path = docs.appendingPathComponent("Box64/box64").path
-        let winePath = docs.appendingPathComponent("Wine/wine64").path
-        let hasBinaries = fm.fileExists(atPath: box64Path) && fm.fileExists(atPath: winePath)
+        let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
+        let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/wine64").path)
 
-        if hasBinaries {
+        if box64Exists {
             Box64Bridge.shared.initialize()
+        }
+        if wineExists {
             WineBridge.shared.initialize()
+        }
+        if box64Exists && wineExists {
             WinePrefixManager.shared.initializePrefix()
         }
 
-        jitManager.enableJITlessMode()
+        settingsManager.applySettings()
     }
 }

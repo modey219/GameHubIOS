@@ -20,9 +20,6 @@ class Box64Bridge {
         var dynarecUnsafeFp: Bool = false
         var box64Debug: Bool = false
         var box64NoBanned: Bool = true
-        var box64LD: String = "/usr/lib"
-        var box64Path: String = ""
-        var winePath: String = ""
         var envVars: [String: String] = [:]
     }
 
@@ -30,43 +27,28 @@ class Box64Bridge {
 
     func initialize() {
         guard !isInitialized else { return }
-
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         box64InstallPath = documentsPath.appendingPathComponent("Box64").path
-
         setupBox64Binary()
         setupEnvironment()
         isInitialized = true
-        print("[Box64] Initialized successfully")
     }
 
     private func setupBox64Binary() {
-        let fileManager = FileManager.default
+        let fm = FileManager.default
         let box64Dir = URL(fileURLWithPath: box64InstallPath)
-
-        if !fileManager.fileExists(atPath: box64Dir.path) {
-            try? fileManager.createDirectory(at: box64Dir, withIntermediateDirectories: true)
+        if !fm.fileExists(atPath: box64Dir.path) {
+            try? fm.createDirectory(at: box64Dir, withIntermediateDirectories: true)
         }
-
         if let bundledBox64 = Bundle.main.path(forResource: "box64", ofType: nil) {
             let destination = box64Dir.appendingPathComponent("box64")
-            try? fileManager.removeItem(at: destination)
-            try? fileManager.copyItem(atPath: bundledBox64, toPath: destination.path)
-
-            var attrs = try? fileManager.attributesOfItem(atPath: destination.path)
-            attrs?[.posixPermissions] = 0o755
-            if let attrs = attrs {
-                try? fileManager.setAttributes(attrs, ofItemAtPath: destination.path)
-            }
+            try? fm.removeItem(at: destination)
+            try? fm.copyItem(atPath: bundledBox64, toPath: destination.path)
+            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destination.path)
         }
     }
 
     private func setupEnvironment() {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-
-        config.box64Path = documentsPath.appendingPathComponent("Box64").path
-        config.winePath = documentsPath.appendingPathComponent("Wine").path
-
         setenv("BOX64_DYNAREC", config.enableDynarec ? "1" : "0", 1)
         setenv("BOX64_DYNAREC_BIGBLOCK", config.dynarecBigBlock ? "1" : "0", 1)
         setenv("BOX64_DYNAREC_STRONGMEM", config.dynarecStrongMem ? "1" : "0", 1)
@@ -78,31 +60,76 @@ class Box64Bridge {
         setenv("BOX64_DYNAREC_FPROUND", config.dynarecFpRound ? "1" : "0", 1)
         setenv("BOX64_NOBANNED", config.box64NoBanned ? "1" : "0", 1)
         setenv("BOX64_LOG", config.box64Debug ? "1" : "0", 1)
-        setenv("HOME", config.winePath, 1)
+
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        setenv("HOME", docs.appendingPathComponent("Wine").path, 1)
+        setenv("PATH", box64InstallPath + ":" + (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"), 1)
 
         for (key, value) in config.envVars {
             setenv(key, value, 1)
         }
     }
 
-    func executeX86Binary(path: String, arguments: [String], environment: [String: String]? = nil) -> Int32 {
+    func launchWine(wine64Path: String, executablePath: String, containerPath: String, environment: [String: String]) -> Process? {
         guard isInitialized else {
             print("[Box64] Not initialized")
-            return -1
+            return nil
+        }
+
+        let box64Binary = box64InstallPath + "/box64"
+        guard FileManager.default.fileExists(atPath: box64Binary) else {
+            print("[Box64] Binary not found at \(box64Binary)")
+            return nil
         }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: box64InstallPath + "/box64")
-        process.arguments = [path] + arguments
+        process.executableURL = URL(fileURLWithPath: box64Binary)
+        process.arguments = [wine64Path, executablePath]
 
         var env = ProcessInfo.processInfo.environment
-        if let customEnv = environment {
-            for (key, value) in customEnv {
-                env[key] = value
-            }
+        env["WINEPREFIX"] = containerPath
+        env["HOME"] = containerPath
+        env["DISPLAY"] = ":0"
+        env["WINEARCH"] = "win64"
+        env["WINEDEBUG"] = "-all"
+        env["WINEESYNC"] = "1"
+        env["WINEFSYNC"] = "1"
+        env["STAGING_SHARED_MEMORY"] = "1"
+        env["MVK_CONFIG_LOG_LEVEL"] = "0"
+        env["DXVK_LOG_LEVEL"] = "none"
+        env["DXVK_HUD"] = "fps"
+        env["VKD3D_CONFIG"] = "dxr"
+        env["DYLD_LIBRARY_PATH"] = containerPath + "/lib:" + (env["DYLD_LIBRARY_PATH"] ?? "")
+
+        for (key, value) in environment {
+            env[key] = value
         }
         process.environment = env
 
+        let outPipe = iOSPipe()
+        process.standardOutput = outPipe
+        process.standardError = outPipe
+
+        do {
+            try process.run()
+            print("[Box64] Launched: box64 \(wine64Path) \(executablePath)")
+            return process
+        } catch {
+            print("[Box64] Launch failed: \(error)")
+            return nil
+        }
+    }
+
+    func executeX86Binary(path: String, arguments: [String], environment: [String: String]? = nil) -> Int32 {
+        guard isInitialized else { return -1 }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: box64InstallPath + "/box64")
+        process.arguments = [path] + arguments
+        var env = ProcessInfo.processInfo.environment
+        if let customEnv = environment {
+            for (key, value) in customEnv { env[key] = value }
+        }
+        process.environment = env
         do {
             try process.run()
             process.waitUntilExit()
@@ -113,27 +140,13 @@ class Box64Bridge {
         }
     }
 
-    func executeWithOutput(path: String, arguments: String...) -> (status: Int32, output: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: box64InstallPath + "/box64")
-        process.arguments = [path] + arguments
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return (process.terminationStatus, "")
-        } catch {
-            return (-1, error.localizedDescription)
-        }
-    }
-
     func updateConfig(_ updater: (inout Box64Config) -> Void) {
         updater(&config)
         setupEnvironment()
     }
 
     func getBox64Version() -> String {
-        let result = executeWithOutput(path: "", arguments: "--version")
-        return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = executeX86Binary(path: "", arguments: ["--version"])
+        return result == 0 ? "installed" : "not found"
     }
 }

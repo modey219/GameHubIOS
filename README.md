@@ -18,39 +18,6 @@
     Metal (رسومات iPhone)
 ```
 
-**بدون ماك؟ لا مشكلة!** GitHub Actions يبني المشروع مجاناً.
-
----
-
-## البناء (خطوة بخطوة)
-
-### الطريقة الأولى: GitHub Actions (الأسهل)
-
-**1. أنشئ ريبو على GitHub:**
-- افتح [github.com/new](https://github.com/new)
-- اسم الريبو: `GameHubiOS` (أو أي اسم)
-- اختر **Public**
-- اضغط **Create repository**
-
-**2. ارفع الكود:**
-
-افتح Terminal في مجلد `GameHubiOS` وشغّل:
-
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
-git push -u origin main
-```
-
-**3. انتظر البناء:**
-- افتح ريبو على GitHub
-- اضغط تبويب **Actions**
-- سترى البناء قيد التشغيل
-- بعد 30-60 دقيقة، ستظهر **IPA artifact**
-
 **4. حمّل الـ IPA:**
 - من تبويب **Actions** → آخر build
 - في الأسفل ستجد **Artifacts** → **GameHub-iOS**

@@ -546,8 +546,6 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         case 199: return getuid();
         case 200: return getgid();
         case 201: return getuid();
-        case 202: return getgid();
-        case 207: return getppid();
         case 202: {
             // futex - basic implementation
             // op = a2 & 0xf: 0=FUTEX_WAIT, 1=FUTEX_WAKE, etc

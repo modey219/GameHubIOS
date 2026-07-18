@@ -59,8 +59,8 @@ GameHub/Native/Box64Lib/
 Box64Source/
 WineSource/
 build/
-box64
-wine64
+/box64
+/wine64
 rootfs.tzst
 
 # Temp

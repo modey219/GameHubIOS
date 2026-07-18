@@ -104,12 +104,7 @@ struct mmsghdr {
 #define RTLD_NEXT ((void *)-1)
 #endif
 
-/* ======== cpu_set_t ======== */
-typedef struct { unsigned long __bits[1024 / (8 * sizeof(unsigned long))]; } cpu_set_t;
-#define CPU_SETSIZE 1024
-static inline void CPU_ZERO(cpu_set_t *s) { memset(s, 0, sizeof(*s)); }
-static inline void CPU_SET(int cpu, cpu_set_t *s) { s->__bits[cpu / (8 * sizeof(unsigned long))] |= 1UL << (cpu % (8 * sizeof(unsigned long))); }
-static inline int CPU_ISSET(int cpu, cpu_set_t *s) { return (s->__bits[cpu / (8 * sizeof(unsigned long))] >> (cpu % (8 * sizeof(unsigned long)))) & 1; }
+/* ======== cpu_set_t — defined in sched.h compat, not here ======== */
 
 /* ======== More Linux syscall numbers ======== */
 #ifndef __NR_tgkill

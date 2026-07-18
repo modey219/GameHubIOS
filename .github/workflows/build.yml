@@ -59,7 +59,7 @@ jobs:
           
           CFLAGS="-arch arm64 -mios-version-min=16.0 -isysroot $SDK -O2 -fembed-bitcode-marker"
           CFLAGS="$CFLAGS -DARM64 -DDYNAREC -DNOGIT -D__IOS__=1 -DTARGET_IPHONE=1"
-          CFLAGS="$CFLAGS -DBAD_SIGNAL=1 -DBOX64_ENV=1 -D_XOPEN_SOURCE=600"
+          CFLAGS="$CFLAGS -DBAD_SIGNAL=1 -DBOX64_ENV=1 -D_XOPEN_SOURCE=600 -D_DARWIN_C_SOURCE"
           CFLAGS="$CFLAGS $INC_FLAGS"
           CFLAGS="$CFLAGS -Wno-unused-variable -Wno-unused-function -Wno-incompatible-pointer-types"
           CFLAGS="$CFLAGS -Wno-int-conversion -Wno-pointer-sign -Wno-implicit-function-declaration"
@@ -70,7 +70,7 @@ jobs:
           CFLAGS="$CFLAGS -DSTEP=1 -DSTACKALIGN=16"
           
           # Exclude files that cannot compile on Darwin
-          EXCLUDE="custommmap.c emit_signal_wine.c os_wine.c hostext_wine.c random_wine.c emit_signals_linux.c freq_linux.c hostext_linux.c os_linux.c obstack.c threads32.c dynacache.c signals.c signal32.c sigtools.c syscall_user_dispatch.c dynarec_arm64_arch.c elfhacks.c my_x11_xevent.c myalign64_32.c myalignxcb32.c sdl1rwops.c sdl2rwops.c libc_net32.c arm64_printer.c threads.c"
+          EXCLUDE="custommmap.c emit_signal_wine.c os_wine.c hostext_wine.c random_wine.c emit_signals_linux.c freq_linux.c hostext_linux.c os_linux.c obstack.c threads32.c dynacache.c signals.c signal32.c sigtools.c syscall_user_dispatch.c dynarec_arm64_arch.c elfhacks.c my_x11_xevent.c myalign64_32.c myalignxcb32.c sdl1rwops.c sdl2rwops.c libc_net32.c arm64_printer.c threads.c myalign32.c libdl.c symbolfuncs_linux.c"
           
           # Find core .c files under src/ (excluding wrapped/ and wrapped32/ — Linux-only libs)
           SOURCES=""
@@ -153,8 +153,8 @@ jobs:
               cd "$OUTPUT_DIR"
               
               # Find undefined symbols not defined in our objects
-              nm objects/*.o 2>/dev/null | grep ' U _' | awk '{print $2}' | sed 's/^_//' | sort -u > /tmp/all_undef.txt
-              nm objects/*.o 2>/dev/null | grep ' [TtDdBbAaRr] _' | awk '{print $3}' | sed 's/^_//' | sort -u > /tmp/all_def.txt
+              nm objects/*.o 2>/dev/null | grep ' U _' | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_undef.txt
+              nm objects/*.o 2>/dev/null | grep -E ' [TtDdBbAaRrCcGg] _' | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_def.txt
               
               # Missing = undefined in our objects, not defined in our objects
               comm -23 /tmp/all_undef.txt /tmp/all_def.txt > /tmp/missing_syms.txt

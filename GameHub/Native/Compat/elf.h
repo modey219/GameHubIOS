@@ -320,4 +320,114 @@ typedef struct {
 
 #define GRP.jdesktop   1
 
+/* ======== ElfW() macro ======== */
+#ifdef DYNAREC
+#define ElfW(type) Elf64_##type
+#else
+#define ElfW(type) Elf32_##type
+#endif
+
+/* ======== ELF Versioning structs ======== */
+typedef struct {
+    Elf64_Half vn_version;
+    Elf64_Half vn_cnt;
+    Elf64_Word vn_file;
+    Elf64_Word vn_aux;
+    Elf64_Word vn_next;
+} Elf64_Verneed;
+
+typedef struct {
+    Elf64_Half vna_hash;
+    Elf64_Half vna_flags;
+    Elf64_Half vna_other;
+    Elf64_Half vna_name;
+    Elf64_Word vna_next;
+} Elf64_Vernaux;
+
+typedef struct {
+    Elf64_Half vd_version;
+    Elf64_Half vd_flags;
+    Elf64_Half vd_ndx;
+    Elf64_Half vd_cnt;
+    Elf64_Word vd_hash;
+    Elf64_Word vd_aux;
+    Elf64_Word vd_next;
+} Elf64_Verdef;
+
+typedef struct {
+    Elf64_Word vda_name;
+    Elf64_Word vda_next;
+} Elf64_Verdaux;
+
+typedef struct {
+    Elf32_Half vn_version;
+    Elf32_Half vn_cnt;
+    Elf32_Word vn_file;
+    Elf32_Word vn_aux;
+    Elf32_Word vn_next;
+} Elf32_Verneed;
+
+typedef struct {
+    Elf32_Half vna_hash;
+    Elf32_Half vna_flags;
+    Elf32_Half vna_other;
+    Elf32_Half vna_name;
+    Elf32_Word vna_next;
+} Elf32_Vernaux;
+
+typedef struct {
+    Elf32_Half vd_version;
+    Elf32_Half vd_flags;
+    Elf32_Half vd_ndx;
+    Elf32_Half vd_cnt;
+    Elf32_Word vd_hash;
+    Elf32_Word vd_aux;
+    Elf32_Word vd_next;
+} Elf32_Verdef;
+
+typedef struct {
+    Elf32_Word vda_name;
+    Elf32_Word vda_next;
+} Elf32_Verdaux;
+
+/* ======== ELF note types ======== */
+typedef struct {
+    Elf64_Word n_namesz;
+    Elf64_Word n_descsz;
+    Elf64_Word n_type;
+} Elf64_Nhdr;
+
+typedef struct {
+    Elf32_Word n_namesz;
+    Elf32_Word n_descsz;
+    Elf32_Word n_type;
+} Elf32_Nhdr;
+
+/* ======== ELF hash ======== */
+typedef struct {
+    Elf64_Word nbucket;
+    Elf64_Word nchain;
+} Elf64_Hash;
+
+typedef struct {
+    Elf32_Word nbucket;
+    Elf32_Word nchain;
+} Elf32_Hash;
+
+#define VER_FLG_BASE    1
+#define VER_FLG_WEAK    2
+#define VER_NEED_NONE       0
+#define VER_NEED_CURRENT    1
+#define VER_DEF_NONE        0
+#define VER_DEF_CURRENT     1
+
+/* ======== ELF32 macros ======== */
+#define ELF32_ST_BIND(i)   ((i) >> 4)
+#define ELF32_ST_TYPE(i)   ((i) & 0xf)
+#define ELF32_ST_INFO(b,t) (((b)<<4)+((t)&0xf))
+#define ELF32_ST_VISIBILITY(o) ((o) & 0x3)
+#define ELF32_R_SYM(i)      ((i) >> 8)
+#define ELF32_R_TYPE(i)     ((i) & 0xff)
+#define ELF32_R_INFO(s,t)   (((Elf32_Word)(s)<<8)+((Elf32_Word)(t)&0xff))
+
 #endif

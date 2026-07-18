@@ -315,10 +315,12 @@ jobs:
           ls -la "$ICONSET/icon-1024.png"
 
       - name: Remove old xcodeproj
-        run: rm -rf GameHub.xcodeproj
+        run: |
+          rm -rf GameHub.xcodeproj MNEmulator.xcodeproj
 
       - name: Generate Xcode project
-        run:           xcodegen generate 2>&1
+        run: |
+          xcodegen generate 2>&1
           echo "Generated project:"
           ls -la *.xcodeproj 2>/dev/null || echo "No xcodeproj found"
 

@@ -29,6 +29,9 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Show targets
+        run: xcodebuild -project GameHub.xcodeproj -list
+
       - name: Build iOS App
         run: |
           xcodebuild \
@@ -40,47 +43,111 @@ jobs:
             -derivedDataPath build/DerivedData \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
             ENABLE_BITCODE=NO \
-            DEVELOPMENT_TEAM="" \
             2>&1 | tee build.log
-
-      - name: Create IPA
-        run: |
-          echo "Looking for built app..."
-          find build/DerivedData -name "GameHub.app" -type d 2>/dev/null || true
-          find build/DerivedData -name "*.app" -type d 2>/dev/null || true
           
+          echo "=== Build exit code: $? ==="
+
+      - name: Verify build output
+        run: |
+          echo "=== Looking for built app ==="
           APP_PATH=$(find build/DerivedData -name "GameHub.app" -type d | head -1)
           
           if [ -z "$APP_PATH" ]; then
             echo "ERROR: GameHub.app not found!"
+            echo "=== All .app dirs ==="
+            find build/DerivedData -name "*.app" -type d
             echo "=== Build log tail ==="
-            tail -100 build.log || true
+            tail -80 build.log || true
             exit 1
           fi
           
           echo "Found app at: $APP_PATH"
-          mkdir -p build/Payload
-          cp -r "$APP_PATH" build/Payload/
-          cd build
-          zip -r GameHub.ipa Payload/
-          echo "IPA created: build/GameHub.ipa"
+          echo "=== App contents ==="
+          ls -la "$APP_PATH/"
+          echo ""
+          echo "=== Binary check ==="
+          if [ -f "$APP_PATH/GameHub" ]; then
+            file "$APP_PATH/GameHub"
+            ls -la "$APP_PATH/GameHub"
+            echo "Binary exists and is non-zero!"
+          else
+            echo "ERROR: Binary GameHub not found in .app!"
+            echo "=== Looking for any Mach-O ==="
+            find "$APP_PATH" -type f -exec file {} \; | grep -i mach || true
+            echo "=== All files ==="
+            find "$APP_PATH" -type f
+            exit 1
+          fi
+          echo ""
+          echo "=== Info.plist check ==="
+          plutil -p "$APP_PATH/Info.plist" | head -20 || true
 
-      - name: Upload IPA
+      - name: Create IPA
+        run: |
+          APP_PATH=$(find build/DerivedData -name "GameHub.app" -type d | head -1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: GameHub.app not found!"
+            exit 1
+          fi
+          
+          rm -rf build/Payload
+          mkdir -p build/Payload
+          cp -r "$APP_PATH" build/Payload/GameHub.app
+          
+          cd build
+          zip -r -y GameHub.ipa Payload/
+          
+          echo "=== IPA info ==="
+          ls -la GameHub.ipa
+          echo "=== IPA contents (first 30 lines) ==="
+          unzip -l GameHub.ipa | head -30
+
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: GameHub-iOS
           path: build/GameHub.ipa
           retention-days: 30
 
+      - name: Create GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "GameHub iOS Build #${{ github.run_number }}"
+          body: |
+            GameHub iOS - PC Game Emulator for iPhone & iPad
+            
+            **Installation:**
+            1. Download GameHub.ipa below
+            2. Install via LiveContainer, SideStore, AltStore, or TrollStore
+            3. For best performance: Use StikDebug to enable JIT
+            
+            **Features:**
+            - Box64 x86_64 to ARM64 translation
+            - Wine 9.0 Windows API implementation
+            - MoltenVK (Vulkan to Metal)
+            - DXVK (DirectX 11 to Vulkan)
+            - VKD3D (DirectX 12 to Vulkan)
+            - Virtual gamepad + physical controller support
+            - Supports iPhone & iPad (iOS 16+)
+          files: build/GameHub.ipa
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Summary
         if: always()
         run: |
           echo "========================================"
           if [ -f build/GameHub.ipa ]; then
+            SIZE=$(ls -la build/GameHub.ipa | awk '{print $5}')
             echo "  BUILD SUCCESS!"
-            echo "  IPA: Artifacts -> GameHub-iOS"
+            echo "  IPA size: $SIZE bytes"
+            echo "  Artifact: GameHub-iOS"
+            echo "  Release: GameHub iOS Build #${{ github.run_number }}"
           else
             echo "  BUILD FAILED"
             echo "  Check the logs above for errors"

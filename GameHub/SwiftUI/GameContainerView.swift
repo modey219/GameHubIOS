@@ -9,6 +9,7 @@ struct GameContainerView: View {
     @State private var showKeyboard = false
     @State private var fps: Double = 0
     @State private var showSettings = false
+    @State private var gameProcess: Process?
 
     var body: some View {
         GeometryReader { geometry in
@@ -85,19 +86,19 @@ struct GameContainerView: View {
 
     private var bottomBar: some View {
         HStack(spacing: 30) {
-            Button(action: { sendKey("a") }) {
+            Button(action: { sendGamepadInput("a") }) {
                 Circle().fill(Color.blue.opacity(0.6)).frame(width: 50, height: 50)
                     .overlay(Text("A").foregroundColor(.white).bold())
             }
-            Button(action: { sendKey("b") }) {
+            Button(action: { sendGamepadInput("b") }) {
                 Circle().fill(Color.red.opacity(0.6)).frame(width: 50, height: 50)
                     .overlay(Text("B").foregroundColor(.white).bold())
             }
-            Button(action: { sendKey("x") }) {
+            Button(action: { sendGamepadInput("x") }) {
                 Circle().fill(Color.green.opacity(0.6)).frame(width: 50, height: 50)
                     .overlay(Text("X").foregroundColor(.white).bold())
             }
-            Button(action: { sendKey("y") }) {
+            Button(action: { sendGamepadInput("y") }) {
                 Circle().fill(Color.yellow.opacity(0.6)).frame(width: 50, height: 50)
                     .overlay(Text("Y").foregroundColor(.white).bold())
             }
@@ -144,7 +145,7 @@ struct GameContainerView: View {
         VStack(spacing: 8) {
             HStack {
                 ForEach(["Q","W","E","R","T","Y","U","I","O","P"], id: \.self) { key in
-                    Button(action: { sendKey(key.lowercased()) }) {
+                    Button(action: { sendGamepadInput(key.lowercased()) }) {
                         Text(key).font(.caption).frame(width: 30, height: 30)
                             .background(Color.white.opacity(0.3)).cornerRadius(4)
                     }
@@ -152,7 +153,7 @@ struct GameContainerView: View {
             }
             HStack {
                 ForEach(["A","S","D","F","G","H","J","K","L"], id: \.self) { key in
-                    Button(action: { sendKey(key.lowercased()) }) {
+                    Button(action: { sendGamepadInput(key.lowercased()) }) {
                         Text(key).font(.caption).frame(width: 30, height: 30)
                             .background(Color.white.opacity(0.3)).cornerRadius(4)
                     }
@@ -160,10 +161,24 @@ struct GameContainerView: View {
             }
             HStack {
                 ForEach(["Z","X","C","V","B","N","M"], id: \.self) { key in
-                    Button(action: { sendKey(key.lowercased()) }) {
+                    Button(action: { sendGamepadInput(key.lowercased()) }) {
                         Text(key).font(.caption).frame(width: 30, height: 30)
                             .background(Color.white.opacity(0.3)).cornerRadius(4)
                     }
+                }
+            }
+            HStack(spacing: 12) {
+                Button(action: { sendGamepadInput("escape") }) {
+                    Text("Esc").font(.caption).frame(width: 40, height: 30)
+                        .background(Color.white.opacity(0.3)).cornerRadius(4)
+                }
+                Button(action: { sendGamepadInput("return") }) {
+                    Text("Enter").font(.caption).frame(width: 50, height: 30)
+                        .background(Color.white.opacity(0.3)).cornerRadius(4)
+                }
+                Button(action: { sendGamepadInput("space") }) {
+                    Text("Space").font(.caption).frame(width: 70, height: 30)
+                        .background(Color.white.opacity(0.3)).cornerRadius(4)
                 }
             }
         }
@@ -171,45 +186,43 @@ struct GameContainerView: View {
         .background(Color.black.opacity(0.8))
     }
 
-    private func sendKey(_ key: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xdotool")
-        process.arguments = ["key", key]
-        try? process.run()
+    private func sendGamepadInput(_ key: String) {
+        InputManager.shared.sendKeyPress(key)
     }
 
     private func handleTouchMoved(location: CGPoint, viewSize: CGSize) {
-        let x = Int(location.x / viewSize.width * 1920)
-        let y = Int(location.y / viewSize.height * 1080)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xdotool")
-        process.arguments = ["mousemove", "\(x)", "\(y)"]
-        try? process.run()
+        let x = location.x / viewSize.width
+        let y = location.y / viewSize.height
+        InputManager.shared.sendMouseMove(x: x, y: y)
     }
 
     private func handleTouchEnded() {}
 
     private func handleTap() {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xdotool")
-        process.arguments = ["click", "1"]
-        try? process.run()
+        InputManager.shared.sendMouseClick(button: 1)
     }
 
     private func handleDoubleTap() {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xdotool")
-        process.arguments = ["click", "1", "--repeat", "2", "50"]
-        try? process.run()
+        InputManager.shared.sendMouseDoubleClick(button: 1)
     }
 
     private func startGame() {
         isRunning = true
         startFPSCounter()
+        launchGame()
     }
 
     private func stopGame() {
         isRunning = false
+        gameProcess?.terminate()
+    }
+
+    private func launchGame() {
+        let result = WineBridge.shared.launchGame(
+            executablePath: container.executablePath,
+            containerPath: container.winePrefix
+        )
+        gameProcess = result
     }
 
     private func startFPSCounter() {

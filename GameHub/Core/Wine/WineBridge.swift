@@ -83,7 +83,8 @@ class WineBridge {
         }
 
         let bottlePaths = ["drive_c", "drive_c/windows", "drive_c/windows/system32",
-                          "drive_c/users", "drive_c/Program Files"]
+                          "drive_c/users", "drive_c/Program Files",
+                          "drive_c/games", "input"]
         for path in bottlePaths {
             let fullPath = wineDir.appendingPathComponent(path)
             if !fileManager.fileExists(atPath: fullPath.path) {
@@ -108,11 +109,24 @@ class WineBridge {
     }
 
     private func extractRootfs(source: String, destination: String) {
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: destination) {
+            try? fm.createDirectory(atPath: destination, withIntermediateDirectories: true)
+        }
+
+        #if os(iOS)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
         process.arguments = ["--zstd", "-xf", source, "-C", destination]
         try? process.run()
         process.waitUntilExit()
+        #else
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        process.arguments = ["--zstd", "-xf", source, "-C", destination]
+        try? process.run()
+        process.waitUntilExit()
+        #endif
     }
 
     private func setupEnvironment() {
@@ -152,6 +166,11 @@ class WineBridge {
             return nil
         }
 
+        guard FileManager.default.fileExists(atPath: wineBinaryPath) else {
+            print("[Wine] wine64 binary not found at: \(wineBinaryPath)")
+            return nil
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: wineBinaryPath)
         process.arguments = [executablePath] + arguments
@@ -163,23 +182,13 @@ class WineBridge {
         }
         process.environment = env
 
-        let outPipe = Pipe()
-        let errPipe = Pipe()
+        let outPipe = iOSPipe()
+        let errPipe = iOSPipe()
         process.standardOutput = outPipe
         process.standardError = errPipe
 
-        outPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if let str = String(data: data, encoding: .utf8) {
-                print("[Wine:stdout] \(str)")
-            }
-        }
-
-        errPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if let str = String(data: data, encoding: .utf8) {
-                print("[Wine:stderr] \(str)")
-            }
+        process.terminationHandler = { proc in
+            print("[Wine] Process exited with status: \(proc.terminationStatus)")
         }
 
         do {
@@ -200,8 +209,8 @@ class WineBridge {
         env["WINEPREFIX"] = winePrefix
         process.environment = env
 
-        let outPipe = Pipe()
-        let errPipe = Pipe()
+        let outPipe = iOSPipe()
+        let errPipe = iOSPipe()
         process.standardOutput = outPipe
         process.standardError = errPipe
 
@@ -209,8 +218,8 @@ class WineBridge {
             try process.run()
             process.waitUntilExit()
 
-            let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
-            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            let outData = outPipe?.readHandle.readDataToEndOfFile() ?? Data()
+            let errData = errPipe?.readHandle.readDataToEndOfFile() ?? Data()
             let output = String(data: outData, encoding: .utf8) ?? ""
             let errors = String(data: errData, encoding: .utf8) ?? ""
 
@@ -233,19 +242,13 @@ class WineBridge {
         setupEnvironment()
     }
 
-    func getWinePrefixPath() -> String {
-        return winePrefix
-    }
-
-    func getDriveCPath() -> String {
-        return winePrefix + "/drive_c"
-    }
+    func getWinePrefixPath() -> String { return winePrefix }
+    func getDriveCPath() -> String { return winePrefix + "/drive_c" }
 
     func installDirectX() {
         let _ = runWineCommand("wine", arguments: ["reg", "add", "HKCU\\Software\\Wine\\Direct3D", "/v", "UseGLSL", "/d", "enabled", "/f"])
         let _ = runWineCommand("wine", arguments: ["reg", "add", "HKCU\\Software\\Wine\\Direct3D", "/v", "DirectDrawRenderer", "/d", "opengl", "/f"])
         let _ = runWineCommand("wine", arguments: ["reg", "add", "HKCU\\Software\\Wine\\Direct3D", "/v", "OffscreenRenderingMode", "/d", "fbo", "/f"])
         let _ = runWineCommand("wine", arguments: ["reg", "add", "HKCU\\Software\\Wine\\Direct3D", "/v", "VideoMemorySize", "/d", "2048", "/f"])
-        let _ = runWineCommand("wine", arguments: ["reg", "add", "HKCU\\Software\\Wine\\Direct3D", "/v", "MaxFrameLatency", "/d", "1", "/f"])
     }
 }

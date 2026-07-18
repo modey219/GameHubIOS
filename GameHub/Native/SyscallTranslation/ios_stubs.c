@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dlfcn.h>
 
 /* Box64 needs these Linux/glibc symbols that don't exist on iOS */
 

@@ -88,6 +88,12 @@ struct GameHubApp: App {
     }
 
     private func performSetup() {
+        DispatchQueue.main.async {
+            self._performSetupInner()
+        }
+    }
+
+    private func _performSetupInner() {
         let fm = FileManager.default
 
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
@@ -111,9 +117,7 @@ struct GameHubApp: App {
         if !box64Exists || !wineExists {
             setupProgress = "Extracting bundled binaries..."
             do {
-                var lastDetail = ""
                 try Box64Bridge.shared.setupAllBundledBinaries { detail in
-                    lastDetail = detail
                     DispatchQueue.main.async {
                         self.setupDetail = detail
                     }
@@ -121,10 +125,11 @@ struct GameHubApp: App {
                 setupProgress = "Binaries extracted!"
                 setupDetail = ""
             } catch {
-                setupError = "Failed to extract bundled binaries: \(error.localizedDescription)\n\nThe app may not function correctly."
-                isLoading = false
-                return
+                print("[GameHub] Extraction error: \(error)")
+                setupError = "Extraction error: \(error.localizedDescription)"
             }
+        } else {
+            setupProgress = "Using cached binaries..."
         }
 
         setupProgress = "Initializing Box64..."
@@ -133,12 +138,16 @@ struct GameHubApp: App {
         setupProgress = "Initializing Wine..."
         WineBridge.shared.initialize()
 
+        setupProgress = "Setting up prefix..."
         WinePrefixManager.shared.initializePrefix()
+
+        setupProgress = "Applying settings..."
         settingsManager.applySettings()
 
+        setupProgress = "Done!"
         DispatchQueue.main.async {
             withAnimation(.easeIn(duration: 0.3)) {
-                isLoading = false
+                self.isLoading = false
             }
         }
     }

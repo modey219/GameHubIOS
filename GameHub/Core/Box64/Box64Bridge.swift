@@ -49,6 +49,24 @@ class Box64Bridge {
         return box64Exists && wineExists
     }
 
+    private func findBundledResource(_ name: String, isDirectory: Bool) -> String? {
+        // Try Bundle.main.path first (works for resources registered in the bundle)
+        if let path = Bundle.main.path(forResource: name, ofType: nil) {
+            return path
+        }
+        // Try direct bundle path (works for manually injected files)
+        let directPath = (Bundle.main.bundlePath as NSString).appendingPathComponent("BundledBinaries/\(name)")
+        if FileManager.default.fileExists(atPath: directPath) {
+            return directPath
+        }
+        // Try nested BundledBinaries (for folder references)
+        let nestedPath = (Bundle.main.bundlePath as NSString).appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: nestedPath) {
+            return nestedPath
+        }
+        return nil
+    }
+
     func setupAllBundledBinaries(progressCallback: ((String) -> Void)? = nil) throws {
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
@@ -83,7 +101,7 @@ class Box64Bridge {
 
         if fm.fileExists(atPath: destination) { return }
 
-        guard let bundledPath = Bundle.main.path(forResource: "box64", ofType: nil, inDirectory: "BundledBinaries") else {
+        guard let bundledPath = findBundledResource("box64", isDirectory: false) else {
             throw SetupError.box64Missing
         }
         try fm.copyItem(atPath: bundledPath, toPath: destination)
@@ -97,7 +115,7 @@ class Box64Bridge {
 
         if fm.fileExists(atPath: wine64Dest) { return }
 
-        guard let bundledWineDir = Bundle.main.path(forResource: "Wine", ofType: nil, inDirectory: "BundledBinaries") else {
+        guard let bundledWineDir = findBundledResource("Wine", isDirectory: true) else {
             throw SetupError.wineMissing
         }
 
@@ -123,7 +141,7 @@ class Box64Bridge {
 
         if fm.fileExists(atPath: mvkDest) { return }
 
-        guard let bundledMVK = Bundle.main.path(forResource: "MoltenVK", ofType: nil, inDirectory: "BundledBinaries") else {
+        guard let bundledMVK = findBundledResource("MoltenVK", isDirectory: true) else {
             print("[Box64] MoltenVK not found in bundle, skipping")
             return
         }
@@ -137,7 +155,7 @@ class Box64Bridge {
 
         if let contents = try? fm.contentsOfDirectory(atPath: dxvkDir), !contents.isEmpty { return }
 
-        guard let bundledDXVK = Bundle.main.path(forResource: "DXVK", ofType: nil, inDirectory: "BundledBinaries") else {
+        guard let bundledDXVK = findBundledResource("DXVK", isDirectory: true) else {
             print("[Box64] DXVK not found in bundle, skipping")
             return
         }

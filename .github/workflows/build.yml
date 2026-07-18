@@ -137,7 +137,13 @@ jobs:
         run: xcodegen generate
 
       - name: Show targets
-        run: xcodebuild -project GameHub.xcodeproj -list
+        run: |
+          xcodebuild -project GameHub.xcodeproj -list
+          echo "---"
+          xcodebuild -project GameHub.xcodeproj -scheme GameHub -showBuildSettings 2>&1 | head -20 || true
+          echo "---"
+          ls GameHub.xcodeproj/xcshareddata/xcschemes/ 2>/dev/null || echo "No shared schemes"
+          ls GameHub.xcodeproj/xcshareddata/ 2>/dev/null || echo "No xcshareddata"
 
       - name: Build iOS App
         run: |
@@ -154,12 +160,22 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             ENABLE_BITCODE=NO \
             DEVELOPMENT_TEAM="" \
-            2>&1 | tee build.log
+            2>build_err.log | tee build.log
           XCODEBUILD_EXIT=${PIPESTATUS[0]}
           set -e
           echo "xcodebuild exit code: $XCODEBUILD_EXIT"
-          echo "---BUILD LOG TAIL---"
-          tail -200 build.log
+          echo ""
+          echo "=== STDOUT last 100 lines ==="
+          tail -100 build.log
+          echo ""
+          echo "=== STDERR last 100 lines ==="
+          tail -100 build_err.log
+          echo ""
+          echo "=== Error lines from STDOUT ==="
+          grep -i "error:" build.log | head -30 || true
+          echo ""
+          echo "=== Error lines from STDERR ==="
+          grep -i "error:" build_err.log | head -30 || true
           exit $XCODEBUILD_EXIT
 
       - name: Show build errors

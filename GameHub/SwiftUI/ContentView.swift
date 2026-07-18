@@ -39,6 +39,10 @@ struct ContentView: View {
             JITStatusView()
                 .tabItem { Label("JIT", systemImage: "bolt.fill") }
                 .tag(3)
+
+            DebugView()
+                .tabItem { Label("Debug", systemImage: "ladybug") }
+                .tag(4)
         }
         .accentColor(.blue)
     }

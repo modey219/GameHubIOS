@@ -390,8 +390,14 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             int r = setsockopt(hfd, hl, a3, (const void *)(uintptr_t)a4, a5);
             return r < 0 ? -errno : 0;
         }
-        case 56: return 0;
-        case 57: return 0;
+        case 56: {
+            // clone - stub: just return current pid (Wine can work with this for simple cases)
+            return getpid();
+        }
+        case 57: {
+            // fork - stub: return 0 (child) for Wine prefix init
+            return 0;
+        }
         case 59: {
             const char *path = (const char *)(uintptr_t)a1;
             char **argv = (char **)(uintptr_t)a2;
@@ -492,6 +498,14 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         }
         case 125: return emulator_mprotect(ctx, a1, a2, a3);
         case 131: return 0;
+        case 134: {
+            // rt_sigaction - stub, return success
+            return 0;
+        }
+        case 135: {
+            // rt_sigprocmask - stub, return success
+            return 0;
+        }
         case 140: {
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
@@ -534,6 +548,30 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         case 201: return getuid();
         case 202: return getgid();
         case 207: return getppid();
+        case 202: {
+            // futex - basic implementation
+            // op = a2 & 0xf: 0=FUTEX_WAIT, 1=FUTEX_WAKE, etc
+            int futex_op = a2 & 0xf;
+            int *uaddr = (int *)(uintptr_t)a1;
+            if (futex_op == 0) {
+                // FUTEX_WAIT: wait if *uaddr == val
+                if (uaddr && *uaddr == (int)a3) {
+                    struct timespec ts;
+                    if (a4) {
+                        ts.tv_sec = ((struct linux_timespec *)(uintptr_t)a4)->tv_sec;
+                        ts.tv_nsec = ((struct linux_timespec *)(uintptr_t)a4)->tv_nsec;
+                    } else {
+                        ts.tv_sec = 10; ts.tv_nsec = 0;
+                    }
+                    nanosleep(&ts, NULL);
+                }
+                return 0;
+            } else if (futex_op == 1) {
+                // FUTEX_WAKE: wake up val threads
+                return a3 > 0 ? a3 : 0;
+            }
+            return 0;
+        }
         case 212: return 0;
         case 214: return getpgid(a1);
         case 218: return (long)pthread_self();
@@ -570,13 +608,38 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             ctx->process.fds[s].is_epoll = 1;
             return s;
         }
+        case 281: {
+            // epoll_wait - translate to poll-based fallback
+            int efd = host_fd_for_linux(ctx, a1);
+            if (efd < 0) return -EBADF;
+            struct linux_epoll_event *levents = (struct linux_epoll_event *)(uintptr_t)a2;
+            if (!levents) return -EINVAL;
+            int timeout_ms = a4;
+            struct timespec ts;
+            ts.tv_sec = timeout_ms / 1000;
+            ts.tv_nsec = (timeout_ms % 1000) * 1000000;
+            // Simple fallback: check if any fds are readable
+            int count = 0;
+            for (int i = 0; i < ctx->process.mmap_count && count < a3; i++) {
+                if (ctx->process.fds[i].host_fd >= 0 && !ctx->process.fds[i].is_socket) {
+                    struct pollfd pfd;
+                    pfd.fd = ctx->process.fds[i].host_fd;
+                    pfd.events = POLLIN;
+                    pfd.revents = 0;
+                    int pr = poll(&pfd, 1, timeout_ms);
+                    if (pr > 0) {
+                        levents[count].fd = i;
+                        levents[count].events = pfd.revents;
+                        count++;
+                    }
+                }
+            }
+            return count;
+        }
         case 292: {
-            int ho = host_fd_for_linux(ctx, a1);
-            if (ho < 0) return -EBADF;
-            int hn = dup2(ho, a2);
-            if (hn < 0) return -errno;
-            register_host_fd(ctx, a2, hn, ctx->process.fds[a1].flags);
-            return a2;
+            // epoll_ctl (op=a2, epfd=a1, fd=a3, event=a4)
+            // Stub: return success - epoll is handled via poll fallback
+            return 0;
         }
         case 293: {
             int hp[2];
@@ -593,6 +656,37 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             if (a2 >= 0 && a2 < 16) {
                 if (a4) memcpy((void *)(uintptr_t)a4, &ctx->process.limits[a2], sizeof(struct linux_rlimit));
                 if (a3) memcpy(&ctx->process.limits[a2], (const void *)(uintptr_t)a3, sizeof(struct linux_rlimit));
+            }
+            return 0;
+        }
+        case 308: {
+            // getdents64 - similar to getdents but with linux_dirent64
+            int hfd = host_fd_for_linux(ctx, a1);
+            if (hfd < 0) return -EBADF;
+            DIR *dir = fdopendir(dup(hfd));
+            if (!dir) return -errno;
+            struct dirent *e;
+            int off = 0;
+            while (off < (int)a3) {
+                e = readdir(dir);
+                if (!e) break;
+                struct linux_dirent *ld = (struct linux_dirent *)((char *)(uintptr_t)a2 + off);
+                ld->d_ino = e->d_ino;
+                size_t nl = strlen(e->d_name) + 1;
+                ld->d_reclen = sizeof(struct linux_dirent) + nl;
+                ld->d_type = e->d_type == DT_DIR ? 4 : (e->d_type == DT_REG ? 8 : 0);
+                ld->d_off = off + ld->d_reclen;
+                memcpy(ld->d_name, e->d_name, nl);
+                off += ld->d_reclen;
+            }
+            closedir(dir);
+            return off;
+        }
+        case 261: {
+            // prlimit64 - get/set resource limits
+            if (a3 >= 0 && a3 < 16) {
+                if (a4) memcpy((void *)(uintptr_t)a4, &ctx->process.limits[a3], sizeof(struct linux_rlimit));
+                if (a2) memcpy(&ctx->process.limits[a3], (const void *)(uintptr_t)a2, sizeof(struct linux_rlimit));
             }
             return 0;
         }
@@ -614,6 +708,47 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return s;
         }
         case 425: return -ENOSYS;
+        case 435: return -ENOSYS; // clone3
+        case 434: return 0;      // pidfd_open - stub
+        case 436: return 0;      // close_range - stub
+        case 441: {              // execveat - stub
+            return -ENOSYS;
+        }
+        case 449: {
+            // set_robust_list - stub
+            return 0;
+        }
+        case 300: {
+            // get_robust_list - stub
+            if (a3) *(long *)(uintptr_t)a3 = 0;
+            return 0;
+        }
+        case 99: {
+            // sysinfo - return minimal info
+            struct {
+                long uptime;
+                unsigned long loads[3];
+                unsigned long totalram;
+                unsigned long freeram;
+                unsigned long sharedram;
+                unsigned long bufferram;
+                unsigned long totalswap;
+                unsigned long freeswap;
+                unsigned short procs;
+            } *info = (void *)(uintptr_t)a1;
+            if (info) {
+                info->uptime = 0;
+                info->loads[0] = 1024; info->loads[1] = 512; info->loads[2] = 256;
+                info->totalram = 4ULL * 1024 * 1024 * 1024;
+                info->freeram = 3ULL * 1024 * 1024 * 1024;
+                info->sharedram = 256 * 1024 * 1024;
+                info->bufferram = 128 * 1024 * 1024;
+                info->totalswap = 1ULL * 1024 * 1024 * 1024;
+                info->freeswap = 1ULL * 1024 * 1024 * 1024;
+                info->procs = 64;
+            }
+            return 0;
+        }
         default:
             fprintf(stderr, "[Syscall] Unhandled: %ld (%ld,%ld,%ld,%ld,%ld,%ld)\n", num, a1, a2, a3, a4, a5, a6);
             return -ENOSYS;

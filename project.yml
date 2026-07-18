@@ -46,11 +46,8 @@ targets:
         OTHER_LDFLAGS:
           - "-lresolv"
           - "-lbox64"
-          - "-ObjC"
-          - "-all_load"
         OTHER_CFLAGS:
           - "-I$(SRCROOT)/GameHub/Native/Include"
-          - "-I$(SRCROOT)/GameHub/Native/Compat"
           - "-Wno-unused-variable"
           - "-Wno-unused-function"
           - "-Wno-incompatible-pointer-types"

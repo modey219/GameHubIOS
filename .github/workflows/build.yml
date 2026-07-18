@@ -156,6 +156,18 @@ jobs:
             DEVELOPMENT_TEAM="" \
             2>&1 | tee build.log
 
+      - name: Show build errors
+        if: failure()
+        run: |
+          echo "=== LAST 80 LINES OF BUILD LOG ==="
+          tail -80 build.log || true
+          echo ""
+          echo "=== GREP FOR ERRORS ==="
+          grep -i "error:" build.log | tail -30 || true
+          echo ""
+          echo "=== GREP FOR FATAL ==="
+          grep -i "fatal" build.log | tail -10 || true
+
       - name: Verify build output
         run: |
           echo "=== Looking for built app ==="

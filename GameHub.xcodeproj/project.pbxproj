@@ -1,0 +1,366 @@
+!$*UTF8*${
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AA000001 /* GameHubApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000001; };
+		AA000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000002; };
+		AA000003 /* GameLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000003; };
+		AA000004 /* AddGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000004; };
+		AA000005 /* ImportGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000005; };
+		AA000006 /* ContainerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000006; };
+		AA000007 /* GameContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000007; };
+		AA000008 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000008; };
+		AA000009 /* JITStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000009; };
+		AA000010 /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000010; };
+		AA000011 /* Box64Bridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000011; };
+		AA000012 /* WineBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000012; };
+		AA000013 /* GraphicsBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000013; };
+		AA000014 /* JITManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000014; };
+		AA000015 /* ContainerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000015; };
+		AA000016 /* InputManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000016; };
+		AA000017 /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000017; };
+		AA000018 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB000018; };
+		AA000019 /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = AB000019; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AB000001 /* GameHubApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameHubApp.swift; sourceTree = "<group>"; };
+		AB000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		AB000003 /* GameLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameLibraryView.swift; sourceTree = "<group>"; };
+		AB000004 /* AddGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddGameView.swift; sourceTree = "<group>"; };
+		AB000005 /* ImportGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGameView.swift; sourceTree = "<group>"; };
+		AB000006 /* ContainerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContainerListView.swift; sourceTree = "<group>"; };
+		AB000007 /* GameContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameContainerView.swift; sourceTree = "<group>"; };
+		AB000008 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AB000009 /* JITStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JITStatusView.swift; sourceTree = "<group>"; };
+		AB000010 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
+		AB000011 /* Box64Bridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Box64Bridge.swift; sourceTree = "<group>"; };
+		AB000012 /* WineBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WineBridge.swift; sourceTree = "<group>"; };
+		AB000013 /* GraphicsBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphicsBridge.swift; sourceTree = "<group>"; };
+		AB000014 /* JITManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JITManager.swift; sourceTree = "<group>"; };
+		AB000015 /* ContainerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContainerManager.swift; sourceTree = "<group>"; };
+		AB000016 /* InputManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputManager.swift; sourceTree = "<group>"; };
+		AB000017 /* AudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioManager.swift; sourceTree = "<group>"; };
+		AB000018 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AB000019 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders.metal; sourceTree = "<group>"; };
+		AB000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AC000001 /* GameHub.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GameHub.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		AD000001 = {
+			isa = PBXGroup;
+			children = (
+				AD000002 /* GameHub */,
+				AD000009 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AD000002 /* GameHub */ = {
+			isa = PBXGroup;
+			children = (
+				AB000001 /* GameHubApp.swift */,
+				AD000003 /* SwiftUI */,
+				AD000004 /* Core */,
+				AD000008 /* Resources */,
+			);
+			path = GameHub;
+			sourceTree = "<group>";
+		};
+		AD000003 /* SwiftUI */ = {
+			isa = PBXGroup;
+			children = (
+				AB000002 /* ContentView.swift */,
+				AB000003 /* GameLibraryView.swift */,
+				AB000004 /* AddGameView.swift */,
+				AB000005 /* ImportGameView.swift */,
+				AB000006 /* ContainerListView.swift */,
+				AB000007 /* GameContainerView.swift */,
+				AB000008 /* SettingsView.swift */,
+				AB000009 /* JITStatusView.swift */,
+				AB000010 /* SettingsManager.swift */,
+			);
+			path = SwiftUI;
+			sourceTree = "<group>";
+		};
+		AD000004 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				AD000005 /* Box64 */,
+				AD000006 /* Wine */,
+				AD000007 /* Graphics */,
+				AB000014 /* JITManager.swift */,
+				AB000015 /* ContainerManager.swift */,
+				AB000016 /* InputManager.swift */,
+				AB000017 /* AudioManager.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		AD000005 /* Box64 */ = {
+			isa = PBXGroup;
+			children = (
+				AB000011 /* Box64Bridge.swift */,
+			);
+			path = Box64;
+			sourceTree = "<group>";
+		};
+		AD000006 /* Wine */ = {
+			isa = PBXGroup;
+			children = (
+				AB000012 /* WineBridge.swift */,
+			);
+			path = Wine;
+			sourceTree = "<group>";
+		};
+		AD000007 /* Graphics */ = {
+			isa = PBXGroup;
+			children = (
+				AB000013 /* GraphicsBridge.swift */,
+			);
+			path = Graphics;
+			sourceTree = "<group>";
+		};
+		AD000008 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				AB000018 /* Assets.xcassets */,
+				AB000019 /* Shaders.metal */,
+				AB000020 /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		AD000009 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AC000001 /* GameHub.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AE000001 /* GameHub */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AF000003 /* Build configuration list for PBXNativeTarget "GameHub" */;
+			buildPhases = (
+				AE000002 /* Sources */,
+				AE000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GameHub;
+			productName = GameHub;
+			productReference = AC000001 /* GameHub.app */;
+			productType = "com.apple.product-type.application";
+		};
+		AE000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000001, AA000002, AA000003, AA000004, AA000005,
+				AA000006, AA000007, AA000008, AA000009, AA000010,
+				AA000011, AA000012, AA000013, AA000014, AA000015,
+				AA000016, AA000017, AA000019,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AE000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000018,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AG000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					AE000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = AF000001 /* Build configuration list for PBXProject "GameHub" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AD000001;
+			productRefGroup = AD000009 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AE000001 /* GameHub */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin XCBuildConfiguration section */
+		AH000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AH000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AH000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = GameHub/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GameHub;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gamehub.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AH000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = GameHub/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GameHub;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gamehub.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AF000001 /* Build configuration list for PBXProject "GameHub" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AH000001 /* Debug */,
+				AH000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AF000003 /* Build configuration list for PBXNativeTarget "GameHub" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AH000003 /* Debug */,
+				AH000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AG000001 /* Project object */;
+}

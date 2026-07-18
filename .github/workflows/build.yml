@@ -1,0 +1,124 @@
+name: Build GameHub iOS IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build IPA
+    runs-on: macos-14
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode 15.2
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.2'
+
+      - name: Install Build Tools
+        run: |
+          brew install cmake flex bison autoconf automake pkg-config
+
+      # ===== بناء Box64 (ترجمة x86 → ARM) =====
+      - name: Build Box64
+        run: |
+          git clone --depth 1 https://github.com/ptitSeb/box64.git /tmp/box64
+          cd /tmp/box64
+          mkdir build_ios && cd build_ios
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DARM_DYNAREC=ON \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_SHARED_LIBS=OFF
+          make -j$(sysctl -n hw.ncpu)
+
+      # ===== بناء Wine (واجهة Windows) =====
+      - name: Build Wine
+        run: |
+          git clone --depth 1 -b wine-9.0 https://gitlab.winehq.org/wine/wine.git /tmp/wine
+          cd /tmp/wine
+          mkdir build_ios && cd build_ios
+          ../configure \
+            --host=aarch64-apple-ios \
+            --prefix=/opt/wine \
+            --without-x \
+            --with-pulse \
+            --disable-tests \
+            --enable-win64
+          make -j$(sysctl -n hw.ncpu)
+
+      # ===== تجهيز ملفات المشروع =====
+      - name: Prepare Project
+        run: |
+          mkdir -p GameHub/Resources/binaries
+          cp /tmp/box64/build_ios/box64 GameHub/Resources/binaries/
+          cp /tmp/wine/build_ios/wine64 GameHub/Resources/binaries/ 2>/dev/null || \
+          cp /tmp/wine/build_ios/wine/wine64 GameHub/Resources/binaries/ 2>/dev/null || true
+          chmod +x GameHub/Resources/binaries/*
+
+      # ===== بناء التطبيق =====
+      - name: Build iOS App
+        run: |
+          xcodebuild \
+            -project GameHub.xcodeproj \
+            -scheme GameHub \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ENABLE_BITCODE=NO \
+            | xcpretty
+
+      # ===== إنشاء IPA =====
+      - name: Create IPA
+        run: |
+          mkdir -p build/Payload
+          APP_PATH=$(find build/DerivedData -name "GameHub.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: GameHub.app not found!"
+            find build/DerivedData -name "*.app" -type d
+            exit 1
+          fi
+          cp -r "$APP_PATH" build/Payload/
+          cd build
+          zip -r GameHub.ipa Payload/
+
+      # ===== رفع ملف IPA =====
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameHub-iOS
+          path: build/GameHub.ipa
+          retention-days: 30
+
+      # ===== ملخص =====
+      - name: Print Summary
+        run: |
+          echo ""
+          echo "========================================"
+          echo "  BUILD COMPLETE!"
+          echo "========================================"
+          echo ""
+          echo "Download your IPA from:"
+          echo "  GitHub Actions → Artifacts → GameHub-iOS"
+          echo ""
+          echo "To install on iPhone:"
+          echo "  1. AltStore (recommended): altstore.io"
+          echo "  2. Sideloadly: sideloadly.io"
+          echo "  3. Xcode: Window → Devices → +"
+          echo ""
+          echo "To enable JIT:"
+          echo "  1. Install StikDebug from App Store"
+          echo "  2. Open StikDebug → Enable JIT"
+          echo "  3. Select GameHub"
+          echo "========================================"

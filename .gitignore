@@ -1,0 +1,74 @@
+# Xcode
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.app
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# CocoaPods
+Pods/
+!Podfile.lock
+
+# Carthage
+Carthage/Build/
+Carthage/Checkouts/
+
+# SPM
+.build/
+.swiftpm/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+fastlane/README.md
+
+# Build artifacts
+*.tar
+*.tzst
+*.tgz
+*.zip
+*.p12
+*.mobileprovision
+*.provisionprofile
+
+# Binaries (will be built by CI)
+GameHub/Resources/binaries/
+build/
+box64
+wine64
+rootfs.tzst
+
+# Temp
+*.tmp
+*.temp
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

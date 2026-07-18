@@ -262,6 +262,8 @@ jobs:
           tar xf MoltenVK-ios.tar -C GameHub/Native/BundledBinaries/MoltenVK --strip-components=1 2>/dev/null || \
           tar xf MoltenVK-ios.tar -C GameHub/Native/BundledBinaries/MoltenVK --strip-components=0
           rm -f MoltenVK-ios.tar
+          echo "=== Removing broken symlinks ==="
+          find GameHub/Native/BundledBinaries/MoltenVK -type l ! -exec test -e {} \; -delete 2>/dev/null || true
           echo "MoltenVK contents:"
           find GameHub/Native/BundledBinaries/MoltenVK -type f -o -type l | head -30
 

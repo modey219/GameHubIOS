@@ -68,9 +68,9 @@ void emulator_stop(emulator_context_t *ctx);
 
 long translate_syscall(emulator_context_t *ctx, long syscall_num, long a1, long a2, long a3, long a4, long a5, long a6);
 
-unsigned long emulator_mmap(emulator_context_t *ctx, unsigned long addr, size_t length, int prot, int flags, int fd, long offset);
-int emulator_mprotect(emulator_context_t *ctx, unsigned long addr, size_t length, int prot);
-int emulator_munmap(emulator_context_t *ctx, unsigned long addr, size_t length);
+linux_addr_t emulator_mmap(emulator_context_t *ctx, linux_addr_t addr, size_t length, int prot, int flags, int fd, long offset);
+int emulator_mprotect(emulator_context_t *ctx, linux_addr_t addr, size_t length, int prot);
+int emulator_munmap(emulator_context_t *ctx, linux_addr_t addr, size_t length);
 
 int host_fd_for_linux(emulator_context_t *ctx, int linux_fd);
 int register_host_fd(emulator_context_t *ctx, int linux_fd, int host_fd, int flags);

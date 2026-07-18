@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <spawn.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -37,6 +38,8 @@
 #ifndef MAP_JIT
 #define MAP_JIT 0x0800
 #endif
+
+extern char **environ;
 
 static emulator_context_t *g_ctx = NULL;
 

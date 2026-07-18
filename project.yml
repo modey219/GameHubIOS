@@ -55,6 +55,9 @@ targets:
           - "-Wno-unused-function"
           - "-Wno-incompatible-pointer-types"
           - "-Wno-deprecated-declarations"
+          - "-Wno-shorten-64-to-32"
+          - "-Wno-shorten-64-to-32"
+          - "-Wno-implicit-function-declaration"
         SWIFT_OBJC_BRIDGING_HEADER: "GameHub/GameHub-Bridging-Header.h"
         GCC_PREPROCESSOR_DEFINITIONS:
           - "__IOS__=1"

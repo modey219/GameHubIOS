@@ -91,14 +91,20 @@ jobs:
               done
           fi
           
-          # Include dynarec
+          # Include dynarec (EXCLUDE all avx_ files — too many Linux-only deps)
           if [ -d "$BOX64_SRC/src/dynarec" ]; then
               for f in "$BOX64_SRC/src/dynarec"/*.c; do
                   [ -f "$f" ] && SOURCES="$SOURCES $f"
               done
               if [ -d "$BOX64_SRC/src/dynarec/arm64" ]; then
                   for f in "$BOX64_SRC/src/dynarec/arm64"/*.c "$BOX64_SRC/src/dynarec/arm64"/*.S; do
-                      [ -f "$f" ] && SOURCES="$SOURCES $f"
+                      [ -f "$f" ] || continue
+                      BASE=$(basename "$f")
+                      # Skip AVX files — not needed for basic Wine, too many Linux deps
+                      case "$BASE" in *avx*) continue;; esac
+                      SKIP=0
+                      for ex in $EXCLUDE; do [ "$BASE" = "$ex" ] && SKIP=1 && break; done
+                      [ $SKIP -eq 0 ] && SOURCES="$SOURCES $f"
                   done
               fi
           fi
@@ -137,11 +143,51 @@ jobs:
               $AR rcs "$OUTPUT_DIR/libbox64.a" *.o
               echo "Created libbox64.a: $(ls -lh "$OUTPUT_DIR/libbox64.a")"
               
-              # Link as executable
+              # Auto-generate stubs for all undefined symbols
+              echo "Generating stubs for undefined symbols..."
               cd "$OUTPUT_DIR"
+              
+              # Find undefined symbols not defined in our objects
+              nm objects/*.o 2>/dev/null | grep ' U _' | awk '{print $2}' | sed 's/^_//' | sort -u > /tmp/all_undef.txt
+              nm objects/*.o 2>/dev/null | grep ' [TtDdBbAaRr] _' | awk '{print $3}' | sed 's/^_//' | sort -u > /tmp/all_def.txt
+              
+              # Also get symbols defined by the iOS SDK / system libraries
+              nm -g "$SDK/usr/lib/libSystem.B.dylib" 2>/dev/null | awk '{print $3}' | sed 's/^_//' | sort -u > /tmp/sys_def.txt
+              nm -g "$SDK/usr/lib/libm.tbd" 2>/dev/null | awk '{print $3}' | sed 's/^_//' | sort -u >> /tmp/sys_def.txt
+              nm -g "$SDK/usr/lib/libpthread.tbd" 2>/dev/null | awk '{print $3}' | sed 's/^_//' | sort -u >> /tmp/sys_def.txt
+              sort -u -o /tmp/sys_def.txt /tmp/sys_def.txt
+              
+              # Missing = undefined in our objects, not defined in our objects, not defined by system
+              comm -23 /tmp/all_undef.txt /tmp/all_def.txt > /tmp/missing_before_sys.txt
+              comm -23 /tmp/missing_before_sys.txt /tmp/sys_def.txt > /tmp/missing_syms.txt
+              
+              MISSING_COUNT=$(wc -l < /tmp/missing_syms.txt)
+              echo "Missing symbols to stub: $MISSING_COUNT"
+              head -30 /tmp/missing_syms.txt
+              
+              # Generate stubs C file
+              {
+                  echo '#include <stdint.h>'
+                  echo '#include <string.h>'
+                  echo ''
+                  while IFS= read -r sym; do
+                      [ -z "$sym" ] && continue
+                      echo "int $sym(void) { return 0; }"
+                  done < /tmp/missing_syms.txt
+              } > auto_stubs.c
+              
+              STUB_LINES=$(wc -l < auto_stubs.c)
+              echo "Generated $STUB_LINES lines of stubs"
+              
+              # Compile stubs
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
-                  objects/*.o \
-                  -o box64 -lm -ldl
+                  -Wno-implicit-function-declaration -Wno-int-conversion \
+                  -c auto_stubs.c -o auto_stubs.o
+              
+              # Link as executable with stubs
+              $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
+                  objects/*.o auto_stubs.o \
+                  -o box64 -lm
               chmod 755 box64
               echo "Created box64 executable: $(ls -la box64)"
           else

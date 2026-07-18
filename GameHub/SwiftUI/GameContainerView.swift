@@ -4,19 +4,26 @@ import MetalKit
 struct GameContainerView: View {
     let container: ContainerManager.Container
     @Environment(\.dismiss) var dismiss
+    @StateObject private var displayRenderer = DisplayRenderer()
+    @StateObject private var socketBridge = UnixSocketBridge.shared
+    @StateObject private var audioBridge = AudioBridge.shared
     @State private var isRunning = false
     @State private var showOverlay = false
     @State private var showKeyboard = false
-    @State private var fps: Double = 0
+    @State private var showController = false
     @State private var showSettings = false
     @State private var gameProcess: Process?
+    @State private var logOutput: [String] = []
+    @State private var showLog = false
+    @State private var elapsedTime: TimeInterval = 0
+    @State private var timer: Timer?
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                MetalRenderView()
+                MetalGameView(renderer: displayRenderer)
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { value in
@@ -32,6 +39,14 @@ struct GameContainerView: View {
                     .onTapGesture(count: 2) {
                         handleDoubleTap()
                     }
+                    .onLongPressGesture(minimumDuration: 0.5) {
+                        handleLongPress()
+                    }
+
+                if showController {
+                    virtualControllerView
+                        .transition(.move(edge: .bottom))
+                }
 
                 if showOverlay {
                     overlayView
@@ -40,12 +55,16 @@ struct GameContainerView: View {
 
                 if showKeyboard {
                     virtualKeyboardView
+                        .transition(.move(edge: .bottom))
                 }
 
                 VStack {
                     topBar
                     Spacer()
-                    bottomBar
+                    if showController {
+                        virtualControllerView
+                            .transition(.move(edge: .bottom))
+                    }
                 }
             }
         }
@@ -64,15 +83,27 @@ struct GameContainerView: View {
                     .clipShape(Circle())
             }
             Spacer()
+
             if isRunning {
-                Text("\(Int(fps)) FPS")
-                    .font(.caption)
-                    .foregroundColor(.green)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.6))
-                    .cornerRadius(8)
+                HStack(spacing: 8) {
+                    Text("\(Int(displayRenderer.fps)) FPS")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                    Text(formatTime(elapsedTime))
+                        .font(.caption)
+                        .foregroundColor(.yellow)
+                    if socketBridge.isConnected {
+                        Image(systemName: "wifi")
+                            .foregroundColor(.green)
+                            .font(.caption2)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.black.opacity(0.6))
+                .cornerRadius(8)
             }
+
             Button(action: { showOverlay.toggle() }) {
                 Image(systemName: "ellipsis.circle")
                     .foregroundColor(.white)
@@ -84,40 +115,25 @@ struct GameContainerView: View {
         .padding()
     }
 
-    private var bottomBar: some View {
-        HStack(spacing: 30) {
-            Button(action: { sendGamepadInput("a") }) {
-                Circle().fill(Color.blue.opacity(0.6)).frame(width: 50, height: 50)
-                    .overlay(Text("A").foregroundColor(.white).bold())
-            }
-            Button(action: { sendGamepadInput("b") }) {
-                Circle().fill(Color.red.opacity(0.6)).frame(width: 50, height: 50)
-                    .overlay(Text("B").foregroundColor(.white).bold())
-            }
-            Button(action: { sendGamepadInput("x") }) {
-                Circle().fill(Color.green.opacity(0.6)).frame(width: 50, height: 50)
-                    .overlay(Text("X").foregroundColor(.white).bold())
-            }
-            Button(action: { sendGamepadInput("y") }) {
-                Circle().fill(Color.yellow.opacity(0.6)).frame(width: 50, height: 50)
-                    .overlay(Text("Y").foregroundColor(.white).bold())
-            }
-        }
-        .padding(.bottom, 20)
-    }
-
     private var overlayView: some View {
         VStack {
             Spacer()
             HStack {
                 VStack(alignment: .leading, spacing: 12) {
-                    overlayBtn("keyboard", "Keyboard") { showKeyboard.toggle() }
-                    overlayBtn("gamecontroller", "Controller") {}
-                    overlayBtn("speaker.wave.2", "Audio") {}
+                    overlayBtn("keyboard", "Keyboard") {
+                        withAnimation { showKeyboard.toggle() }
+                    }
+                    overlayBtn("gamecontroller", "Controller") {
+                        withAnimation { showController.toggle() }
+                    }
+                    overlayBtn("speaker.wave.2", "Audio") {
+                        toggleAudio()
+                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 12) {
                     overlayBtn("gear", "Settings") { showSettings = true }
+                    overlayBtn("doc.text", "Log") { showLog.toggle() }
                     overlayBtn("photo", "Screenshot") {}
                     overlayBtn("record.circle", "Record") {}
                 }
@@ -141,43 +157,159 @@ struct GameContainerView: View {
         }
     }
 
+    private var virtualControllerView: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 40) {
+                dpadView
+                actionButtonsView
+            }
+
+            HStack(spacing: 20) {
+                triggerView("LT", action: { sendGamepadInput("leftTrigger") })
+                triggerView("RT", action: { sendGamepadInput("rightTrigger") })
+            }
+
+            HStack(spacing: 60) {
+                stickView("L") { x, y in
+                    socketBridge.handleGamepadAxis(axis: "leftX", value: Double(x), player: 0)
+                    socketBridge.handleGamepadAxis(axis: "leftY", value: Double(y), player: 0)
+                }
+                stickView("R") { x, y in
+                    socketBridge.handleGamepadAxis(axis: "rightX", value: Double(x), player: 0)
+                    socketBridge.handleGamepadAxis(axis: "rightY", value: Double(y), player: 0)
+                }
+            }
+        }
+        .padding()
+        .background(Color.black.opacity(0.4))
+    }
+
+    private var dpadView: some View {
+        VStack(spacing: 0) {
+            Button(action: { sendGamepadInput("dpad_up") }) {
+                Image(systemName: "triangle.fill").rotationEffect(.degrees(0))
+                    .frame(width: 40, height: 30)
+                    .background(Color.white.opacity(0.3)).cornerRadius(4)
+            }
+            HStack(spacing: 0) {
+                Button(action: { sendGamepadInput("dpad_left") }) {
+                    Image(systemName: "triangle.fill").rotationEffect(.degrees(-90))
+                        .frame(width: 40, height: 30)
+                        .background(Color.white.opacity(0.3)).cornerRadius(4)
+                }
+                Color.clear.frame(width: 40, height: 30)
+                Button(action: { sendGamepadInput("dpad_right") }) {
+                    Image(systemName: "triangle.fill").rotationEffect(.degrees(90))
+                        .frame(width: 40, height: 30)
+                        .background(Color.white.opacity(0.3)).cornerRadius(4)
+                }
+            }
+            Button(action: { sendGamepadInput("dpad_down") }) {
+                Image(systemName: "triangle.fill").rotationEffect(.degrees(180))
+                    .frame(width: 40, height: 30)
+                    .background(Color.white.opacity(0.3)).cornerRadius(4)
+            }
+        }
+    }
+
+    private var actionButtonsView: some View {
+        ZStack {
+            Button(action: { sendGamepadInput("button_y") }) {
+                Text("Y").font(.caption).bold()
+                    .frame(width: 44, height: 44)
+                    .background(Color.yellow.opacity(0.6)).clipShape(Circle())
+            }.offset(y: -50)
+            Button(action: { sendGamepadInput("button_x") }) {
+                Text("X").font(.caption).bold()
+                    .frame(width: 44, height: 44)
+                    .background(Color.blue.opacity(0.6)).clipShape(Circle())
+            }.offset(x: -50)
+            Button(action: { sendGamepadInput("button_b") }) {
+                Text("B").font(.caption).bold()
+                    .frame(width: 44, height: 44)
+                    .background(Color.red.opacity(0.6)).clipShape(Circle())
+            }.offset(x: 50)
+            Button(action: { sendGamepadInput("button_a") }) {
+                Text("A").font(.caption).bold()
+                    .frame(width: 44, height: 44)
+                    .background(Color.green.opacity(0.6)).clipShape(Circle())
+            }.offset(y: 50)
+        }
+    }
+
+    private func triggerView(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label).font(.caption2).bold()
+                .frame(width: 50, height: 30)
+                .background(Color.white.opacity(0.3)).cornerRadius(6)
+        }
+    }
+
+    private func stickView(_ label: String, onChange: @escaping (Float, Float) -> Void) -> some View {
+        VStack {
+            Text(label).font(.caption2).foregroundColor(.white)
+            ZStack {
+                Circle().fill(Color.white.opacity(0.2)).frame(width: 80, height: 80)
+                Circle().fill(Color.white.opacity(0.5)).frame(width: 36, height: 36)
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                let x = Float(value.location.x / 80 * 2 - 1)
+                                let y = Float(value.location.y / 80 * 2 - 1)
+                                onChange(
+                                    max(-1, min(1, x)),
+                                    max(-1, min(1, y))
+                                )
+                            }
+                            .onEnded { _ in
+                                onChange(0, 0)
+                            }
+                    )
+            }
+        }
+    }
+
     private var virtualKeyboardView: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             HStack {
                 ForEach(["Q","W","E","R","T","Y","U","I","O","P"], id: \.self) { key in
-                    Button(action: { sendGamepadInput(key.lowercased()) }) {
-                        Text(key).font(.caption).frame(width: 30, height: 30)
+                    Button(action: { sendKeyPress(key.lowercased()) }) {
+                        Text(key).font(.caption2).frame(width: 30, height: 28)
                             .background(Color.white.opacity(0.3)).cornerRadius(4)
                     }
                 }
             }
             HStack {
                 ForEach(["A","S","D","F","G","H","J","K","L"], id: \.self) { key in
-                    Button(action: { sendGamepadInput(key.lowercased()) }) {
-                        Text(key).font(.caption).frame(width: 30, height: 30)
+                    Button(action: { sendKeyPress(key.lowercased()) }) {
+                        Text(key).font(.caption2).frame(width: 30, height: 28)
                             .background(Color.white.opacity(0.3)).cornerRadius(4)
                     }
                 }
             }
             HStack {
                 ForEach(["Z","X","C","V","B","N","M"], id: \.self) { key in
-                    Button(action: { sendGamepadInput(key.lowercased()) }) {
-                        Text(key).font(.caption).frame(width: 30, height: 30)
+                    Button(action: { sendKeyPress(key.lowercased()) }) {
+                        Text(key).font(.caption2).frame(width: 30, height: 28)
                             .background(Color.white.opacity(0.3)).cornerRadius(4)
                     }
                 }
             }
-            HStack(spacing: 12) {
-                Button(action: { sendGamepadInput("escape") }) {
-                    Text("Esc").font(.caption).frame(width: 40, height: 30)
+            HStack(spacing: 8) {
+                Button(action: { sendKeyPress("escape") }) {
+                    Text("Esc").font(.caption2).frame(width: 36, height: 28)
                         .background(Color.white.opacity(0.3)).cornerRadius(4)
                 }
-                Button(action: { sendGamepadInput("return") }) {
-                    Text("Enter").font(.caption).frame(width: 50, height: 30)
+                Button(action: { sendKeyPress("return") }) {
+                    Text("Enter").font(.caption2).frame(width: 44, height: 28)
                         .background(Color.white.opacity(0.3)).cornerRadius(4)
                 }
-                Button(action: { sendGamepadInput("space") }) {
-                    Text("Space").font(.caption).frame(width: 70, height: 30)
+                Button(action: { sendKeyPress("space") }) {
+                    Text("Space").font(.caption2).frame(width: 60, height: 28)
+                        .background(Color.white.opacity(0.3)).cornerRadius(4)
+                }
+                Button(action: { sendKeyPress("tab") }) {
+                    Text("Tab").font(.caption2).frame(width: 36, height: 28)
                         .background(Color.white.opacity(0.3)).cornerRadius(4)
                 }
             }
@@ -186,58 +318,140 @@ struct GameContainerView: View {
         .background(Color.black.opacity(0.8))
     }
 
-    private func sendGamepadInput(_ key: String) {
-        InputManager.shared.sendKeyPress(key)
+    private func sendGamepadInput(_ button: String) {
+        socketBridge.handleGamepadButton(button: buttonHash(button), pressed: true, player: 0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            self.socketBridge.handleGamepadButton(button: self.buttonHash(button), pressed: false, player: 0)
+        }
+    }
+
+    private func sendKeyPress(_ key: String) {
+        socketBridge.handleKeyPress(key: key, pressed: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+            self.socketBridge.handleKeyPress(key: key, pressed: false)
+        }
+    }
+
+    private func buttonHash(_ name: String) -> Int {
+        switch name {
+        case "button_a": return 0
+        case "button_b": return 1
+        case "button_x": return 2
+        case "button_y": return 3
+        case "dpad_up": return 11
+        case "dpad_down": return 12
+        case "dpad_left": return 13
+        case "dpad_right": return 14
+        case "start": return 6
+        case "back": return 4
+        case "leftShoulder": return 9
+        case "rightShoulder": return 10
+        case "leftTrigger": return 7
+        case "rightTrigger": return 8
+        default: return 0
+        }
     }
 
     private func handleTouchMoved(location: CGPoint, viewSize: CGSize) {
-        let x = location.x / viewSize.width
-        let y = location.y / viewSize.height
-        InputManager.shared.sendMouseMove(x: x, y: y)
+        let x = Double(location.x / viewSize.width * 1920)
+        let y = Double(location.y / viewSize.height * 1080)
+        socketBridge.sendMouseMove(x: x, y: y)
     }
 
     private func handleTouchEnded() {}
 
     private func handleTap() {
-        InputManager.shared.sendMouseClick(button: 1)
+        socketBridge.handleMouseButton(button: 1, pressed: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            self.socketBridge.handleMouseButton(button: 1, pressed: false)
+        }
     }
 
     private func handleDoubleTap() {
-        InputManager.shared.sendMouseDoubleClick(button: 1)
+        socketBridge.handleMouseButton(button: 1, pressed: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            self.socketBridge.handleMouseButton(button: 1, pressed: false)
+        }
+    }
+
+    private func handleLongPress() {
+        socketBridge.handleMouseButton(button: 2, pressed: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.socketBridge.handleMouseButton(button: 2, pressed: false)
+        }
+    }
+
+    private func toggleAudio() {
+        if audioBridge.isPlaying {
+            audioBridge.stopAudio()
+        } else {
+            audioBridge.startAudioServer()
+        }
     }
 
     private func startGame() {
         isRunning = true
-        startFPSCounter()
+        displayRenderer.startRendering()
+        socketBridge.startServer()
+        audioBridge.startAudioServer()
+        startTimeCounter()
         launchGame()
     }
 
     private func stopGame() {
         isRunning = false
+        displayRenderer.stopRendering()
+        socketBridge.stopServer()
+        audioBridge.stopAudio()
+        timer?.invalidate()
         gameProcess?.terminate()
     }
 
     private func launchGame() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let containerPath = docs.appendingPathComponent("Containers/\(container.id.uuidString)").path
+
+        WinePrefixManager.shared.setupDXVKForContainer(containerPath)
+        WinePrefixManager.shared.setupVKD3DForContainer(containerPath)
+
         let result = WineBridge.shared.launchGame(
             executablePath: container.executablePath,
-            containerPath: container.winePrefix
+            containerPath: containerPath
         )
+
         gameProcess = result
+        gameProcess?.terminationHandler = { proc in
+            DispatchQueue.main.async {
+                self.isRunning = false
+                self.logOutput.append("Process exited with code: \(proc.terminationStatus)")
+            }
+        }
     }
 
-    private func startFPSCounter() {
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
-            guard isRunning else { timer.invalidate(); return }
-            fps = Double.random(in: 28...62)
+    private func startTimeCounter() {
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            elapsedTime += 1
         }
+    }
+
+    private func formatTime(_ time: TimeInterval) -> String {
+        let hours = Int(time) / 3600
+        let minutes = (Int(time) % 3600) / 60
+        let seconds = Int(time) % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }
 
-struct MetalRenderView: UIViewRepresentable {
+struct MetalGameView: UIViewRepresentable {
+    let renderer: DisplayRenderer
+
     func makeUIView(context: Context) -> MTKView {
         let view = MTKView(frame: .zero, device: MTLCreateSystemDefaultDevice())
         view.preferredFramesPerSecond = 60
-        view.enableSetNeedsDisplay = true
+        view.enableSetNeedsDisplay = false
         view.isPaused = false
         view.colorPixelFormat = .bgra8Unorm
         view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
@@ -247,17 +461,53 @@ struct MetalRenderView: UIViewRepresentable {
 
     func updateUIView(_ uiView: MTKView, context: Context) {}
 
-    func makeCoordinator() -> MetalCoordinator {
-        MetalCoordinator()
+    func makeCoordinator() -> MetalGameCoordinator {
+        MetalGameCoordinator()
     }
 }
 
-class MetalCoordinator: NSObject, MTKViewDelegate {
+class MetalGameCoordinator: NSObject, MTKViewDelegate {
     var commandQueue: MTLCommandQueue?
+    var pipelineState: MTLRenderPipelineState?
+    var texture: MTLTexture?
+    var vertexBuffer: MTLBuffer?
+    var texCoordBuffer: MTLBuffer?
+
+    let vertexData: [Float] = [
+        -1.0, -1.0, 0.0, 1.0,
+         1.0, -1.0, 0.0, 1.0,
+        -1.0,  1.0, 0.0, 1.0,
+         1.0,  1.0, 0.0, 1.0,
+    ]
+
+    let texCoordData: [Float] = [
+        0.0, 1.0,
+        1.0, 1.0,
+        0.0, 0.0,
+        1.0, 0.0,
+    ]
 
     override init() {
         super.init()
-        commandQueue = MTLCreateSystemDefaultDevice()?.makeCommandQueue()
+        guard let device = MTLCreateSystemDefaultDevice() else { return }
+
+        commandQueue = device.makeCommandQueue()
+
+        vertexBuffer = device.makeBuffer(
+            bytes: vertexData, length: vertexData.count * MemoryLayout<Float>.size, options: []
+        )
+        texCoordBuffer = device.makeBuffer(
+            bytes: texCoordData, length: texCoordData.count * MemoryLayout<Float>.size, options: []
+        )
+
+        guard let library = device.makeDefaultLibrary() else { return }
+
+        let descriptor = MTLRenderPipelineDescriptor()
+        descriptor.vertexFunction = library.makeFunction(name: "vertexShader")
+        descriptor.fragmentFunction = library.makeFunction(name: "fragmentShader")
+        descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+
+        pipelineState = try? device.makeRenderPipelineState(descriptor: descriptor)
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
@@ -266,8 +516,22 @@ class MetalCoordinator: NSObject, MTKViewDelegate {
         guard let drawable = view.currentDrawable,
               let descriptor = view.currentRenderPassDescriptor,
               let commandBuffer = commandQueue?.makeCommandBuffer(),
-              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else { return }
+              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor),
+              let pipelineState = pipelineState,
+              let vertexBuffer = vertexBuffer,
+              let texCoordBuffer = texCoordBuffer else { return }
+
+        encoder.setRenderPipelineState(pipelineState)
+        encoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
+        encoder.setVertexBuffer(texCoordBuffer, offset: 0, index: 1)
+
+        if let texture = texture {
+            encoder.setFragmentTexture(texture, index: 0)
+        }
+
+        encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         encoder.endEncoding()
+
         commandBuffer.present(drawable)
         commandBuffer.commit()
     }

@@ -5,6 +5,7 @@ struct GameHubApp: App {
     @StateObject private var containerManager = ContainerManager()
     @StateObject private var jitManager = JITManager()
     @StateObject private var settingsManager = SettingsManager()
+    @StateObject private var downloadManager = RuntimeDownloadManager.shared
 
     var body: some Scene {
         WindowGroup {
@@ -12,6 +13,7 @@ struct GameHubApp: App {
                 .environmentObject(containerManager)
                 .environmentObject(jitManager)
                 .environmentObject(settingsManager)
+                .environmentObject(downloadManager)
                 .onAppear {
                     setupApp()
                 }
@@ -25,18 +27,21 @@ struct GameHubApp: App {
         let box64Path = docs.appendingPathComponent("Box64/box64").path
         if fm.fileExists(atPath: box64Path) {
             Box64Bridge.shared.initialize()
-        } else {
-            print("[App] Box64 binary not found at \(box64Path)")
         }
 
         let winePath = docs.appendingPathComponent("Wine/wine64").path
         if fm.fileExists(atPath: winePath) {
             WineBridge.shared.initialize()
-        } else {
-            print("[App] Wine binary not found at \(winePath)")
         }
 
         GraphicsBridge.shared.initialize()
-        jitManager.enableJITlessMode()
+
+        if RuntimeDownloadManager.shared.isAllRequiredInstalled() {
+            WinePrefixManager.shared.initializePrefix()
+        }
+
+        if jitManager.isJITEnabled {
+            jitManager.enableJITlessMode()
+        }
     }
 }

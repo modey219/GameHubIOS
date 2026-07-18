@@ -122,9 +122,9 @@ struct ImportGameView: View {
             webServerRunning = false
         } else {
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].path
-            let server = SimpleHTTPServer(port: webServerPort, directory: docs) { [weak self] fileName in
-                DispatchQueue.main.async {
-                    self?.uploadedFiles.append(fileName)
+            let server = SimpleHTTPServer(port: webServerPort, directory: docs) { fileName in
+                DispatchQueue.main.async { [self] in
+                    self.uploadedFiles.append(fileName)
                 }
             }
             if server.start() {
@@ -157,11 +157,11 @@ struct ImportGameView: View {
 }
 
 class SimpleHTTPServer {
-    private var listener: CFSocketRef?
     private var port: UInt16
     private var directory: String
     private var onUpload: ((String) -> Void)?
     private var serverQueue = DispatchQueue(label: "com.gamehub.httpserver", qos: .userInitiated)
+    private var serverFD: Int32 = -1
 
     init(port: UInt16, directory: String, onUpload: ((String) -> Void)? = nil) {
         self.port = port
@@ -170,8 +170,9 @@ class SimpleHTTPServer {
     }
 
     func start() -> Bool {
-        let serverFD = socket(AF_INET, SOCK_STREAM, 0)
-        guard serverFD >= 0 else { return false }
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        self.serverFD = fd
 
         var reuse: Int32 = 1
         setsockopt(serverFD, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
@@ -199,8 +200,8 @@ class SimpleHTTPServer {
     }
 
     func stop() {
-        if let fd = listener { close(CFSocketGetNative(fd)) }
-        listener = nil
+        if serverFD >= 0 { close(serverFD) }
+        serverFD = -1
     }
 
     private func acceptLoop(serverFD: Int32) {
@@ -341,10 +342,9 @@ class SimpleHTTPServer {
     }
 
     private func extractFileData(from data: Data) -> Data {
-        guard let str = String(data: data, encoding: .utf8) else { return data }
-        if let range = str.range(of: "\r\n\r\n") {
-            let offset = data.distance(from: data.startIndex, to: range.upperBound)
-            return data[(data.startIndex + offset)...]
+        let marker = "\r\n\r\n".data(using: .utf8) ?? Data()
+        if let range = data.range(of: marker) {
+            return data[range.upperBound...]
         }
         return data
     }

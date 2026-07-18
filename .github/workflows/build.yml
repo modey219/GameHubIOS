@@ -160,23 +160,23 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             ENABLE_BITCODE=NO \
             DEVELOPMENT_TEAM="" \
-            2>build_err.log | tee build.log
-          XCODEBUILD_EXIT=${PIPESTATUS[0]}
+            > build.log 2>&1
+          XCODE_EXIT=$?
           set -e
-          echo "xcodebuild exit code: $XCODEBUILD_EXIT"
+          echo "xcodebuild exit code: $XCODE_EXIT"
           echo ""
-          echo "=== STDOUT last 100 lines ==="
-          tail -100 build.log
+          echo "=== BUILD RESULT ==="
+          grep -i "BUILD SUCCEEDED\|BUILD FAILED" build.log | tail -5 || true
           echo ""
-          echo "=== STDERR last 100 lines ==="
-          tail -100 build_err.log
+          echo "=== ERROR LINES ==="
+          grep -i "error:" build.log | head -50 || true
           echo ""
-          echo "=== Error lines from STDOUT ==="
-          grep -i "error:" build.log | head -30 || true
+          echo "=== FATAL LINES ==="
+          grep -i "fatal\|note:" build.log | head -20 || true
           echo ""
-          echo "=== Error lines from STDERR ==="
-          grep -i "error:" build_err.log | head -30 || true
-          exit $XCODEBUILD_EXIT
+          echo "=== LAST 200 LINES ==="
+          tail -200 build.log
+          exit $XCODE_EXIT
 
       - name: Show build errors
         if: failure()

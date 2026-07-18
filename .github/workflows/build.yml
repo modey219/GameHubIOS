@@ -324,9 +324,9 @@ jobs:
               for y in range(h):
                   raw += b'\x00'
                   for x in range(w):
-                      cr = min(255, r + (y * 80 // h))
-                      cg = min(255, g - (y * 40 // h))
-                      cb = min(255, b - (y * 60 // h))
+              cr = max(0, min(255, r + (y * 80 // h)))
+              cg = max(0, min(255, g - (y * 40 // h)))
+              cb = max(0, min(255, b - (y * 60 // h)))
                       raw += struct.pack('BBBB', cr, cg, cb, 255)
               def chunk(ctype, data):
                   c = ctype + data

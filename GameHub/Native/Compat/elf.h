@@ -5,6 +5,20 @@
 
 #define EI_NIDENT 16
 
+#define EI_MAG0     0
+#define EI_MAG1     1
+#define EI_MAG2     2
+#define EI_MAG3     3
+#define EI_CLASS    4
+#define EI_DATA     5
+#define EI_VERSION  6
+#define EI_OSABI    7
+
+#define ELFCLASS32  1
+#define ELFCLASS64  2
+#define ELFDATA2LSB 1
+#define ELFDATA2MSB 2
+
 typedef uint16_t Elf32_Half;
 typedef uint32_t Elf32_Word;
 typedef int32_t Elf32_Sword;
@@ -130,7 +144,8 @@ typedef struct {
     Elf64_Word st_name;
     unsigned char st_info;
     unsigned char st_other;
-    Elf64_Half st_value;
+    Elf64_Half st_shndx;
+    Elf64_Addr st_value;
     Elf64_Xword st_size;
 } Elf64_Sym;
 
@@ -323,7 +338,8 @@ typedef struct {
 #define ELFMAG          "\177ELF"
 #define SELFMAG         4
 
-#define R_386_COPY      5
+#define R_386_NONE       0
+#define R_386_COPY       5
 #define R_386_GLOB_DAT  6
 #define R_386_JMP_SLOT  7
 #define R_386_RELATIVE  8

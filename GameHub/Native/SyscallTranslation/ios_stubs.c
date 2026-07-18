@@ -32,5 +32,3 @@ void *__libc_dlsym(void *handle, const char *name) { return dlsym(handle, name);
 int __libc_dlclose(void *handle) { return dlclose(handle); }
 
 int of_convert(int x) { return x; }
-
-void *my_context = NULL;

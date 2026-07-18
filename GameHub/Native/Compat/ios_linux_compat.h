@@ -128,6 +128,12 @@ static inline int dlinfo(void *handle, int request, void *info) {
 #ifndef __NR_close_range
 #define __NR_close_range 999
 #endif
+#ifndef __NR_brk
+#define __NR_brk 45
+#endif
+#ifndef __NR_clone
+#define __NR_clone 56
+#endif
 
 /* ======== __jmp_buf_tag ======== */
 /* On macOS/iOS, setjmp.h defines jmp_buf but NOT struct __jmp_buf_tag.

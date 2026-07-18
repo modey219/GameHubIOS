@@ -44,19 +44,17 @@ targets:
           - "$(SRCROOT)/GameHub/Native/Box64Lib"
           - "$(SRCROOT)/GameHub/Native/Box64Lib/objects"
         OTHER_LDFLAGS:
-          - "-lpthread"
           - "-lresolv"
-          - "-ldl"
-          - "-lrt"
-          - "-lBox64"
           - "-lbox64"
-          - "-L$(SRCROOT)/GameHub/Native/Box64Lib"
+          - "-ObjC"
+          - "-all_load"
         OTHER_CFLAGS:
           - "-I$(SRCROOT)/GameHub/Native/Include"
-          - "-I$(SRCROOT)/GameHub/Native/Include"
+          - "-I$(SRCROOT)/GameHub/Native/Compat"
           - "-Wno-unused-variable"
           - "-Wno-unused-function"
           - "-Wno-incompatible-pointer-types"
+          - "-Wno-deprecated-declarations"
         SWIFT_OBJC_BRIDGING_HEADER: "GameHub/GameHub-Bridging-Header.h"
         GCC_PREPROCESSOR_DEFINITIONS:
           - "__IOS__=1"

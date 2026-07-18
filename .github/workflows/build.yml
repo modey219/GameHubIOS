@@ -67,10 +67,10 @@ jobs:
           CFLAGS="$CFLAGS -Wno-missing-prototypes -Wno-strict-prototypes"
           CFLAGS="$CFLAGS -Wno-macro-redefined -Wno-error"
           CFLAGS="$CFLAGS -include $COMPAT_DIR/ios_linux_compat.h"
-          CFLAGS="$CFLAGS -DDYNAREC_STEP=1"
+          CFLAGS="$CFLAGS -DSTEP=1 -DSTACKALIGN=16"
           
           # Exclude files that cannot compile on Darwin
-          EXCLUDE="custommmap.c emit_signal_wine.c os_wine.c hostext_wine.c random_wine.c emit_signals_linux.c freq_linux.c hostext_linux.c os_linux.c"
+          EXCLUDE="custommmap.c emit_signal_wine.c os_wine.c hostext_wine.c random_wine.c emit_signals_linux.c freq_linux.c hostext_linux.c os_linux.c obstack.c threads32.c dynacache.c signals.c signal32.c sigtools.c syscall_user_dispatch.c dynarec_arm64_arch.c elfhacks.c my_x11_xevent.c myalign64_32.c myalignxcb32.c sdl1rwops.c sdl2rwops.c"
           
           # Find core .c files under src/ (excluding wrapped/ and wrapped32/ — Linux-only libs)
           SOURCES=""
@@ -105,8 +105,8 @@ jobs:
                       BASE=$(basename "$f")
                       # Skip AVX files
                       case "$BASE" in *avx*) continue;; esac
-                      # Skip problematic assembly (LSE instructions, undefined locals)
-                      case "$BASE" in arm64_lock.S|arm64_next.S) continue;; esac
+                      # Skip problematic assembly (LSE instructions, undefined locals, iOS incompat)
+                      case "$BASE" in arm64_lock.S|arm64_next.S|arm64_epilog.S|arm64_prolog.S) continue;; esac
                       SKIP=0
                       for ex in $EXCLUDE; do [ "$BASE" = "$ex" ] && SKIP=1 && break; done
                       [ $SKIP -eq 0 ] && SOURCES="$SOURCES $f"
@@ -185,6 +185,7 @@ jobs:
               
               # Link as executable with stubs
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
+                  -Wl,-allow-multiple-definition \
                   objects/*.o auto_stubs.o \
                   -o box64 -lm
               chmod 755 box64

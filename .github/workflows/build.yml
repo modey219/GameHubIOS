@@ -10,6 +10,8 @@ jobs:
     name: Build IPA
     runs-on: macos-14
     timeout-minutes: 60
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout

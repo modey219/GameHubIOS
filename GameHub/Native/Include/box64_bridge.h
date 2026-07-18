@@ -1,10 +1,11 @@
 #ifndef BOX64_BRIDGE_H
 #define BOX64_BRIDGE_H
 
-#include "syscall_translation.h"
 #include <sys/types.h>
 
 typedef void (*box64_log_callback)(const char *msg);
+
+typedef struct emulator_context emulator_context_t;
 
 typedef struct {
     emulator_context_t *emulator;

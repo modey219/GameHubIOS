@@ -30,7 +30,7 @@
     <key>UILaunchScreen</key>
     <dict>
         <key>UIColorName</key>
-        <string>SystemBackgroundColor</string>
+        <string>AccentColor</string>
     </dict>
     <key>UISupportedInterfaceOrientations~ipad</key>
     <array>

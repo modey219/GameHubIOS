@@ -1,4 +1,5 @@
 #include "../Include/box64_bridge.h"
+#include "../Include/syscall_translation.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

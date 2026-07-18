@@ -54,7 +54,7 @@ typedef struct {
     struct linux_rlimit limits[16];
 } linux_process_t;
 
-typedef struct {
+typedef struct emulator_context {
     linux_process_t process;
     int initialized;
     int running;

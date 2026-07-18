@@ -58,13 +58,11 @@ class Process {
         if let outPipe = standardOutput as? iOSPipe {
             posix_spawn_file_actions_adddup2(&fileActions, outPipe.writeHandle.fileDescriptor, STDOUT_FILENO)
             posix_spawn_file_actions_addclose(&fileActions, outPipe.writeHandle.fileDescriptor)
-            outReadFd = outPipe.readHandle.fileDescriptor
         }
 
         if let errPipe = standardError as? iOSPipe {
             posix_spawn_file_actions_adddup2(&fileActions, errPipe.writeHandle.fileDescriptor, STDERR_FILENO)
             posix_spawn_file_actions_addclose(&fileActions, errPipe.writeHandle.fileDescriptor)
-            errReadFd = errPipe.readHandle.fileDescriptor
         }
 
         let result = posix_spawn(&pid, path, &fileActions, nil, cArgs, cEnv)

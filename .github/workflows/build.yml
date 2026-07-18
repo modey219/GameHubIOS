@@ -20,22 +20,14 @@ jobs:
         with:
           xcode-version: '15.2'
 
-      - name: Fix all line endings
-        run: |
-          find . -name "*.pbxproj" -exec perl -pi -e 's/\r\n/\n/g' {} +
-          find . -name "*.xcscheme" -exec perl -pi -e 's/\r\n/\n/g' {} +
-          find . -name "*.xcworkspacedata" -exec perl -pi -e 's/\r\n/\n/g' {} +
-          find . -name "*.plist" -exec perl -pi -e 's/\r\n/\n/g' {} +
-          echo "Line endings fixed"
+      - name: Install xcodegen
+        run: brew install xcodegen
 
-      - name: Validate project file
-        run: |
-          echo "=== First bytes of pbxproj (hex) ==="
-          xxd GameHub.xcodeproj/project.pbxproj | head -5
-          echo "=== plutil check ==="
-          plutil -lint GameHub.xcodeproj/project.pbxproj || true
-          echo "=== Files in xcodeproj ==="
-          find GameHub.xcodeproj -type f
+      - name: Remove old xcodeproj
+        run: rm -rf GameHub.xcodeproj
+
+      - name: Generate Xcode project
+        run: xcodegen generate
 
       - name: Build iOS App
         run: |
@@ -46,7 +38,7 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
-            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             ENABLE_BITCODE=NO \

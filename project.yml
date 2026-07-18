@@ -1,0 +1,37 @@
+name: GameHub
+options:
+  bundleIdPrefix: com.gamehub
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    INFOPLIST_FILE: GameHub/Resources/Info.plist
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "NO"
+    ENABLE_BITCODE: "NO"
+
+targets:
+  GameHub:
+    type: application
+    platform: iOS
+    sources:
+      - path: GameHub
+        excludes:
+          - "**/*.xcassets"
+    resources:
+      - path: GameHub/Resources/Assets.xcassets
+      - path: GameHub/Resources/Info.plist
+        optional: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gamehub.ios
+        PRODUCT_NAME: GameHub
+        INFOPLIST_FILE: GameHub/Resources/Info.plist

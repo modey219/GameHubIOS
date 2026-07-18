@@ -1,7 +1,15 @@
 #ifndef _COMPAT_SYS_EPOLL_H
 #define _COMPAT_SYS_EPOLL_H
 #include <stdint.h>
-struct epoll_event { uint32_t events; int fd; };
+struct epoll_event {
+    uint32_t events;
+    union {
+        int fd;
+        uint32_t u32;
+        uint64_t u64;
+        void *ptr;
+    } data;
+};
 #define EPOLLIN 0x001
 #define EPOLLOUT 0x004
 #define EPOLLERR 0x008

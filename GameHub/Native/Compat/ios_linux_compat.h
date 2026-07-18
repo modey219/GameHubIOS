@@ -97,17 +97,58 @@ struct mmsghdr {
 #endif
 
 /* ======== epoll compat (minimal) ======== */
-struct epoll_event {
-    uint32_t events;
-    union {
-        int fd;
-        uint32_t u32;
-        uint64_t u64;
-        void *ptr;
-    } data;
-};
+/* epoll_event is defined in sys/epoll.h compat — do NOT redefine here */
 
-/* ======== Linux-specific mmap mmap flags ======== */
-/* These are stubs — Box64 uses them but they don't exist on iOS */
+/* ======== RTLD_NEXT ======== */
+#ifndef RTLD_NEXT
+#define RTLD_NEXT ((void *)-1)
+#endif
+
+/* ======== cpu_set_t ======== */
+typedef struct { unsigned long __bits[1024 / (8 * sizeof(unsigned long))]; } cpu_set_t;
+#define CPU_SETSIZE 1024
+static inline void CPU_ZERO(cpu_set_t *s) { memset(s, 0, sizeof(*s)); }
+static inline void CPU_SET(int cpu, cpu_set_t *s) { s->__bits[cpu / (8 * sizeof(unsigned long))] |= 1UL << (cpu % (8 * sizeof(unsigned long))); }
+static inline int CPU_ISSET(int cpu, cpu_set_t *s) { return (s->__bits[cpu / (8 * sizeof(unsigned long))] >> (cpu % (8 * sizeof(unsigned long)))) & 1; }
+
+/* ======== More Linux syscall numbers ======== */
+#ifndef __NR_tgkill
+#define __NR_tgkill 131
+#endif
+#ifndef __NR_futex
+#define __NR_futex 202
+#endif
+#ifndef __NR_set_robust_list
+#define __NR_set_robust_list 999
+#endif
+#ifndef __NR_get_robust_list
+#define __NR_get_robust_list 999
+#endif
+#ifndef __NR_openat
+#define __NR_openat 56
+#endif
+#ifndef __NR_close_range
+#define __NR_close_range 999
+#endif
+
+/* ======== __jmp_buf_tag ======== */
+/* On macOS/iOS, setjmp.h defines jmp_buf but NOT struct __jmp_buf_tag.
+   Box64's dynarec expects: struct __jmp_buf_tag { __jmp_buf __jmpbuf; int __mask_was_saved; __sigset_t __saved_mask; } jmp_buf[1];
+   We provide a compatible struct and redefine jmp_buf as an array of it. */
+#ifndef __JMP_BUF_TAG_DEFINED
+#define __JMP_BUF_TAG_DEFINED
+struct __jmp_buf_tag {
+    jmp_buf __jmpbuf;  /* actual jump buffer */
+    int __mask_was_saved;
+    __sigset_t __saved_mask;
+};
+/* On macOS/iOS, jmp_buf is already defined by setjmp.h as an opaque buffer.
+   Box64 code declares `struct __jmp_buf_tag varname[1]` expecting it to BE jmp_buf.
+   We don't redefine jmp_buf — the struct is enough for sizeof/declarations. */
+#endif
+
+/* ======== sched compat ======== */
+static inline int sched_getcpu(void) { return 0; }
+static inline int sched_yield(void) { return 0; }
 
 #endif

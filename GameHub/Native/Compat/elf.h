@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define EI_NIDENT 16
+
 typedef uint16_t Elf32_Half;
 typedef uint32_t Elf32_Word;
 typedef int32_t Elf32_Sword;
@@ -82,8 +84,6 @@ typedef uint64_t Elf64_Xword;
 typedef int64_t Elf64_Sxword;
 typedef uint64_t Elf64_Addr;
 typedef uint64_t Elf64_Off;
-
-#define EI_NIDENT 16
 
 typedef struct {
     unsigned char e_ident[EI_NIDENT];

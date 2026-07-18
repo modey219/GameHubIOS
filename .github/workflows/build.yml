@@ -15,23 +15,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fix line endings
-        run: |
-          find . -name "*.pbxproj" -exec sed -i '' 's/\r$//' {} +
-          find . -name "*.xcscheme" -exec sed -i '' 's/\r$//' {} +
-
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '15.2'
 
-      - name: Show Build Environment
+      - name: Fix all line endings
         run: |
-          xcodebuild -version
-          swift --version
-          echo "SDK: $(xcrun --sdk iphoneos --show-sdk-path)"
+          find . -name "*.pbxproj" -exec perl -pi -e 's/\r\n/\n/g' {} +
+          find . -name "*.xcscheme" -exec perl -pi -e 's/\r\n/\n/g' {} +
+          find . -name "*.xcworkspacedata" -exec perl -pi -e 's/\r\n/\n/g' {} +
+          find . -name "*.plist" -exec perl -pi -e 's/\r\n/\n/g' {} +
+          echo "Line endings fixed"
 
-      # ===== بناء تطبيق iOS =====
+      - name: Validate project file
+        run: |
+          echo "=== First bytes of pbxproj (hex) ==="
+          xxd GameHub.xcodeproj/project.pbxproj | head -5
+          echo "=== plutil check ==="
+          plutil -lint GameHub.xcodeproj/project.pbxproj || true
+          echo "=== Files in xcodeproj ==="
+          find GameHub.xcodeproj -type f
+
       - name: Build iOS App
         run: |
           xcodebuild \
@@ -48,7 +53,6 @@ jobs:
             DEVELOPMENT_TEAM="" \
             2>&1 | tee build.log
 
-      # ===== إنشاء IPA يدوياً =====
       - name: Create IPA
         run: |
           echo "Looking for built app..."
@@ -60,7 +64,7 @@ jobs:
           if [ -z "$APP_PATH" ]; then
             echo "ERROR: GameHub.app not found!"
             echo "=== Build log tail ==="
-            tail -50 build.log || true
+            tail -100 build.log || true
             exit 1
           fi
           
@@ -71,7 +75,6 @@ jobs:
           zip -r GameHub.ipa Payload/
           echo "IPA created: build/GameHub.ipa"
 
-      # ===== رفع IPA =====
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
@@ -85,7 +88,7 @@ jobs:
           echo "========================================"
           if [ -f build/GameHub.ipa ]; then
             echo "  BUILD SUCCESS!"
-            echo "  IPA: Artifacts → GameHub-iOS"
+            echo "  IPA: Artifacts -> GameHub-iOS"
           else
             echo "  BUILD FAILED"
             echo "  Check the logs above for errors"

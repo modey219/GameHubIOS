@@ -51,7 +51,7 @@ jobs:
           
           COMPAT_DIR="$PWD/GameHub/Native/Compat"
           
-          # Build include flags: every subdirectory under src/ so #include "foo.h" resolves
+          # Build include flags: our compat dir FIRST to override system headers
           INC_FLAGS="-I$COMPAT_DIR -I$BOX64_SRC/src/include -I$BOX64_SRC/src"
           while IFS= read -r d; do
               INC_FLAGS="$INC_FLAGS -I$d"
@@ -59,21 +59,58 @@ jobs:
           
           CFLAGS="-arch arm64 -mios-version-min=16.0 -isysroot $SDK -O2 -fembed-bitcode-marker"
           CFLAGS="$CFLAGS -DARM64 -DDYNAREC -DNOGIT -D__IOS__=1 -DTARGET_IPHONE=1"
-          CFLAGS="$CFLAGS -DBAD_SIGNAL=1 -DBOX64_ENV=1"
+          CFLAGS="$CFLAGS -DBAD_SIGNAL=1 -DBOX64_ENV=1 -D_XOPEN_SOURCE=600"
           CFLAGS="$CFLAGS $INC_FLAGS"
           CFLAGS="$CFLAGS -Wno-unused-variable -Wno-unused-function -Wno-incompatible-pointer-types"
           CFLAGS="$CFLAGS -Wno-int-conversion -Wno-pointer-sign -Wno-implicit-function-declaration"
           CFLAGS="$CFLAGS -Wno-deprecated-declarations -Wno-missing-declarations"
           CFLAGS="$CFLAGS -Wno-missing-prototypes -Wno-strict-prototypes"
+          CFLAGS="$CFLAGS -Wno-macro-redefined -Wno-error"
           
-          # Find ALL .c files under src/
-          SOURCES=$(find "$BOX64_SRC/src" -name "*.c" -type f)
-          SRC_COUNT=$(echo "$SOURCES" | wc -l | tr -d ' ')
+          # Exclude files that cannot compile on Darwin
+          EXCLUDE="custommmap.c"
+          
+          # Find core .c files under src/ (excluding wrapped/ and wrapped32/ — Linux-only libs)
+          SOURCES=""
+          for dir in src src/emu src/custommem src/os src/tools src/libtools src/elfs src/librarian; do
+              if [ -d "$BOX64_SRC/$dir" ]; then
+                  for f in "$BOX64_SRC/$dir"/*.c; do
+                      [ -f "$f" ] || continue
+                      BASE=$(basename "$f")
+                      SKIP=0
+                      for ex in $EXCLUDE; do [ "$BASE" = "$ex" ] && SKIP=1 && break; done
+                      [ $SKIP -eq 0 ] && SOURCES="$SOURCES $f"
+                  done
+              fi
+          done
+          
+          # Include wrapped/ files (needed for Wine libc/libm/libpthread calls)
+          if [ -d "$BOX64_SRC/src/wrapped" ]; then
+              for f in "$BOX64_SRC/src/wrapped"/*.c; do
+                  [ -f "$f" ] && SOURCES="$SOURCES $f"
+              done
+          fi
+          
+          # Include dynarec
+          if [ -d "$BOX64_SRC/src/dynarec" ]; then
+              for f in "$BOX64_SRC/src/dynarec"/*.c; do
+                  [ -f "$f" ] && SOURCES="$SOURCES $f"
+              done
+              if [ -d "$BOX64_SRC/src/dynarec/arm64" ]; then
+                  for f in "$BOX64_SRC/src/dynarec/arm64"/*.c "$BOX64_SRC/src/dynarec/arm64"/*.S; do
+                      [ -f "$f" ] && SOURCES="$SOURCES $f"
+                  done
+              fi
+          fi
+          
+          # Add our iOS stubs
+          SOURCES="$SOURCES $PWD/GameHub/Native/SyscallTranslation/ios_stubs.c"
+          
+          SRC_COUNT=$(echo $SOURCES | wc -w)
           echo "Found $SRC_COUNT source files"
           
           COMPILED=0
           FAILED=0
-          FAIL_LIST=""
           
           for src in $SOURCES; do
               OBJ="$OUTPUT_DIR/objects/$(basename "$src" .c).o"
@@ -82,8 +119,10 @@ jobs:
                   COMPILED=$((COMPILED + 1))
               else
                   FAILED=$((FAILED + 1))
-                  FAIL_LIST="$FAIL_LIST $(basename "$src")"
-                  LAST_ERR=$(cat /tmp/box64_err_$$ 2>/dev/null | head -3)
+                  LAST_ERR=$(cat /tmp/box64_err_$$ 2>/dev/null | grep -i "error:" | head -1)
+                  if [ -z "$LAST_ERR" ]; then
+                      LAST_ERR=$(cat /tmp/box64_err_$$ 2>/dev/null | tail -1)
+                  fi
                   echo "FAIL: $(basename "$src"): $LAST_ERR"
               fi
               rm -f /tmp/box64_err_$$
@@ -96,13 +135,13 @@ jobs:
               # Create static library
               cd "$OUTPUT_DIR/objects"
               $AR rcs "$OUTPUT_DIR/libbox64.a" *.o
-              echo "Created libbox64.a: $(ls -la "$OUTPUT_DIR/libbox64.a")"
+              echo "Created libbox64.a: $(ls -lh "$OUTPUT_DIR/libbox64.a")"
               
-              # Link as executable — Apple ld does NOT support -start-group/-end-group
+              # Link as executable
               cd "$OUTPUT_DIR"
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
                   objects/*.o \
-                  -o box64 -lm
+                  -o box64 -lm -ldl
               chmod 755 box64
               echo "Created box64 executable: $(ls -la box64)"
           else

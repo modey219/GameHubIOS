@@ -18,12 +18,12 @@
     Metal (رسومات iPhone)
 ```
 
-**4. حمّل الـ IPA:**
+**1. حمّل الـ IPA:**
 - من تبويب **Actions** → آخر build
 - في الأسفل ستجد **Artifacts** → **GameHub-iOS**
 - حمّل الملف
 
-**5. ثبّت على iPhone:**
+**2. ثبّت على iPhone:**
 
 | الطريقة | الموقع | السهولة |
 |---------|--------|---------|
@@ -32,7 +32,7 @@
 | **Scarlet** | [scarletinstall.com](https://scarletinstall.com) | سهل |
 | **Xcode** (oppfinder USB) | مثبت على Mac | متوسط |
 
-**6. فعّل JIT:**
+**3. فعّل JIT:**
 - ثبّت **StikDebug** من App Store
 - افتح StikDebug → اضغط "Enable JIT"
 - اختر GameHub

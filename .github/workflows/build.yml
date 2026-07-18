@@ -256,12 +256,14 @@ jobs:
           MVK_URL="https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.1/MoltenVK-ios.tar"
           echo "Downloading: $MVK_URL"
           curl -L "$MVK_URL" -o MoltenVK-ios.tar
+          echo "=== MoltenVK tar structure ==="
+          tar tf MoltenVK-ios.tar 2>/dev/null | head -30
           mkdir -p GameHub/Native/BundledBinaries/MoltenVK
           tar xf MoltenVK-ios.tar -C GameHub/Native/BundledBinaries/MoltenVK --strip-components=1 2>/dev/null || \
           tar xf MoltenVK-ios.tar -C GameHub/Native/BundledBinaries/MoltenVK --strip-components=0
           rm -f MoltenVK-ios.tar
           echo "MoltenVK contents:"
-          find GameHub/Native/BundledBinaries/MoltenVK -type f | head -20
+          find GameHub/Native/BundledBinaries/MoltenVK -type f -o -type l | head -30
 
       - name: Download DXVK (Windows DLLs for Wine)
         run: |

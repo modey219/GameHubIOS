@@ -66,9 +66,11 @@ jobs:
           CFLAGS="$CFLAGS -Wno-deprecated-declarations -Wno-missing-declarations"
           CFLAGS="$CFLAGS -Wno-missing-prototypes -Wno-strict-prototypes"
           CFLAGS="$CFLAGS -Wno-macro-redefined -Wno-error"
+          CFLAGS="$CFLAGS -include $COMPAT_DIR/ios_linux_compat.h"
+          CFLAGS="$CFLAGS -DDYNAREC_STEP=1"
           
           # Exclude files that cannot compile on Darwin
-          EXCLUDE="custommmap.c"
+          EXCLUDE="custommmap.c emit_signal_wine.c os_wine.c hostext_wine.c random_wine.c emit_signals_linux.c freq_linux.c hostext_linux.c os_linux.c"
           
           # Find core .c files under src/ (excluding wrapped/ and wrapped32/ — Linux-only libs)
           SOURCES=""
@@ -84,24 +86,27 @@ jobs:
               fi
           done
           
-          # Include wrapped/ files (needed for Wine libc/libm/libpthread calls)
-          if [ -d "$BOX64_SRC/src/wrapped" ]; then
-              for f in "$BOX64_SRC/src/wrapped"/*.c; do
-                  [ -f "$f" ] && SOURCES="$SOURCES $f"
-              done
-          fi
+          # Skip ALL wrapped/ files — Linux-only library wrappers (GTK, X11, Wayland, PulseAudio, ICU etc.)
+          # Not needed for Wine on iOS. Only core libc/libm/libpthread would be needed but those are provided by system.
           
-          # Include dynarec (EXCLUDE all avx_ files — too many Linux-only deps)
+          # Include dynarec (EXCLUDE avx_, problematic .S, and STEP-dependent files)
           if [ -d "$BOX64_SRC/src/dynarec" ]; then
               for f in "$BOX64_SRC/src/dynarec"/*.c; do
-                  [ -f "$f" ] && SOURCES="$SOURCES $f"
+                  [ -f "$f" ] || continue
+                  BASE=$(basename "$f")
+                  case "$BASE" in *avx*) continue;; esac
+                  SKIP=0
+                  for ex in $EXCLUDE; do [ "$BASE" = "$ex" ] && SKIP=1 && break; done
+                  [ $SKIP -eq 0 ] && SOURCES="$SOURCES $f"
               done
               if [ -d "$BOX64_SRC/src/dynarec/arm64" ]; then
                   for f in "$BOX64_SRC/src/dynarec/arm64"/*.c "$BOX64_SRC/src/dynarec/arm64"/*.S; do
                       [ -f "$f" ] || continue
                       BASE=$(basename "$f")
-                      # Skip AVX files — not needed for basic Wine, too many Linux deps
+                      # Skip AVX files
                       case "$BASE" in *avx*) continue;; esac
+                      # Skip problematic assembly (LSE instructions, undefined locals)
+                      case "$BASE" in arm64_lock.S|arm64_next.S) continue;; esac
                       SKIP=0
                       for ex in $EXCLUDE; do [ "$BASE" = "$ex" ] && SKIP=1 && break; done
                       [ $SKIP -eq 0 ] && SOURCES="$SOURCES $f"
@@ -165,8 +170,7 @@ jobs:
                   echo ''
                   while IFS= read -r sym; do
                       [ -z "$sym" ] && continue
-                      # Skip symbols starting with underscore
-                      case "$sym" in _*) continue;; esac
+                      # Don't skip underscore symbols — __libc_* etc. are real refs
                       echo "void $sym(void) {}"
                   done < /tmp/missing_syms.txt
               } > auto_stubs.c

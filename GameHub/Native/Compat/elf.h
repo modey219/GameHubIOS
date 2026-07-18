@@ -3,6 +3,12 @@
 
 #include <stdint.h>
 
+typedef uint16_t Elf32_Half;
+typedef uint32_t Elf32_Word;
+typedef int32_t Elf32_Sword;
+typedef uint32_t Elf32_Addr;
+typedef uint32_t Elf32_Off;
+
 typedef uint16_t Elf64_Half;
 typedef uint32_t Elf64_Word;
 typedef int32_t Elf64_Sword;

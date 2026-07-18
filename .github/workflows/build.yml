@@ -277,23 +277,28 @@ jobs:
           echo "DXVK contents:"
           find GameHub/Native/BundledBinaries/DXVK -type f | head -20
 
-      - name: Verify bundled binaries
+      - name: Bundle all binaries
         run: |
           echo "=========================================="
-          echo "  Bundled Binaries Summary"
+          echo "  Bundling all binaries into BundledBinaries"
           echo "=========================================="
           BIN_DIR="GameHub/Native/BundledBinaries"
+          
+          # Copy box64 executable into BundledBinaries (both root for direct access and Box64/ for organization)
+          cp GameHub/Native/Box64Lib/box64 "$BIN_DIR/box64"
+          chmod 755 "$BIN_DIR/box64"
+          
+          # Verify everything is in place
           echo "--- Box64 ---"
-          ls -lh GameHub/Native/Box64Lib/box64 2>/dev/null || echo "MISSING"
+          ls -lh "$BIN_DIR/box64"
           echo "--- Wine ---"
-          ls "$BIN_DIR/Wine/bin/wine64" 2>/dev/null && echo "wine64: OK" || echo "wine64: MISSING"
-          ls "$BIN_DIR/Wine/bin/wineserver" 2>/dev/null && echo "wineserver: OK" || echo "wineserver: MISSING"
+          ls -lh "$BIN_DIR/Wine/bin/wine64" 2>/dev/null || echo "wine64: MISSING"
           echo "--- MoltenVK ---"
-          find "$BIN_DIR/MoltenVK" -name "*.dylib" -o -name "libvulkan*" | head -5
+          find "$BIN_DIR/MoltenVK" -name "*.dylib" -o -name "libvulkan*" | head -5 || echo "MoltenVK: MISSING"
           echo "--- DXVK ---"
-          find "$BIN_DIR/DXVK" -name "*.dll" | head -10
+          find "$BIN_DIR/DXVK" -name "*.dll" | head -10 || echo "DXVK: MISSING"
           echo "--- Total size ---"
-          du -sh "$BIN_DIR" 2>/dev/null || true
+          du -sh "$BIN_DIR"
 
       # ==========================================
       # Step 3: Build iOS App with bundled binaries

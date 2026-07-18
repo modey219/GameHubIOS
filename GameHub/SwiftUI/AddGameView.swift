@@ -10,7 +10,7 @@ struct AddGameView: View {
     @State private var selectedFiles: [URL] = []
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Game Info") {
                     TextField("Game Name", text: $gameName)

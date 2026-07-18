@@ -78,7 +78,7 @@ struct NewContainerView: View {
     @State private var maxFPS = 60
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Text("Container Name")) {
                     TextField("My Container", text: $containerName)

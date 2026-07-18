@@ -323,7 +323,7 @@ struct GameContainerView: View {
 
         let finalExePath: String
         if fm.fileExists(atPath: gameExeInDriveC) {
-            finalExePath = "C:\\games\\\(container.name)\\\(container.executablePath as NSString).lastPathComponent"
+            finalExePath = "C:\\games\\\(container.name)\\\((container.executablePath as NSString).lastPathComponent)"
         } else {
             finalExePath = container.executablePath
         }

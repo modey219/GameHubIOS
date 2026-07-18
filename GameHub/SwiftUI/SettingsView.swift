@@ -15,7 +15,7 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Picker("Section", selection: $selectedSection) {
                     ForEach(SettingsSection.allCases, id: \.self) { Text($0.rawValue).tag($0) }

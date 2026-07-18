@@ -17,7 +17,7 @@ struct ImportGameView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 20) {
                 Picker("Method", selection: $selectedMethod) {
                     ForEach(ImportMethod.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -192,7 +192,7 @@ class SimpleHTTPServer {
         guard listen(serverFD, 5) == 0 else { close(serverFD); return false }
 
         serverQueue.async { [weak self] in
-            self?.acceptLoop(serverFD: serverFD)
+            self?.acceptLoop(serverFD: fd)
         }
 
         print("[HTTPServer] Started on port \(port), serving \(directory)")
@@ -259,7 +259,7 @@ class SimpleHTTPServer {
         <input type="file" name="file" multiple><br><button type="submit">Upload</button></form>
         <p class="info">Files will be saved to the app's Documents directory.</p></body></html>
         """
-        var response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"
         response.withCString { ptr in
             _ = send(clientFD, ptr, strlen(ptr), 0)
         }
@@ -282,9 +282,9 @@ class SimpleHTTPServer {
             }
         }
 
-        if let boundaryStart = request.range(of: "boundary="),
-           let contentTypeLine = request.components(separatedBy: "\r\n").first(where: { $0.lowercased().hasPrefix("content-type:") }) {
-            let boundary = String(contentTypeLine[boundaryStart.upperBound...])
+        if let contentTypeLine = request.components(separatedBy: "\r\n").first(where: { $0.lowercased().hasPrefix("content-type:") }),
+           let boundaryRange = contentTypeLine.range(of: "boundary=") {
+            let boundary = String(contentTypeLine[boundaryRange.upperBound...])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
             let boundaryData = ("--" + boundary).data(using: .utf8) ?? Data()
@@ -319,7 +319,7 @@ class SimpleHTTPServer {
         <body><h1>Upload Complete!</h1><p>Files saved to GameHub.</p>
         <a href="/" style="color:#00d4ff">Upload more files</a></body></html>
         """
-        var response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"
         response.withCString { ptr in
             _ = send(clientFD, ptr, strlen(ptr), 0)
         }
@@ -351,7 +351,7 @@ class SimpleHTTPServer {
 
     private func send404(clientFD: Int32) {
         let body = "Not Found"
-        var response = "HTTP/1.1 404 Not Found\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
+        let response = "HTTP/1.1 404 Not Found\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
         response.withCString { ptr in
             _ = send(clientFD, ptr, strlen(ptr), 0)
         }

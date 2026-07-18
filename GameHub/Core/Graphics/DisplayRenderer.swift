@@ -36,12 +36,7 @@ class DisplayRenderer: NSObject, ObservableObject {
 
     private var frameSemaphore = DispatchSemaphore(value: 3)
 
-    private var outputSocketPath: String
-
     override init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        outputSocketPath = docs.appendingPathComponent("Wine/display.sock").path
-
         super.init()
         setupMetal()
     }
@@ -96,17 +91,19 @@ class DisplayRenderer: NSObject, ObservableObject {
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            let displayLink = CADisplayLink(target: self, selector: #selector(self.renderFrame))
-            displayLink.preferredFramesPerSecond = 60
-            displayLink.add(to: .main, forMode: .common)
-            self.displayLink = displayLink
+            let link = CADisplayLink(target: self, selector: #selector(self.renderFrame))
+            link.preferredFramesPerSecond = 60
+            link.add(to: .main, forMode: .common)
+            self.displayLink = link
         }
     }
 
     func stopRendering() {
         isRendering = false
-        displayLink?.invalidate()
-        displayLink = nil
+        DispatchQueue.main.async { [weak self] in
+            self?.displayLink?.invalidate()
+            self?.displayLink = nil
+        }
     }
 
     @objc private func renderFrame() {
@@ -120,8 +117,9 @@ class DisplayRenderer: NSObject, ObservableObject {
         let elapsed = now.timeIntervalSince(lastFPSTime)
 
         if elapsed >= 1.0 {
+            let currentFps = Double(frameCount) / elapsed
             DispatchQueue.main.async {
-                self.fps = Double(self.frameCount) / elapsed
+                self.fps = currentFps
             }
             frameCount = 0
             lastFPSTime = now

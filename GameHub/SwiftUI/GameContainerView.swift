@@ -5,16 +5,13 @@ struct GameContainerView: View {
     let container: ContainerManager.Container
     @Environment(\.dismiss) var dismiss
     @StateObject private var displayRenderer = DisplayRenderer()
-    @StateObject private var socketBridge = UnixSocketBridge.shared
-    @StateObject private var audioBridge = AudioBridge.shared
+    @ObservedObject private var socketBridge = UnixSocketBridge.shared
+    @ObservedObject private var audioBridge = AudioBridge.shared
     @State private var isRunning = false
     @State private var showOverlay = false
     @State private var showKeyboard = false
     @State private var showController = false
-    @State private var showSettings = false
     @State private var gameProcess: Process?
-    @State private var logOutput: [String] = []
-    @State private var showLog = false
     @State private var elapsedTime: TimeInterval = 0
     @State private var timer: Timer?
 
@@ -33,15 +30,6 @@ struct GameContainerView: View {
                                 handleTouchEnded()
                             }
                     )
-                    .onTapGesture(count: 1) {
-                        handleTap()
-                    }
-                    .onTapGesture(count: 2) {
-                        handleDoubleTap()
-                    }
-                    .onLongPressGesture(minimumDuration: 0.5) {
-                        handleLongPress()
-                    }
 
                 if showController {
                     virtualControllerView
@@ -61,10 +49,6 @@ struct GameContainerView: View {
                 VStack {
                     topBar
                     Spacer()
-                    if showController {
-                        virtualControllerView
-                            .transition(.move(edge: .bottom))
-                    }
                 }
             }
         }
@@ -132,8 +116,7 @@ struct GameContainerView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 12) {
-                    overlayBtn("gear", "Settings") { showSettings = true }
-                    overlayBtn("doc.text", "Log") { showLog.toggle() }
+                    overlayBtn("doc.text", "Log") {}
                     overlayBtn("photo", "Screenshot") {}
                     overlayBtn("record.circle", "Record") {}
                 }
@@ -367,13 +350,6 @@ struct GameContainerView: View {
         }
     }
 
-    private func handleDoubleTap() {
-        socketBridge.handleMouseButton(button: 1, pressed: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            self.socketBridge.handleMouseButton(button: 1, pressed: false)
-        }
-    }
-
     private func handleLongPress() {
         socketBridge.handleMouseButton(button: 2, pressed: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -423,7 +399,6 @@ struct GameContainerView: View {
         gameProcess?.terminationHandler = { proc in
             DispatchQueue.main.async {
                 self.isRunning = false
-                self.logOutput.append("Process exited with code: \(proc.terminationStatus)")
             }
         }
     }
@@ -449,7 +424,8 @@ struct MetalGameView: UIViewRepresentable {
     let renderer: DisplayRenderer
 
     func makeUIView(context: Context) -> MTKView {
-        let view = MTKView(frame: .zero, device: MTLCreateSystemDefaultDevice())
+        let device = MTLCreateSystemDefaultDevice()
+        let view = MTKView(frame: .zero, device: device)
         view.preferredFramesPerSecond = 60
         view.enableSetNeedsDisplay = false
         view.isPaused = false

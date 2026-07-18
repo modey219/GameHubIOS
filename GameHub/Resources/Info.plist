@@ -22,6 +22,11 @@
     <string>1</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <key>UIDeviceFamily</key>
+    <array>
+        <integer>1</integer>
+        <integer>2</integer>
+    </array>
     <key>UILaunchScreen</key>
     <dict/>
     <key>UISupportedInterfaceOrientations~ipad</key>
@@ -52,19 +57,9 @@
     <true/>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
-    <key>NSCameraUsageDescription</key>
-    <string>GameHub needs camera access for QR code scanning.</string>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>GameHub needs microphone access for in-game voice chat.</string>
-    <key>NSPhotoLibraryUsageDescription</key>
-    <string>GameHub needs photo library access for screenshots.</string>
-    <key>NSDocumentsFolderUsageDescription</key>
-    <string>GameHub needs access to documents to manage game files.</string>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>GameHub uses local network for multiplayer.</string>
+    <string>GameHub uses local network for multiplayer and file transfer.</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>GameHub uses Bluetooth for controller support.</string>
-    <key>NSMotionUsageDescription</key>
-    <string>GameHub uses motion data for controller gyroscope support.</string>
 </dict>
 </plist>

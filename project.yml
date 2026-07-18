@@ -24,8 +24,12 @@ targets:
       - path: GameHub
         excludes:
           - "**/*.xcassets"
+          - "**/*.metal"
+          - "**/*.plist"
     resources:
       - path: GameHub/Resources/Assets.xcassets
+      - path: GameHub/Resources/Shaders.metal
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gamehub.ios

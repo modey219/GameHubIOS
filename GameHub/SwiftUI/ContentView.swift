@@ -8,15 +8,14 @@ struct ContentView: View {
     @State private var showWelcome = true
 
     var body: some View {
-        Group {
-            if showWelcome {
-                WelcomeView()
-            } else {
-                mainTabView
-            }
-        }
-        .onAppear {
-            checkFirstLaunch()
+        if showWelcome {
+            WelcomeView()
+                .environmentObject(containerManager)
+                .environmentObject(jitManager)
+                .environmentObject(settingsManager)
+                .onAppear { checkFirstLaunch() }
+        } else {
+            mainTabView
         }
     }
 
@@ -53,16 +52,17 @@ struct ContentView: View {
         let hasLaunched = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
         if hasLaunched {
             showWelcome = false
-        } else {
-            let fm = FileManager.default
-            let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
-            let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/wine64").path)
+            return
+        }
 
-            if box64Exists && wineExists {
-                showWelcome = false
-                UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-            }
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
+        let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/wine64").path)
+
+        if box64Exists && wineExists {
+            showWelcome = false
+            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
         }
     }
 }

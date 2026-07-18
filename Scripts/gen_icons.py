@@ -1,14 +1,16 @@
 import struct, zlib, os, sys
 
-def create_png(w, h, r, g, b):
+def create_png(w, h):
     raw = b''
     for y in range(h):
         raw += b'\x00'
         for x in range(w):
-            cr = max(0, min(255, r + (y * 80 // h)))
-            cg = max(0, min(255, g - (y * 40 // h)))
-            cb = max(0, min(255, b - (y * 60 // h)))
-            raw += struct.pack('BBBB', cr, cg, cb, 255)
+            t = y / max(h - 1, 1)
+            r = int(30 + t * 60)
+            g = int(10 + t * 20)
+            b = int(140 - t * 40)
+            a = 255
+            raw += struct.pack('BBBB', r, g, b, a)
 
     def chunk(ctype, data):
         c = ctype + data
@@ -18,7 +20,20 @@ def create_png(w, h, r, g, b):
     return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
 
 def main():
-    iconset = os.environ.get('ICONSET', 'GameHub/Resources/Assets.xcassets/AppIcon.appiconset')
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    iconset = os.path.join(script_dir, '..', 'GameHub', 'Resources', 'Assets.xcassets', 'AppIcon.appiconset')
+    if not os.path.isdir(iconset):
+        iconset = os.environ.get('ICONSET', '')
+    if not iconset or not os.path.isdir(iconset):
+        alt = os.path.join(script_dir, '..', '..', 'GameHub', 'Resources', 'Assets.xcassets', 'AppIcon.appiconset')
+        if os.path.isdir(alt):
+            iconset = alt
+    if not os.path.isdir(iconset):
+        print(f'ERROR: Iconset not found at {iconset}')
+        sys.exit(1)
+
+    os.makedirs(iconset, exist_ok=True)
+
     sizes = {
         'icon-20.png': 20, 'icon-20@2x.png': 40, 'icon-20@3x.png': 60,
         'icon-29.png': 29, 'icon-29@2x.png': 58, 'icon-29@3x.png': 87,
@@ -28,9 +43,12 @@ def main():
         'icon-83.5@2x.png': 167, 'icon-1024.png': 1024,
     }
     for name, size in sizes.items():
-        with open(f'{iconset}/{name}', 'wb') as f:
-            f.write(create_png(size, size, 58, 28, 113))
-    print(f'Generated {len(sizes)} icons')
+        path = os.path.join(iconset, name)
+        with open(path, 'wb') as f:
+            f.write(create_png(size, size))
+        print(f'  {name} ({size}x{size}) -> {os.path.getsize(path)} bytes')
+
+    print(f'Generated {len(sizes)} icons in {iconset}')
 
 if __name__ == '__main__':
     main()

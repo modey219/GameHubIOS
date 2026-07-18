@@ -9,15 +9,19 @@ struct GameContainerView: View {
     @EnvironmentObject var settingsManager: SettingsManager
     @StateObject private var displayRenderer = DisplayRenderer()
     @State private var isRunning = false
+    @State private var isPaused = false
     @State private var showOverlay = false
     @State private var showController = false
     @State private var showKeyboard = false
+    @State private var showSettings = false
+    @State private var showLog = false
     @State private var gameProcess: Process?
     @State private var elapsedTime: TimeInterval = 0
     @State private var timer: Timer?
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var wineOutput: String = ""
+    @State private var confirmExit = false
 
     var body: some View {
         GeometryReader { geo in
@@ -61,6 +65,44 @@ struct GameContainerView: View {
         .ignoresSafeArea()
         .onAppear { startGame() }
         .onDisappear { stopGame() }
+        .sheet(isPresented: $showSettings) {
+            NavigationStack {
+                SettingsView()
+                    .environmentObject(settingsManager)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showSettings = false }
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showLog) {
+            NavigationStack {
+                VStack(alignment: .leading) {
+                    ScrollView {
+                        Text(wineOutput.isEmpty ? "No log output yet.\n\nLaunch a game to see Wine/Box64 output here." : wineOutput)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                }
+                .navigationTitle("Game Log")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { showLog = false }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: {
+                            UIPasteboard.general.string = wineOutput
+                        }) {
+                            Image(systemName: "doc.on.doc")
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private var topBar: some View {
@@ -89,20 +131,96 @@ struct GameContainerView: View {
     private var overlayMenu: some View {
         VStack {
             Spacer()
+            if confirmExit {
+                confirmExitDialog
+            } else {
+                mainOverlay
+            }
+        }
+        .background(Color.black.opacity(0.7))
+    }
+
+    private var confirmExitDialog: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.largeTitle).foregroundColor(.orange)
+            Text("Exit Game?")
+                .font(.headline).foregroundColor(.white)
+            Text("Unsaved progress may be lost.")
+                .font(.caption).foregroundColor(.gray)
+            HStack(spacing: 16) {
+                Button("Cancel") { withAnimation { confirmExit = false } }
+                    .frame(maxWidth: .infinity).padding()
+                    .background(Color.white.opacity(0.2)).cornerRadius(10)
+                    .foregroundColor(.white)
+                Button("Exit") {
+                    withAnimation { confirmExit = false }
+                    stopGame()
+                    dismiss()
+                }
+                .frame(maxWidth: .infinity).padding()
+                .background(Color.red).cornerRadius(10)
+                .foregroundColor(.white)
+            }
+        }
+        .padding(24)
+        .background(Color(.systemGray6).opacity(0.95))
+        .cornerRadius(16)
+        .padding(.horizontal, 40)
+    }
+
+    private var mainOverlay: some View {
+        VStack {
             HStack {
+                overlayBtn("xmark.circle.fill", "Close Menu") {
+                    withAnimation { showOverlay = false }
+                }
+                Spacer()
+            }
+            .padding(.top, 8)
+
+            Spacer()
+
+            HStack(alignment: .bottom, spacing: 0) {
                 VStack(alignment: .leading, spacing: 12) {
-                    overlayBtn("keyboard", "Keyboard") { withAnimation { showKeyboard.toggle() } }
-                    overlayBtn("gamecontroller", "Controller") { withAnimation { showController.toggle() } }
+                    overlayBtn("gamecontroller", "Controller") {
+                        withAnimation { showController.toggle(); showKeyboard = false }
+                    }
+                    overlayBtn("keyboard", "Keyboard") {
+                        withAnimation { showKeyboard.toggle(); showController = false }
+                    }
+                    if isRunning {
+                        overlayBtn(isPaused ? "play.fill" : "pause.fill", isPaused ? "Resume" : "Pause") {
+                            togglePause()
+                        }
+                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 12) {
-                    overlayBtn("doc.text", "Log") {}
-                    overlayBtn("photo", "Screenshot") {}
+                    overlayBtn("doc.text", "Log") { showLog.toggle() }
+                    overlayBtn("photo", "Screenshot") { takeScreenshot() }
+                    overlayBtn("gear", "Settings") { showSettings.toggle() }
                 }
             }
-            .padding()
+
+            Spacer()
+
+            HStack(spacing: 16) {
+                Button(action: {
+                    withAnimation { confirmExit = true }
+                }) {
+                    HStack {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                        Text("Exit to Menu").fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(Color.red.opacity(0.8)).foregroundColor(.white).cornerRadius(12)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 8)
         }
-        .background(Color.black.opacity(0.7))
+        .padding()
     }
 
     private func overlayBtn(_ icon: String, _ title: String, action: @escaping () -> Void) -> some View {
@@ -356,6 +474,29 @@ struct GameContainerView: View {
 
         UnixSocketBridge.shared.startServer()
         AudioBridge.shared.startAudioServer()
+    }
+
+    private func togglePause() {
+        guard let process = gameProcess else { return }
+        if isPaused {
+            kill(process.processIdentifier, SIGCONT)
+            isPaused = false
+        } else {
+            kill(process.processIdentifier, SIGSTOP)
+            isPaused = true
+        }
+    }
+
+    private func takeScreenshot() {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first?.windows.first else { return }
+        UIGraphicsBeginImageContextWithOptions(window.bounds.size, false, 0)
+        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        let img = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        guard let img = img else { return }
+        UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
     }
 
     private func startTimeCounter() {

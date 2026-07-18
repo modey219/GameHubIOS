@@ -310,9 +310,43 @@ jobs:
       - name: Generate app icons
         run: |
           ICONSET="GameHub/Resources/Assets.xcassets/AppIcon.appiconset"
-          export ICONSET
-          python3 scripts/gen_icons.py
+          mkdir -p "$ICONSET"
+          python3 -c "
+          import struct, zlib, os
+          iconset = os.environ.get('ICONSET', '.')
+          def make_png(w, h):
+              raw = b''
+              for y in range(h):
+                  raw += b'\\x00'
+                  for x in range(w):
+                      t = y / max(h-1, 1)
+                      r = int(25 + t*55)
+                      g = int(8 + t*15)
+                      b = int(160 - t*50)
+                      raw += struct.pack('BBBB', r, g, b, 255)
+              def chunk(ct, d):
+                  c = ct + d
+                  return struct.pack('>I', len(d)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+              ihdr = struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)
+              return b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', ihdr) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+          sizes = {
+              'icon-20.png': 20, 'icon-20@2x.png': 40, 'icon-20@3x.png': 60,
+              'icon-29.png': 29, 'icon-29@2x.png': 58, 'icon-29@3x.png': 87,
+              'icon-40.png': 40, 'icon-40@2x.png': 80, 'icon-40@3x.png': 120,
+              'icon-60.png': 60, 'icon-60@2x.png': 120, 'icon-60@3x.png': 180,
+              'icon-76.png': 76, 'icon-76@2x.png': 152,
+              'icon-83.5@2x.png': 167, 'icon-1024.png': 1024,
+          }
+          for name, size in sizes.items():
+              path = os.path.join(iconset, name)
+              with open(path, 'wb') as f:
+                  f.write(make_png(size, size))
+              print(f'  {name}: {os.path.getsize(path)} bytes')
+          print(f'Generated {len(sizes)} icons')
+          "
+          echo "=== Verify icons ==="
           ls -la "$ICONSET/icon-1024.png"
+          file "$ICONSET/icon-1024.png"
 
       - name: Remove old xcodeproj
         run: |

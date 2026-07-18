@@ -1,6 +1,6 @@
 name: MNEmulator
 options:
-  bundleIdPrefix: com.gamehub
+  bundleIdPrefix: com.mnemulator
   deploymentTarget:
     iOS: "16.0"
   xcodeVersion: "15.0"

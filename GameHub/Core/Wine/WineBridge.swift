@@ -19,11 +19,15 @@ class WineBridge {
         }
     }
 
+    var isInstalled: Bool {
+        FileManager.default.fileExists(atPath: wineBinaryPath)
+    }
+
     func initialize() {
         guard !isInitialized else { return }
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         winePrefix = docs.appendingPathComponent("Wine").path
-        wineBinaryPath = docs.appendingPathComponent("Wine/wine64").path
+        wineBinaryPath = docs.appendingPathComponent("Wine/bin/wine64").path
         setupWinePrefix()
         setupEnvironment()
         isInitialized = true
@@ -53,7 +57,7 @@ class WineBridge {
         let targetPrefix = containerPath ?? winePrefix
         let wine64Path = (containerPath != nil)
             ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("Wine/wine64").path
+                .appendingPathComponent("Wine/bin/wine64").path
             : wineBinaryPath
 
         return Box64Bridge.shared.launchWine(

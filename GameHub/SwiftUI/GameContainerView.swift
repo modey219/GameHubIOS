@@ -291,15 +291,15 @@ struct GameContainerView: View {
         let containerPath = docs.appendingPathComponent("Containers/\(container.id.uuidString)").path
 
         let box64Path = docs.appendingPathComponent("Box64/box64").path
-        let wine64Path = docs.appendingPathComponent("Wine/wine64").path
+        let wine64Path = docs.appendingPathComponent("Wine/bin/wine64").path
 
         guard fm.fileExists(atPath: box64Path) else {
-            errorMessage = "Box64 binary not found.\nExpected at: \(box64Path)\n\nPlease transfer Box64 binary via Files app or iTunes File Sharing."
+            errorMessage = "Box64 binary not found at:\n\(box64Path)\n\nPlease restart the app to extract bundled binaries."
             showError = true
             return
         }
         guard fm.fileExists(atPath: wine64Path) else {
-            errorMessage = "Wine binary not found.\nExpected at: \(wine64Path)\n\nPlease transfer Wine binaries via Files app or iTunes File Sharing."
+            errorMessage = "Wine binary not found at:\n\(wine64Path)\n\nPlease restart the app to extract bundled binaries."
             showError = true
             return
         }

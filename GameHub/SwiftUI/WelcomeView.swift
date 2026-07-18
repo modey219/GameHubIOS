@@ -6,6 +6,9 @@ struct WelcomeView: View {
     @EnvironmentObject var jitManager: JITManager
     @EnvironmentObject var settingsManager: SettingsManager
     @State private var step = 0
+    @State private var isExtracting = false
+    @State private var extractionStatus = ""
+    @State private var extractionError: String?
 
     var body: some View {
         NavigationStack {
@@ -38,7 +41,7 @@ struct WelcomeView: View {
     private var welcomeStep: some View {
         VStack(spacing: 20) {
             featureCard(icon: "cpu", title: "Box64", desc: "x86_64 to ARM64 translation layer")
-            featureCard(icon: "desktopcomputer", title: "Wine 9.0", desc: "Windows API implementation for iOS")
+            featureCard(icon: "desktopcomputer", title: "Wine 9.21", desc: "Windows API implementation for iOS")
             featureCard(icon: "paintbrush", title: "MoltenVK + DXVK", desc: "Vulkan/DirectX to Metal translation")
             featureCard(icon: "gamecontroller", title: "Virtual Gamepad", desc: "On-screen controls with physical controller support")
 
@@ -56,36 +59,91 @@ struct WelcomeView: View {
 
     private var setupStep: some View {
         VStack(spacing: 16) {
-            Text("Transfer Binaries")
+            Text("Setup")
                 .font(.title3).bold()
 
-            setupMethod(icon: "desktopcomputer", title: "Via Computer", desc: "Connect iPhone → Open Finder/iTunes → File Sharing → GameHub → Copy files")
+            if isExtracting {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .scaleEffect(1.2)
+                    Text(extractionStatus)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
 
-            setupMethod(icon: "folder", title: "Via Files App", desc: "Copy to iCloud Drive → Open Files app → Move to GameHub folder")
+                    if let error = extractionError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .padding()
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Box64 x86_64 translator")
+                    }
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Wine 9.21 Windows API")
+                    }
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("MoltenVK Vulkan → Metal")
+                    }
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("DXVK DirectX 11 → Vulkan")
+                    }
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
 
-            setupMethod(icon: "wifi", title: "Via Network", desc: "Use WebDAV client (Cyberduck) → Connect to iPhone IP → Upload files")
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Required Files:").font(.headline)
-                fileRow("box64", "Box64/")
-                fileRow("wine64", "Wine/")
-                fileRow("wineserver", "Wine/")
-                fileRow("rootfs.tar.zst", "Wine/")
-                fileRow("MoltenVK dylib", "Graphics/MoltenVK/")
+                Text("All components are bundled in the app. Tap below to extract and prepare them.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
             }
-            .padding()
-            .background(Color(.systemGray6))
-            .cornerRadius(12)
 
             HStack(spacing: 12) {
                 Button(action: { step = 0 }) {
                     Text("Back").frame(maxWidth: .infinity).padding()
                         .background(Color(.systemGray5)).cornerRadius(12)
                 }
-                Button(action: { withAnimation { step = 2 } }) {
-                    Text("Continue").fontWeight(.bold).frame(maxWidth: .infinity).padding()
-                        .background(Color.blue).foregroundColor(.white).cornerRadius(12)
+                Button(action: {
+                    isExtracting = true
+                    extractionStatus = "Extracting binaries..."
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        do {
+                            try Box64Bridge.shared.setupAllBundledBinaries { detail in
+                                DispatchQueue.main.async {
+                                    self.extractionStatus = detail
+                                }
+                            }
+                            DispatchQueue.main.async {
+                                isExtracting = false
+                                withAnimation { step = 2 }
+                            }
+                        } catch {
+                            DispatchQueue.main.async {
+                                isExtracting = false
+                                extractionError = error.localizedDescription
+                            }
+                        }
+                    }
+                }) {
+                    Text(isExtracting ? "Extracting..." : "Extract & Continue")
+                        .fontWeight(.bold).frame(maxWidth: .infinity).padding()
+                        .background(isExtracting ? Color.gray : Color.blue)
+                        .foregroundColor(.white).cornerRadius(12)
                 }
+                .disabled(isExtracting)
             }
         }
     }
@@ -99,20 +157,15 @@ struct WelcomeView: View {
             Text("You're All Set!")
                 .font(.title2).bold()
 
-            let fm = FileManager.default
-            let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            let box64 = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
-            let wine = fm.fileExists(atPath: docs.appendingPathComponent("Wine/wine64").path)
-
-            if box64 && wine {
+            VStack(spacing: 8) {
                 statusBadge("Box64", ok: true)
                 statusBadge("Wine", ok: true)
-            } else {
-                if !box64 { statusBadge("Box64 - not found", ok: false) }
-                if !wine { statusBadge("Wine - not found", ok: false) }
-                Text("You can still explore the app. Binaries can be added later via Files app.")
-                    .font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
+                statusBadge("MoltenVK", ok: true)
+                statusBadge("DXVK", ok: true)
             }
+
+            Text("All components are ready. Add games via the Games tab, then launch and play!")
+                .font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
 
             Button(action: onComplete) {
                 Text("Start Using GameHub")
@@ -134,28 +187,6 @@ struct WelcomeView: View {
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(12)
-    }
-
-    private func setupMethod(icon: String, title: String, desc: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon).foregroundColor(.blue).frame(width: 24)
-            VStack(alignment: .leading) {
-                Text(title).font(.subheadline).bold()
-                Text(desc).font(.caption).foregroundColor(.secondary)
-            }
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(10)
-    }
-
-    private func fileRow(_ name: String, _ dest: String) -> some View {
-        HStack {
-            Image(systemName: "doc").foregroundColor(.blue)
-            Text(name).font(.caption).bold()
-            Spacer()
-            Text("→ \(dest)").font(.caption2).foregroundColor(.secondary)
-        }
     }
 
     private func statusBadge(_ text: String, ok: Bool) -> some View {

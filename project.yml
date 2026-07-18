@@ -32,8 +32,12 @@ targets:
           - "**/*.o"
           - "Native/Box64Lib/**"
           - "Native/Compat/**"
+          - "Native/BundledBinaries/**"
     resources:
       - path: GameHub/Resources/Assets.xcassets
+      - path: GameHub/Native/BundledBinaries
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gamehub.ios
@@ -48,7 +52,6 @@ targets:
           - "$(SRCROOT)/GameHub/Native/Box64Lib"
           - "$(SRCROOT)/GameHub/Native/Box64Lib/objects"
         OTHER_LDFLAGS:
-          - "-lresolv"
           - "-lbox64"
         OTHER_CFLAGS:
           - "-I$(SRCROOT)/GameHub/Native/Include"

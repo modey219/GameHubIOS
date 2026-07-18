@@ -9,6 +9,7 @@ struct GameHubApp: App {
     @State private var isLoading = true
     @State private var setupError: String?
     @State private var setupProgress = "Initializing..."
+    @State private var setupDetail = ""
 
     var body: some Scene {
         WindowGroup {
@@ -28,7 +29,7 @@ struct GameHubApp: App {
                 }
             }
             .onAppear {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     performSetup()
                 }
             }
@@ -43,6 +44,9 @@ struct GameHubApp: App {
 
             Text("GameHub")
                 .font(.largeTitle).bold()
+
+            Text("PC Game Emulator for iPhone & iPad")
+                .font(.subheadline).foregroundColor(.secondary)
 
             if let error = setupError {
                 VStack(spacing: 12) {
@@ -72,6 +76,11 @@ struct GameHubApp: App {
                     Text(setupProgress)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
+                    if !setupDetail.isEmpty {
+                        Text(setupDetail)
+                            .font(.caption2)
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
                 }
             }
         }
@@ -79,7 +88,6 @@ struct GameHubApp: App {
     }
 
     private func performSetup() {
-        setupProgress = "Creating directories..."
         let fm = FileManager.default
 
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
@@ -87,34 +95,45 @@ struct GameHubApp: App {
             return
         }
 
+        setupProgress = "Creating directories..."
         let dirs = ["Box64", "Wine", "Wine/rootfs", "Containers", "Graphics", "Wine/input"]
         for dir in dirs {
             try? fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
         }
 
-        if !fm.fileExists(atPath: docs.appendingPathComponent("Graphics/MoltenVK").path) {
-            try? fm.createDirectory(at: docs.appendingPathComponent("Graphics/MoltenVK"), withIntermediateDirectories: true)
-        }
-
         setupProgress = "Initializing graphics..."
-
+        setupDetail = ""
         GraphicsBridge.shared.initialize()
 
         let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
-        let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/wine64").path)
+        let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
 
-        if box64Exists {
-            setupProgress = "Initializing Box64..."
-            Box64Bridge.shared.initialize()
-        }
-        if wineExists {
-            setupProgress = "Initializing Wine..."
-            WineBridge.shared.initialize()
-        }
-        if box64Exists && wineExists {
-            WinePrefixManager.shared.initializePrefix()
+        if !box64Exists || !wineExists {
+            setupProgress = "Extracting bundled binaries..."
+            do {
+                var lastDetail = ""
+                try Box64Bridge.shared.setupAllBundledBinaries { detail in
+                    lastDetail = detail
+                    DispatchQueue.main.async {
+                        self.setupDetail = detail
+                    }
+                }
+                setupProgress = "Binaries extracted!"
+                setupDetail = ""
+            } catch {
+                setupError = "Failed to extract bundled binaries: \(error.localizedDescription)\n\nThe app may not function correctly."
+                isLoading = false
+                return
+            }
         }
 
+        setupProgress = "Initializing Box64..."
+        Box64Bridge.shared.initialize()
+
+        setupProgress = "Initializing Wine..."
+        WineBridge.shared.initialize()
+
+        WinePrefixManager.shared.initializePrefix()
         settingsManager.applySettings()
 
         DispatchQueue.main.async {

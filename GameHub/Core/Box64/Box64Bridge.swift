@@ -5,6 +5,8 @@ class Box64Bridge {
 
     private var isInitialized = false
     private var box64InstallPath: String = ""
+    private var wineInstallPath: String = ""
+    private var graphicsInstallPath: String = ""
     private var ctx: UnsafeMutablePointer<box64_context_t>?
 
     struct Box64Config {
@@ -26,11 +28,129 @@ class Box64Bridge {
 
     private var config = Box64Config()
 
+    enum SetupError: LocalizedError {
+        case box64Missing
+        case wineMissing
+        case copyFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .box64Missing: return "Box64 binary not found in app bundle"
+            case .wineMissing: return "Wine binaries not found in app bundle"
+            case .copyFailed(let detail): return "Failed to setup binaries: \(detail)"
+            }
+        }
+    }
+
+    var isSetupComplete: Bool {
+        let fm = FileManager.default
+        let box64Exists = fm.fileExists(atPath: box64InstallPath + "/box64")
+        let wineExists = fm.fileExists(atPath: wineInstallPath + "/bin/wine64")
+        return box64Exists && wineExists
+    }
+
+    func setupAllBundledBinaries(progressCallback: ((String) -> Void)? = nil) throws {
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            throw SetupError.copyFailed("Cannot access Documents directory")
+        }
+
+        box64InstallPath = docs.appendingPathComponent("Box64").path
+        wineInstallPath = docs.appendingPathComponent("Wine").path
+        graphicsInstallPath = docs.appendingPathComponent("Graphics").path
+
+        let dirs = ["Box64", "Wine", "Graphics", "Graphics/MoltenVK", "Graphics/DXVK"]
+        for dir in dirs {
+            try fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
+        }
+
+        progressCallback?("Extracting Box64...")
+        try extractBox64()
+
+        progressCallback?("Extracting Wine...")
+        try extractWine()
+
+        progressCallback?("Extracting MoltenVK...")
+        try extractMoltenVK()
+
+        progressCallback?("Extracting DXVK...")
+        try extractDXVK()
+    }
+
+    private func extractBox64() throws {
+        let fm = FileManager.default
+        let destination = (box64InstallPath as NSString).appendingPathComponent("box64")
+
+        if fm.fileExists(atPath: destination) { return }
+
+        guard let bundledPath = Bundle.main.path(forResource: "box64", ofType: nil) else {
+            throw SetupError.box64Missing
+        }
+        try fm.copyItem(atPath: bundledPath, toPath: destination)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destination)
+        print("[Box64] Extracted box64 to \(destination)")
+    }
+
+    private func extractWine() throws {
+        let fm = FileManager.default
+        let wine64Dest = (wineInstallPath as NSString).appendingPathComponent("bin/wine64")
+
+        if fm.fileExists(atPath: wine64Dest) { return }
+
+        guard let bundledWineDir = Bundle.main.path(forResource: "Wine", ofType: nil) else {
+            throw SetupError.wineMissing
+        }
+
+        if fm.fileExists(atPath: wine64Dest) { return }
+
+        try fm.copyItem(atPath: bundledWineDir, toPath: wineInstallPath)
+
+        let binaries = ["bin/wine", "bin/wine64", "bin/wineserver", "bin/wineboot",
+                        "bin/winecfg", "bin/winepath"]
+        for bin in binaries {
+            let binPath = (wineInstallPath as NSString).appendingPathComponent(bin)
+            if fm.fileExists(atPath: binPath) {
+                try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binPath)
+            }
+        }
+
+        print("[Box64] Extracted Wine to \(wineInstallPath)")
+    }
+
+    private func extractMoltenVK() throws {
+        let fm = FileManager.default
+        let mvkDest = (graphicsInstallPath as NSString).appendingPathComponent("MoltenVK/libMoltenVK.dylib")
+
+        if fm.fileExists(atPath: mvkDest) { return }
+
+        guard let bundledMVK = Bundle.main.path(forResource: "MoltenVK", ofType: nil) else {
+            print("[Box64] MoltenVK not found in bundle, skipping")
+            return
+        }
+        try fm.copyItem(atPath: bundledMVK, toPath: (graphicsInstallPath as NSString).appendingPathComponent("MoltenVK"))
+        print("[Box64] Extracted MoltenVK")
+    }
+
+    private func extractDXVK() throws {
+        let fm = FileManager.default
+        let dxvkDir = (graphicsInstallPath as NSString).appendingPathComponent("DXVK")
+
+        if let contents = try? fm.contentsOfDirectory(atPath: dxvkDir), !contents.isEmpty { return }
+
+        guard let bundledDXVK = Bundle.main.path(forResource: "DXVK", ofType: nil) else {
+            print("[Box64] DXVK not found in bundle, skipping")
+            return
+        }
+        try fm.copyItem(atPath: bundledDXVK, toPath: dxvkDir)
+        print("[Box64] Extracted DXVK")
+    }
+
     func initialize() {
         guard !isInitialized else { return }
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         box64InstallPath = documentsPath.appendingPathComponent("Box64").path
-        setupBox64Binary()
+        wineInstallPath = documentsPath.appendingPathComponent("Wine").path
+        graphicsInstallPath = documentsPath.appendingPathComponent("Graphics").path
         setupEnvironment()
 
         ctx = box64_create()
@@ -39,20 +159,6 @@ class Box64Bridge {
         }
 
         isInitialized = true
-    }
-
-    private func setupBox64Binary() {
-        let fm = FileManager.default
-        let box64Dir = URL(fileURLWithPath: box64InstallPath)
-        if !fm.fileExists(atPath: box64Dir.path) {
-            try? fm.createDirectory(at: box64Dir, withIntermediateDirectories: true)
-        }
-        if let bundledBox64 = Bundle.main.path(forResource: "box64", ofType: nil) {
-            let destination = box64Dir.appendingPathComponent("box64")
-            try? fm.removeItem(at: destination)
-            try? fm.copyItem(atPath: bundledBox64, toPath: destination.path)
-            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destination.path)
-        }
     }
 
     private func setupEnvironment() {
@@ -70,7 +176,7 @@ class Box64Bridge {
 
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         setenv("HOME", docs.appendingPathComponent("Wine").path, 1)
-        setenv("PATH", box64InstallPath + ":" + (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"), 1)
+        setenv("PATH", box64InstallPath + ":" + wineInstallPath + "/bin:" + (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"), 1)
 
         for (key, value) in config.envVars {
             setenv(key, value, 1)

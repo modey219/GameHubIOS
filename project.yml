@@ -27,6 +27,7 @@ targets:
         excludes:
           - "**/*.xcassets"
           - "**/*.plist"
+          - "**/*.a"
     resources:
       - path: GameHub/Resources/Assets.xcassets
     settings:
@@ -39,13 +40,23 @@ targets:
         CODE_SIGN_IDENTITY: ""
         CODE_SIGNING_REQUIRED: "NO"
         CODE_SIGNING_ALLOWED: "NO"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/GameHub/Native/Box64Lib"
+          - "$(SRCROOT)/GameHub/Native/Box64Lib/objects"
         OTHER_LDFLAGS:
           - "-lpthread"
           - "-lresolv"
           - "-ldl"
           - "-lrt"
+          - "-lBox64"
+          - "-lbox64"
+          - "-L$(SRCROOT)/GameHub/Native/Box64Lib"
         OTHER_CFLAGS:
           - "-I$(SRCROOT)/GameHub/Native/Include"
+          - "-I$(SRCROOT)/GameHub/Native/Include"
+          - "-Wno-unused-variable"
+          - "-Wno-unused-function"
+          - "-Wno-incompatible-pointer-types"
         SWIFT_OBJC_BRIDGING_HEADER: "GameHub/GameHub-Bridging-Header.h"
         GCC_PREPROCESSOR_DEFINITIONS:
           - "__IOS__=1"

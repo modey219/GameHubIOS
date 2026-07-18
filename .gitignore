@@ -55,6 +55,9 @@ fastlane/README.md
 
 # Binaries (will be built by CI)
 GameHub/Resources/binaries/
+GameHub/Native/Box64Lib/
+Box64Source/
+WineSource/
 build/
 box64
 wine64

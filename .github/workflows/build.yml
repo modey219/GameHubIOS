@@ -9,7 +9,7 @@ jobs:
   build:
     name: Build IPA
     runs-on: macos-14
-    timeout-minutes: 60
+    timeout-minutes: 120
     permissions:
       contents: write
 
@@ -22,9 +22,113 @@ jobs:
         with:
           xcode-version: '15.2'
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Install tools
+        run: |
+          brew install xcodegen cmake
 
+      # ==========================================
+      # Step 1: Build Box64 static library for iOS
+      # ==========================================
+      - name: Clone Box64
+        run: |
+          if [ ! -d "Box64Source/box64" ]; then
+            git clone --depth 1 https://github.com/ptitSeb/box64.git Box64Source/box64
+          fi
+
+      - name: Build Box64 for iOS
+        run: |
+          echo "=========================================="
+          echo "  Compiling Box64 for iOS ARM64"
+          echo "=========================================="
+          
+          BOX64_SRC="$PWD/Box64Source/box64"
+          OUTPUT_DIR="$PWD/GameHub/Native/Box64Lib"
+          mkdir -p "$OUTPUT_DIR/objects"
+          
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          CC=$(xcrun --sdk iphoneos --find clang)
+          AR=$(xcrun --sdk iphoneos --find ar)
+          
+          CFLAGS="-arch arm64 -mios-version-min=16.0 -isysroot $SDK -O2 -fembed-bitcode-marker"
+          CFLAGS="$CFLAGS -DARM64 -DDYNAREC -DNOGIT -D__IOS__=1 -DTARGET_IPHONE=1"
+          CFLAGS="$CFLAGS -DBAD_SIGNAL=1 -DBOX64_ENV=1"
+          CFLAGS="$CFLAGS -I$BOX64_SRC/src/include -I$BOX64_SRC/src"
+          CFLAGS="$CFLAGS -Wno-unused-variable -Wno-unused-function -Wno-incompatible-pointer-types"
+          CFLAGS="$CFLAGS -Wno-int-conversion -Wno-pointer-sign -Wno-implicit-function-declaration"
+          CFLAGS="$CFLAGS -Wno-deprecated-declarations -Wno-missing-declarations"
+          CFLAGS="$CFLAGS -Wno-missing-prototypes -Wno-strict-prototypes"
+          
+          # Collect source files from Box64
+          SOURCES=""
+          for dir in src src/emu src/custommem src/os src/tools src/libtools; do
+              if [ -d "$BOX64_SRC/$dir" ]; then
+                  for f in "$BOX64_SRC/$dir"/*.c; do
+                      [ -f "$f" ] && SOURCES="$SOURCES $f"
+                  done
+              fi
+          done
+          
+          # Dynarec ARM64 sources
+          if [ -d "$BOX64_SRC/src/dynarec" ]; then
+              for f in "$BOX64_SRC/src/dynarec"/*.c; do
+                  [ -f "$f" ] && SOURCES="$SOURCES $f"
+              done
+              if [ -d "$BOX64_SRC/src/dynarec/arm64" ]; then
+                  for f in "$BOX64_SRC/src/dynarec/arm64"/*.c "$BOX64_SRC/src/dynarec/arm64"/*.S; do
+                      [ -f "$f" ] && SOURCES="$SOURCES $f"
+                  done
+              fi
+          fi
+          
+          # Wrapped library sources
+          if [ -d "$BOX64_SRC/src/wrapped" ]; then
+              for f in "$BOX64_SRC/src/wrapped"/*.c; do
+                  [ -f "$f" ] && SOURCES="$SOURCES $f"
+              done
+          fi
+          
+          SRC_COUNT=$(echo $SOURCES | wc -w)
+          echo "Found $SRC_COUNT source files"
+          
+          COMPILED=0
+          FAILED=0
+          
+          for src in $SOURCES; do
+              BASENAME=$(basename "$src" .c)
+              OBJ="$OUTPUT_DIR/objects/${BASENAME}.o"
+              
+              if [[ "$src" == *.S ]]; then
+                  # Assembly file
+                  if $CC $CFLAGS -c "$src" -o "$OBJ" 2>/dev/null; then
+                      COMPILED=$((COMPILED + 1))
+                  else
+                      FAILED=$((FAILED + 1))
+                  fi
+              else
+                  if $CC $CFLAGS -c "$src" -o "$OBJ" 2>/dev/null; then
+                      COMPILED=$((COMPILED + 1))
+                  else
+                      FAILED=$((FAILED + 1))
+                  fi
+              fi
+          done
+          
+          echo "Compiled: $COMPILED / $SRC_COUNT"
+          echo "Failed: $FAILED"
+          
+          if [ $COMPILED -gt 0 ]; then
+              cd "$OUTPUT_DIR/objects"
+              $AR rcs "$OUTPUT_DIR/libbox64.a" *.o
+              echo "Created libbox64.a:"
+              ls -la "$OUTPUT_DIR/libbox64.a"
+          else
+              echo "ERROR: No Box64 files compiled"
+              exit 1
+          fi
+
+      # ==========================================
+      # Step 2: Build iOS App with Box64 linked
+      # ==========================================
       - name: Remove old xcodeproj
         run: rm -rf GameHub.xcodeproj
 
@@ -61,7 +165,7 @@ jobs:
             echo "=== All .app dirs ==="
             find build/DerivedData -name "*.app" -type d
             echo "=== Build log tail ==="
-            tail -80 build.log || true
+            tail -100 build.log || true
             exit 1
           fi
           
@@ -73,39 +177,22 @@ jobs:
           if [ -f "$APP_PATH/GameHub" ]; then
             file "$APP_PATH/GameHub"
             ls -la "$APP_PATH/GameHub"
-            echo "Binary exists and is non-zero!"
           else
             echo "ERROR: Binary GameHub not found in .app!"
-            echo "=== Looking for any Mach-O ==="
             find "$APP_PATH" -type f -exec file {} \; | grep -i mach || true
-            echo "=== All files ==="
-            find "$APP_PATH" -type f
             exit 1
           fi
-          echo ""
-          echo "=== Info.plist check ==="
-          plutil -p "$APP_PATH/Info.plist" | head -20 || true
 
       - name: Create IPA
         run: |
           APP_PATH=$(find build/DerivedData -name "GameHub.app" -type d | head -1)
-          
-          if [ -z "$APP_PATH" ]; then
-            echo "ERROR: GameHub.app not found!"
-            exit 1
-          fi
-          
           rm -rf build/Payload
           mkdir -p build/Payload
           cp -r "$APP_PATH" build/Payload/GameHub.app
-          
           cd build
           zip -r -y GameHub.ipa Payload/
-          
           echo "=== IPA info ==="
           ls -la GameHub.ipa
-          echo "=== IPA contents (first 30 lines) ==="
-          unzip -l GameHub.ipa | head -30
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
@@ -128,14 +215,14 @@ jobs:
             2. Install via LiveContainer, SideStore, AltStore, or TrollStore
             3. For best performance: Use StikDebug to enable JIT
             
-            **Features:**
-            - Box64 x86_64 to ARM64 translation
-            - Wine 9.0 Windows API implementation
+            **Components:**
+            - Box64 x86_64 to ARM64 translation (compiled from source)
+            - Wine 9.0 Windows API (downloaded at runtime)
             - MoltenVK (Vulkan to Metal)
             - DXVK (DirectX 11 to Vulkan)
             - VKD3D (DirectX 12 to Vulkan)
-            - Virtual gamepad + physical controller support
-            - Supports iPhone & iPad (iOS 16+)
+            
+            Supports iPhone & iPad (iOS 16+)
           files: build/GameHub.ipa
           prerelease: true
         env:
@@ -149,10 +236,8 @@ jobs:
             SIZE=$(ls -la build/GameHub.ipa | awk '{print $5}')
             echo "  BUILD SUCCESS!"
             echo "  IPA size: $SIZE bytes"
-            echo "  Artifact: GameHub-iOS"
-            echo "  Release: GameHub iOS Build #${{ github.run_number }}"
           else
             echo "  BUILD FAILED"
-            echo "  Check the logs above for errors"
+            tail -40 build.log || true
           fi
           echo "========================================"

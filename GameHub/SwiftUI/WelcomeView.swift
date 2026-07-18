@@ -30,10 +30,12 @@ struct WelcomeView: View {
             Image(systemName: "gamecontroller.fill")
                 .font(.system(size: 64))
                 .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
-            Text("GameHub")
+            Text("MN emulator")
                 .font(.largeTitle).bold()
             Text("PC Game Emulator for iPhone & iPad")
                 .font(.subheadline).foregroundColor(.secondary)
+            Text("Created by @R_MOX")
+                .font(.caption).foregroundColor(.secondary)
         }
         .padding(.top, 20)
     }
@@ -168,7 +170,7 @@ struct WelcomeView: View {
                 .font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
 
             Button(action: onComplete) {
-                Text("Start Using GameHub")
+                Text("Start Using MN emulator")
                     .fontWeight(.bold).frame(maxWidth: .infinity).padding()
                     .background(Color.green).foregroundColor(.white).cornerRadius(12)
             }

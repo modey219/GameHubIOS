@@ -42,11 +42,14 @@ struct GameHubApp: App {
                 .font(.system(size: 64))
                 .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
 
-            Text("GameHub")
+            Text("MN emulator")
                 .font(.largeTitle).bold()
 
             Text("PC Game Emulator for iPhone & iPad")
                 .font(.subheadline).foregroundColor(.secondary)
+
+            Text("Created by @R_MOX")
+                .font(.caption).foregroundColor(.secondary)
 
             if let error = setupError {
                 VStack(spacing: 12) {
@@ -102,7 +105,7 @@ struct GameHubApp: App {
         }
 
         setupProgress = "Creating directories..."
-        let dirs = ["Box64", "Wine", "Wine/rootfs", "Containers", "Graphics", "Wine/input"]
+        let dirs = ["Box64", "Containers", "Graphics"]
         for dir in dirs {
             try? fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
         }
@@ -125,8 +128,9 @@ struct GameHubApp: App {
                 setupProgress = "Binaries extracted!"
                 setupDetail = ""
             } catch {
-                print("[GameHub] Extraction error: \(error)")
-                setupError = "Extraction error: \(error.localizedDescription)"
+                print("[MNEmulator] Extraction error: \(error)")
+                    self.setupError = "Extraction error: \(error.localizedDescription)"
+                return
             }
         } else {
             setupProgress = "Using cached binaries..."

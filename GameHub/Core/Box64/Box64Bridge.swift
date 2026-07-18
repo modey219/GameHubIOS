@@ -77,7 +77,8 @@ class Box64Bridge {
         wineInstallPath = docs.appendingPathComponent("Wine").path
         graphicsInstallPath = docs.appendingPathComponent("Graphics").path
 
-        let dirs = ["Box64", "Wine", "Graphics", "Graphics/MoltenVK", "Graphics/DXVK"]
+        // Only create Graphics dirs (Wine/Box64 are created by their extract functions)
+        let dirs = ["Graphics", "Graphics/MoltenVK", "Graphics/DXVK"]
         for dir in dirs {
             try fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
         }
@@ -99,11 +100,16 @@ class Box64Bridge {
         let fm = FileManager.default
         let destination = (box64InstallPath as NSString).appendingPathComponent("box64")
 
-        if fm.fileExists(atPath: destination) { return }
+        if fm.fileExists(atPath: destination) {
+            print("[Box64] box64 already exists at \(destination)")
+            return
+        }
 
         guard let bundledPath = findBundledResource("box64", isDirectory: false) else {
+            print("[Box64] box64 NOT found in bundle. Checked: \(Bundle.main.bundlePath)/BundledBinaries/box64")
             throw SetupError.box64Missing
         }
+        print("[Box64] Found bundled box64 at: \(bundledPath)")
         try fm.copyItem(atPath: bundledPath, toPath: destination)
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destination)
         print("[Box64] Extracted box64 to \(destination)")
@@ -113,13 +119,27 @@ class Box64Bridge {
         let fm = FileManager.default
         let wine64Dest = (wineInstallPath as NSString).appendingPathComponent("bin/wine64")
 
-        if fm.fileExists(atPath: wine64Dest) { return }
-
-        guard let bundledWineDir = findBundledResource("Wine", isDirectory: true) else {
-            throw SetupError.wineMissing
+        if fm.fileExists(atPath: wine64Dest) {
+            print("[Box64] Wine already extracted at \(wine64Dest)")
+            return
         }
 
+        guard let bundledWineDir = findBundledResource("Wine", isDirectory: true) else {
+            print("[Box64] Wine NOT found in bundle. Checked paths:")
+            print("  1. \(Bundle.main.path(forResource: "Wine", ofType: nil) ?? "nil")")
+            print("  2. \(Bundle.main.bundlePath)/BundledBinaries/Wine")
+            print("  3. \(Bundle.main.bundlePath)/Wine")
+            throw SetupError.wineMissing
+        }
+        print("[Box64] Found bundled Wine at: \(bundledWineDir)")
+
         if fm.fileExists(atPath: wine64Dest) { return }
+
+        // Remove pre-created empty Wine directory so copyItem won't fail (destination already exists)
+        if fm.fileExists(atPath: wineInstallPath) {
+            print("[Box64] Removing pre-existing empty Wine dir at \(wineInstallPath)")
+            try? fm.removeItem(atPath: wineInstallPath)
+        }
 
         try fm.copyItem(atPath: bundledWineDir, toPath: wineInstallPath)
 

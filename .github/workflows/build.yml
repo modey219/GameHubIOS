@@ -1,4 +1,4 @@
-name: Build GameHub iOS IPA
+name: Build MN Emulator IPA
 
 on:
   push:
@@ -318,18 +318,20 @@ jobs:
         run: rm -rf GameHub.xcodeproj
 
       - name: Generate Xcode project
-        run: xcodegen generate
+        run:           xcodegen generate 2>&1
+          echo "Generated project:"
+          ls -la *.xcodeproj 2>/dev/null || echo "No xcodeproj found"
 
       - name: Show targets
         run: |
-          xcodebuild -project GameHub.xcodeproj -list
+          xcodebuild -project MNEmulator.xcodeproj -list
 
       - name: Build iOS App
         run: |
           set -o pipefail
           xcodebuild \
-            -project GameHub.xcodeproj \
-            -scheme GameHub \
+            -project MNEmulator.xcodeproj \
+            -scheme MNEmulator \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build/DerivedData \
@@ -357,12 +359,12 @@ jobs:
 
       - name: Inject bundled binaries into .app
         run: |
-          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/GameHub.app"
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/MNEmulator.app"
           if [ ! -d "$APP_PATH" ]; then
-            APP_PATH=$(find build/DerivedData -name "GameHub.app" -type d 2>/dev/null | head -1)
+            APP_PATH=$(find build/DerivedData -name "MNEmulator.app" -type d 2>/dev/null | head -1)
           fi
           if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
-            echo "ERROR: GameHub.app not found!"
+            echo "ERROR: MNEmulator.app not found!"
             grep -i "error\|fatal\|cannot\|missing" build.log 2>/dev/null | head -30 || true
             exit 1
           fi
@@ -397,29 +399,29 @@ jobs:
 
       - name: Create IPA
         run: |
-          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/GameHub.app"
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/MNEmulator.app"
           if [ ! -d "$APP_PATH" ]; then
-            APP_PATH=$(find build/DerivedData -name "GameHub.app" -type d | head -1)
+            APP_PATH=$(find build/DerivedData -name "MNEmulator.app" -type d | head -1)
           fi
           if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
-            echo "ERROR: Cannot create IPA - GameHub.app not found"
+            echo "ERROR: Cannot create IPA - MNEmulator.app not found"
             exit 1
           fi
           rm -rf build/Payload
           mkdir -p build/Payload
-          cp -r "$APP_PATH" build/Payload/GameHub.app
+          cp -r "$APP_PATH" build/Payload/MNEmulator.app
           cd build
-          zip -r -y GameHub.ipa Payload/
+          zip -r -y MNEmulator.ipa Payload/
           echo "=== IPA info ==="
-          ls -lh GameHub.ipa
+          ls -lh MNEmulator.ipa
           echo "=== IPA size ==="
-          du -sh GameHub.ipa
+          du -sh MNEmulator.ipa
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GameHub-iOS
-          path: build/GameHub.ipa
+          name: MNEmulator-iOS
+          path: build/MNEmulator.ipa
           retention-days: 30
 
       - name: Create GitHub Release
@@ -427,12 +429,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: "GameHub iOS Build #${{ github.run_number }}"
+          name: "MN Emulator Build #${{ github.run_number }}"
           body: |
-            GameHub iOS - PC Game Emulator for iPhone & iPad
+            MN Emulator - PC Game Emulator for iPhone & iPad
             
             **Installation:**
-            1. Download GameHub.ipa below
+            1. Download MNEmulator.ipa below
             2. Install via LiveContainer, SideStore, AltStore, or TrollStore
             3. For best performance: Use StikDebug to enable JIT
             
@@ -443,7 +445,9 @@ jobs:
             - DXVK 2.6.1 (DirectX 11 to Vulkan)
             
             Supports iPhone & iPad (iOS 16+)
-          files: build/GameHub.ipa
+            
+            Created by: @R_MOX
+          files: build/MNEmulator.ipa
           prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -452,8 +456,8 @@ jobs:
         if: always()
         run: |
           echo "========================================"
-          if [ -f build/GameHub.ipa ]; then
-            SIZE=$(ls -lh build/GameHub.ipa | awk '{print $5}')
+          if [ -f build/MNEmulator.ipa ]; then
+            SIZE=$(ls -lh build/MNEmulator.ipa | awk '{print $5}')
             echo "  BUILD SUCCESS!"
             echo "  IPA size: $SIZE"
           else

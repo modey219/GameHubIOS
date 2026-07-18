@@ -87,11 +87,11 @@ class JITManager: ObservableObject {
     func getJITInstructions() -> String {
         switch jitMethod {
         case .stikdebug:
-            return "1. Install StikDebug from App Store\n2. Open StikDebug → Enable JIT\n3. Select GameHub\n4. Return to GameHub"
+            return "1. Install StikDebug from App Store\n2. Open StikDebug → Enable JIT\n3. Select MN emulator\n4. Return to MN emulator"
         case .jitless:
             return "JIT-less mode is active. Performance is reduced."
         case .sideJIT:
-            return "1. Run SideJIT server on computer\n2. Connect iPhone via USB\n3. SideJIT enables JIT for GameHub"
+            return "1. Run SideJIT server on computer\n2. Connect iPhone via USB\n3. SideJIT enables JIT for MN emulator"
         }
     }
 }

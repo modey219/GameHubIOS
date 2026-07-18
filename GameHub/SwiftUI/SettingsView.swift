@@ -104,12 +104,17 @@ struct SettingsView: View {
 
     private var aboutSection: some View {
         Section("About") {
-            HStack { Text("GameHub iOS"); Spacer(); Text("1.0.0").foregroundColor(.secondary) }
+            HStack { Text("MN emulator"); Spacer(); Text("1.0.0").foregroundColor(.secondary) }
             HStack { Text("Box64"); Spacer(); Text("0.4.0").foregroundColor(.secondary) }
-            HStack { Text("Wine"); Spacer(); Text("9.0").foregroundColor(.secondary) }
-            HStack { Text("MoltenVK"); Spacer(); Text("1.2.5").foregroundColor(.secondary) }
-            HStack { Text("DXVK"); Spacer(); Text("2.4.1").foregroundColor(.secondary) }
+            HStack { Text("Wine"); Spacer(); Text("9.21").foregroundColor(.secondary) }
+            HStack { Text("MoltenVK"); Spacer(); Text("1.4.1").foregroundColor(.secondary) }
+            HStack { Text("DXVK"); Spacer(); Text("2.6.1").foregroundColor(.secondary) }
             Link("GitHub", destination: URL(string: "https://github.com/modey219/GameHubIOS")!)
+            HStack {
+                Text("Created by: @R_MOX")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
     }
 

@@ -1,4 +1,4 @@
-name: GameHub
+name: MNEmulator
 options:
   bundleIdPrefix: com.gamehub
   deploymentTarget:
@@ -20,7 +20,7 @@ settings:
     GCC_C_LANGUAGE_STANDARD: "gnu17"
 
 targets:
-  GameHub:
+  MNEmulator:
     type: application
     platform: iOS
     sources:
@@ -40,8 +40,8 @@ targets:
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.gamehub.ios
-        PRODUCT_NAME: GameHub
+        PRODUCT_BUNDLE_IDENTIFIER: com.mnemulator.ios
+        PRODUCT_NAME: MNEmulator
         INFOPLIST_FILE: GameHub/Resources/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
         CODE_SIGN_STYLE: Manual

@@ -66,7 +66,7 @@ struct ImportGameView: View {
         VStack(spacing: 16) {
             Image(systemName: "desktopcomputer").font(.system(size: 40)).foregroundColor(.blue)
             Text("iTunes / Finder").font(.headline)
-            Text("Connect iPhone to computer → Select device → File Sharing → GameHub → Drag & drop .exe files")
+            Text("Connect iPhone to computer → Select device → File Sharing → MN emulator → Drag & drop .exe files")
                 .font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             Text(docs.path).font(.caption).foregroundColor(.secondary).textSelection(.enabled)
@@ -248,12 +248,12 @@ class SimpleHTTPServer {
     private func sendUploadPage(clientFD: Int32) {
         let html = """
         <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>GameHub File Upload</title>
+        <title>MN emulator File Upload</title>
         <style>body{font-family:-apple-system,sans-serif;max-width:600px;margin:40px auto;padding:20px;background:#1a1a2e;color:#e0e0e0}
         h1{color:#00d4ff}input[type=file]{padding:10px;background:#16213e;border:1px solid #0f3460;border-radius:8px;color:#e0e0e0;width:100%}
         button{background:#00d4ff;color:#000;border:none;padding:12px 24px;border-radius:8px;font-size:16px;cursor:pointer;margin-top:10px;width:100%}
         button:hover{background:#00b8d4}.info{color:#888;font-size:12px;margin-top:20px}</style></head>
-        <body><h1>GameHub File Upload</h1>
+        <body><h1>MN emulator File Upload</h1>
         <p>Select game files (.exe, .iso, .rar, .zip) to upload:</p>
         <form action="/upload" method="post" enctype="multipart/form-data">
         <input type="file" name="file" multiple><br><button type="submit">Upload</button></form>
@@ -316,7 +316,7 @@ class SimpleHTTPServer {
         <title>Upload Complete</title>
         <style>body{font-family:-apple-system,sans-serif;max-width:400px;margin:40px auto;padding:20px;background:#1a1a2e;color:#e0e0e0;text-align:center}
         h1{color:#4CAF50}</style></head>
-        <body><h1>Upload Complete!</h1><p>Files saved to GameHub.</p>
+        <body><h1>Upload Complete!</h1><p>Files saved to MN emulator.</p>
         <a href="/" style="color:#00d4ff">Upload more files</a></body></html>
         """
         let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"

@@ -37,7 +37,7 @@ class ContainerManager: ObservableObject {
         }
     }
 
-    private let containersKey = "GameHubContainers"
+    private let containersKey = "MNEmulatorContainers"
     private let fileManager = FileManager.default
 
     init() {

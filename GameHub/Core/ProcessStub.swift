@@ -10,6 +10,12 @@ class iOSPipe {
         readHandle = FileHandle(fileDescriptor: fds[0], closeOnDealloc: true)
         writeHandle = FileHandle(fileDescriptor: fds[1], closeOnDealloc: true)
     }
+
+    func readOutput(timeout: TimeInterval = 2.0) -> String {
+        writeHandle.closeFile()
+        let data = readHandle.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8) ?? "(binary output)"
+    }
 }
 
 class Process {
@@ -28,12 +34,19 @@ class Process {
 
     func run() throws {
         guard let url = executableURL else {
-            throw NSError(domain: "Process", code: -1, userInfo: [NSLocalizedDescriptionKey: "No executable URL"])
+            throw NSError(domain: "Process", code: -1, userInfo: [NSLocalizedDescriptionKey: "No executable URL set"])
         }
 
         let path = url.path
         guard FileManager.default.fileExists(atPath: path) else {
             throw NSError(domain: "Process", code: -2, userInfo: [NSLocalizedDescriptionKey: "Binary not found: \(path)"])
+        }
+
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        if let perm = attrs?[.posixPermissions] as? Int {
+            if perm & 0o111 == 0 {
+                try? FileManager.default.setAttributes([.posixPermissions: perm | 0o755], ofItemAtPath: path)
+            }
         }
 
         let args = arguments ?? []
@@ -44,19 +57,26 @@ class Process {
         cArgs.append(nil)
 
         var cEnv: [UnsafeMutablePointer<CChar>?] = []
-        for (key, value) in env { cEnv.append(strdup("\(key)=\(value)")) }
+        for (key, value) in env.sorted(by: { $0.key < $1.key }) {
+            cEnv.append(strdup("\(key)=\(value)"))
+        }
         cEnv.append(nil)
 
         var fileActions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&fileActions)
 
+        var outFd: Int32 = -1
+        var errFd: Int32 = -1
+
         if let outPipe = standardOutput as? iOSPipe {
-            posix_spawn_file_actions_adddup2(&fileActions, outPipe.writeHandle.fileDescriptor, STDOUT_FILENO)
-            posix_spawn_file_actions_addclose(&fileActions, outPipe.writeHandle.fileDescriptor)
+            outFd = outPipe.writeHandle.fileDescriptor
+            posix_spawn_file_actions_adddup2(&fileActions, outFd, STDOUT_FILENO)
+            posix_spawn_file_actions_addclose(&fileActions, outFd)
         }
         if let errPipe = standardError as? iOSPipe {
-            posix_spawn_file_actions_adddup2(&fileActions, errPipe.writeHandle.fileDescriptor, STDERR_FILENO)
-            posix_spawn_file_actions_addclose(&fileActions, errPipe.writeHandle.fileDescriptor)
+            errFd = errPipe.writeHandle.fileDescriptor
+            posix_spawn_file_actions_adddup2(&fileActions, errFd, STDERR_FILENO)
+            posix_spawn_file_actions_addclose(&fileActions, errFd)
         }
 
         var localPid: pid_t = 0
@@ -67,21 +87,19 @@ class Process {
         posix_spawn_file_actions_destroy(&fileActions)
 
         guard result == 0 else {
+            let errStr = String(cString: strerror(result))
             throw NSError(domain: "Process", code: Int(result),
-                          userInfo: [NSLocalizedDescriptionKey: "posix_spawn failed: \(result)"])
+                          userInfo: [NSLocalizedDescriptionKey: "posix_spawn failed (\(result)): \(errStr)\nBinary: \(path)"])
         }
 
         pid = localPid
         _isRunning = true
 
-        if let outPipe = standardOutput as? iOSPipe { outPipe.writeHandle.closeFile() }
-        if let errPipe = standardError as? iOSPipe { errPipe.writeHandle.closeFile() }
-
         DispatchQueue.global().async { [weak self] in
             guard let self = self else { return }
             var status: Int32 = 0
             waitpid(self.pid, &status, 0)
-            self.terminationStatus = Int32((status >> 8) & 0xFF)
+            self.terminationStatus = WIFEXITED(status) ? WEXITSTATUS(status) : Int32(-1)
             self._isRunning = false
             DispatchQueue.main.async { self.terminationHandler?(self) }
         }
@@ -91,7 +109,7 @@ class Process {
         if pid > 0 {
             var status: Int32 = 0
             waitpid(pid, &status, 0)
-            terminationStatus = Int32((status >> 8) & 0xFF)
+            terminationStatus = WIFEXITED(status) ? WEXITSTATUS(status) : Int32(-1)
             _isRunning = false
         }
     }

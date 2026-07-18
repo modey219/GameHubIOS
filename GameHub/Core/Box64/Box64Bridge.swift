@@ -235,36 +235,37 @@ class Box64Bridge {
         }
     }
 
-    func launchWine(wine64Path: String, executablePath: String, containerPath: String, environment: [String: String]) -> Process? {
+    struct LaunchResult {
+        var process: Process?
+        var error: String?
+        var box64Output: String?
+    }
+
+    func launchWine(wine64Path: String, executablePath: String, containerPath: String, environment: [String: String]) -> LaunchResult {
+        var result = LaunchResult()
+
         guard isInitialized else {
-            print("[Box64] Not initialized")
-            return nil
+            result.error = "Box64 not initialized (ctx is nil)"
+            return result
         }
 
         let box64Binary = box64InstallPath + "/box64"
         guard FileManager.default.fileExists(atPath: box64Binary) else {
-            print("[Box64] Binary not found at \(box64Binary)")
-            return nil
+            result.error = "Box64 binary not found at: \(box64Binary)"
+            return result
         }
 
-        setenv("WINEPREFIX", containerPath, 1)
-        setenv("HOME", containerPath, 1)
-        setenv("WINEARCH", "win64", 1)
-        setenv("WINEDEBUG", "-all", 1)
-        setenv("WINEESYNC", "1", 1)
-        setenv("WINEFSYNC", "1", 1)
-        setenv("STAGING_SHARED_MEMORY", "1", 1)
-        setenv("DXVK_HUD", "fps", 1)
-        setenv("DXVK_ASYNC", "1", 1)
-        setenv("WINE_DLL Overrides", "dxgi,d3d11,d3d9=native,builtin", 1)
-
-        for (key, value) in environment {
-            setenv(key, value, 1)
+        guard FileManager.default.fileExists(atPath: wine64Path) else {
+            result.error = "Wine binary not found at: \(wine64Path)"
+            return result
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: box64Binary)
-        process.arguments = [wine64Path, executablePath]
+        let attrs = try? FileManager.default.attributesOfItem(atPath: box64Binary)
+        if let perm = attrs?[.posixPermissions] as? Int {
+            if perm & 0o111 == 0 {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: box64Binary)
+            }
+        }
 
         var env = ProcessInfo.processInfo.environment
         env["WINEPREFIX"] = containerPath
@@ -276,24 +277,48 @@ class Box64Bridge {
         env["STAGING_SHARED_MEMORY"] = "1"
         env["DXVK_HUD"] = "fps"
         env["DXVK_ASYNC"] = "1"
+        env["DXVK_LOG_LEVEL"] = "none"
         env["WINE_DLL Overrides"] = "dxgi,d3d11,d3d9=native,builtin"
+        env["DISPLAY"] = ":0"
 
         for (key, value) in environment {
             env[key] = value
         }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: box64Binary)
+        process.arguments = [wine64Path, executablePath]
         process.environment = env
 
         let outPipe = iOSPipe()
+        let errPipe = iOSPipe()
         process.standardOutput = outPipe
-        process.standardError = outPipe
+        process.standardError = errPipe
 
         do {
             try process.run()
             print("[Box64] Launched: box64 \(wine64Path) \(executablePath)")
-            return process
+
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+                let out = outPipe.readOutput(timeout: 1)
+                let err = errPipe.readOutput(timeout: 1)
+                if !out.isEmpty || !err.isEmpty {
+                    print("[Box64] stdout: \(out)")
+                    print("[Box64] stderr: \(err)")
+                }
+            }
+
+            result.process = process
+            return result
         } catch {
+            let errOut = errPipe.readOutput(timeout: 0.5)
+            result.error = "posix_spawn failed: \(error.localizedDescription)"
+            if !errOut.isEmpty {
+                result.error! += "\n\nOutput: \(errOut)"
+            }
+            result.box64Output = errOut
             print("[Box64] Launch failed: \(error)")
-            return nil
+            return result
         }
     }
 

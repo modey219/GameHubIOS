@@ -330,26 +330,27 @@ struct GameContainerView: View {
 
         jitManager.enableJIT()
 
-        let process = Box64Bridge.shared.launchWine(
+        let launchResult = Box64Bridge.shared.launchWine(
             wine64Path: wine64Path,
             executablePath: finalExePath,
             containerPath: containerPath,
             environment: container.environment
         )
 
-        if let process = process {
+        if let process = launchResult.process {
             gameProcess = process
             process.terminationHandler = { proc in
                 DispatchQueue.main.async {
                     self.isRunning = false
                     if proc.terminationStatus != 0 {
-                        self.errorMessage = "Wine process exited with code \(proc.terminationStatus)\n\nCheck that the .exe path is correct and the game files are in the container."
+                        self.errorMessage = "Wine exited with code \(proc.terminationStatus)\n\nexe: \(finalExePath)\n\nCheck that the .exe path is correct and the game files are in the container."
                         self.showError = true
                     }
                 }
             }
         } else {
-            errorMessage = "Failed to launch Box64+Wine.\n\nBox64: \(box64Path)\nWine: \(wine64Path)\n\nMake sure both binaries exist and are executable."
+            let detail = launchResult.error ?? "Unknown error"
+            errorMessage = "Failed to launch Box64+Wine:\n\n\(detail)\n\nBox64: \(box64Path)\nWine: \(wine64Path)"
             showError = true
         }
 

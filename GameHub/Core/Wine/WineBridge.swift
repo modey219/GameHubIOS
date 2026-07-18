@@ -53,7 +53,7 @@ class WineBridge {
         setenv("STAGING_SHARED_MEMORY", "1", 1)
     }
 
-    func launchGame(executablePath: String, arguments: [String] = [], containerPath: String? = nil) -> Process? {
+    func launchGame(executablePath: String, arguments: [String] = [], containerPath: String? = nil) -> Box64Bridge.LaunchResult {
         let targetPrefix = containerPath ?? winePrefix
         let wine64Path = (containerPath != nil)
             ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]

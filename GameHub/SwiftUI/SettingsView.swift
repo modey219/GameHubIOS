@@ -110,11 +110,14 @@ struct SettingsView: View {
             HStack { Text("MoltenVK"); Spacer(); Text("1.4.1").foregroundColor(.secondary) }
             HStack { Text("DXVK"); Spacer(); Text("2.6.1").foregroundColor(.secondary) }
             Link("GitHub", destination: URL(string: "https://github.com/modey219/GameHubIOS")!)
-            HStack {
-                Text("Created by: @R_MOX")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Created by @R_MOX")
+                    .font(.subheadline).bold()
+                    .foregroundColor(.blue)
+                Text("PC Game Emulator for iPhone & iPad")
+                    .font(.caption).foregroundColor(.secondary)
             }
+            .padding(.vertical, 4)
         }
     }
 

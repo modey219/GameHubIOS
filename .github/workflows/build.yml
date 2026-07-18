@@ -34,6 +34,7 @@ jobs:
 
       - name: Build iOS App
         run: |
+          set -o pipefail
           xcodebuild \
             -project GameHub.xcodeproj \
             -scheme GameHub \
@@ -41,12 +42,12 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
-            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
             ENABLE_BITCODE=NO \
+            DEVELOPMENT_TEAM="" \
             2>&1 | tee build.log
-          
-          echo "=== Build exit code: $? ==="
 
       - name: Verify build output
         run: |

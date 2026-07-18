@@ -31,9 +31,10 @@ jobs:
         run: |
           xcodebuild \
             -project GameHub.xcodeproj \
-            -target GameHub \
+            -scheme GameHub \
             -configuration Release \
             -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \

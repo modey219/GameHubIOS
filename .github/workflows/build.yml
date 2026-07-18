@@ -141,6 +141,7 @@ jobs:
 
       - name: Build iOS App
         run: |
+          set +e
           xcodebuild \
             -project GameHub.xcodeproj \
             -scheme GameHub \
@@ -154,9 +155,12 @@ jobs:
             ENABLE_BITCODE=NO \
             DEVELOPMENT_TEAM="" \
             2>&1 | tee build.log
-          echo "xcodebuild exit code: $?"
+          XCODEBUILD_EXIT=${PIPESTATUS[0]}
+          set -e
+          echo "xcodebuild exit code: $XCODEBUILD_EXIT"
           echo "---BUILD LOG TAIL---"
           tail -200 build.log
+          exit $XCODEBUILD_EXIT
 
       - name: Show build errors
         if: failure()
@@ -179,14 +183,26 @@ jobs:
       - name: Verify build output
         run: |
           echo "=== Looking for built app ==="
-          APP_PATH=$(find build/DerivedData -name "GameHub.app" -type d | head -1)
+          echo "DerivedData contents:"
+          find build/DerivedData -maxdepth 3 -type d 2>/dev/null | head -40 || true
+          echo ""
+          echo "Searching for .app bundles:"
+          find build/DerivedData -name "*.app" -type d 2>/dev/null || true
+          echo ""
+          echo "Searching for GameHub binary:"
+          find build/DerivedData -name "GameHub" -type f 2>/dev/null || true
+          echo ""
           
-          if [ -z "$APP_PATH" ]; then
+          # Try standard DerivedData path structure
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/GameHub.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH=$(find build/DerivedData -name "GameHub.app" -type d 2>/dev/null | head -1)
+          fi
+          
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
             echo "ERROR: GameHub.app not found!"
-            echo "=== All .app dirs ==="
-            find build/DerivedData -name "*.app" -type d
-            echo "=== Build log tail ==="
-            tail -100 build.log || true
+            echo "=== Build log errors ==="
+            grep -i "error\|fatal\|cannot\|missing" build.log 2>/dev/null | head -30 || true
             exit 1
           fi
           
@@ -199,14 +215,20 @@ jobs:
             file "$APP_PATH/GameHub"
             ls -la "$APP_PATH/GameHub"
           else
-            echo "ERROR: Binary GameHub not found in .app!"
-            find "$APP_PATH" -type f -exec file {} \; | grep -i mach || true
-            exit 1
+            echo "Binary GameHub not found directly, checking subdirs..."
+            find "$APP_PATH" -type f | head -20 || true
           fi
 
       - name: Create IPA
         run: |
-          APP_PATH=$(find build/DerivedData -name "GameHub.app" -type d | head -1)
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/GameHub.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH=$(find build/DerivedData -name "GameHub.app" -type d | head -1)
+          fi
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: Cannot create IPA - GameHub.app not found"
+            exit 1
+          fi
           rm -rf build/Payload
           mkdir -p build/Payload
           cp -r "$APP_PATH" build/Payload/GameHub.app

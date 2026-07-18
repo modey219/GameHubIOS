@@ -55,9 +55,6 @@ class Process {
         var fileActions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&fileActions)
 
-        var outReadFd: Int32 = -1
-        var errReadFd: Int32 = -1
-
         if let outPipe = standardOutput as? iOSPipe {
             posix_spawn_file_actions_adddup2(&fileActions, outPipe.writeHandle.fileDescriptor, STDOUT_FILENO)
             posix_spawn_file_actions_addclose(&fileActions, outPipe.writeHandle.fileDescriptor)

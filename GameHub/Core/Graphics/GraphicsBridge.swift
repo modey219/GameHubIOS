@@ -123,7 +123,7 @@ class GraphicsBridge {
             "maxTextureHeight": device.supportsFamily(.apple7) ? 16384 : 8192,
             "supportsRaytracing": false,
             "supportsBarycentricCoords": false,
-            "supportsCounterSampling": device.supportsCounterSampling(.stage0),
+            "supportsCounterSampling": false,
             "hasUnifiedMemory": device.hasUnifiedMemory,
             "maxThreadgroupMemoryLengthBytes": device.maxThreadgroupMemoryLength,
         ]

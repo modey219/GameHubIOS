@@ -5,9 +5,22 @@ struct ContentView: View {
     @EnvironmentObject var jitManager: JITManager
     @EnvironmentObject var settingsManager: SettingsManager
     @State private var selectedTab = 0
-    @State private var showJITAlert = false
+    @State private var showWelcome = true
 
     var body: some View {
+        Group {
+            if showWelcome {
+                WelcomeView()
+            } else {
+                mainTabView
+            }
+        }
+        .onAppear {
+            checkFirstLaunch()
+        }
+    }
+
+    private var mainTabView: some View {
         TabView(selection: $selectedTab) {
             GameLibraryView()
                 .tabItem {
@@ -34,25 +47,21 @@ struct ContentView: View {
                 .tag(3)
         }
         .accentColor(.blue)
-        .onAppear {
-            checkJITStatus()
-        }
-        .alert("JIT Not Enabled", isPresented: $showJITAlert) {
-            Button("Enable JIT") {
-                jitManager.enableJIT()
-            }
-            Button("Continue Without JIT", role: .cancel) {
-                jitManager.enableJITlessMode()
-            }
-        } message: {
-            Text("JIT is required for optimal performance. Would you like to enable it via StikDebug?")
-        }
     }
 
-    private func checkJITStatus() {
-        jitManager.requestJITIfNeeded { enabled in
-            if !enabled {
-                showJITAlert = true
+    private func checkFirstLaunch() {
+        let hasLaunched = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
+        if hasLaunched {
+            showWelcome = false
+        } else {
+            let fm = FileManager.default
+            let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
+            let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/wine64").path)
+
+            if box64Exists && wineExists {
+                showWelcome = false
+                UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
             }
         }
     }

@@ -1,0 +1,16 @@
+#ifndef _COMPAT_SYS_PRCTL_H
+#define _COMPAT_SYS_PRCTL_H
+#define PR_SET_PDEATHSIG 1
+#define PR_GET_PDEATHSIG 2
+#define PR_GET_DUMPABLE 3
+#define PR_SET_DUMPABLE 4
+#define PR_GET_UNALIGN 5
+#define PR_SET_UNALIGN 6
+#define PR_GET_KEEPCAPS 7
+#define PR_SET_KEEPCAPS 8
+#define PR_SET_NAME 15
+#define PR_GET_NAME 16
+#define PR_SET_MM 35
+#define PR_SET_VMA 0x53564d41
+#define PR_SET_VMA_ANON_NAME 0
+#endif

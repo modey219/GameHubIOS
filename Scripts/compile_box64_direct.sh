@@ -16,10 +16,15 @@ echo "========================================"
 
 SDK=$(xcrun --sdk iphoneos --show-sdk-path)
 CC=$(xcrun --sdk iphoneos --find clang)
+
+# Compat headers MUST be first so our Linux stubs override missing system headers
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+COMPAT_DIR="$SCRIPT_DIR/../GameHub/Native/Compat"
+
 CFLAGS="-arch arm64 -mios-version-min=16.0 -isysroot $SDK -O2 -fembed-bitcode-marker"
 CFLAGS="$CFLAGS -DARM64 -DDYNAREC -DNOGIT -D__IOS__=1 -DTARGET_IPHONE=1"
 CFLAGS="$CFLAGS -DBAD_SIGNAL=1 -D_MAP_JIT=1 -DBOX64_ENV=1"
-CFLAGS="$CFLAGS -I$BOX64_SRC/src/include -I$BOX64_SRC/src"
+CFLAGS="$CFLAGS -I$COMPAT_DIR -I$BOX64_SRC/src/include -I$BOX64_SRC/src"
 CFLAGS="$CFLAGS -Wno-unused-variable -Wno-unused-function -Wno-incompatible-pointer-types"
 CFLAGS="$CFLAGS -Wno-int-conversion -Wno-pointer-sign -Wno-implicit-function-declaration"
 CFLAGS="$CFLAGS -Wno-deprecated-declarations -Wno-missing-declarations"

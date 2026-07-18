@@ -40,19 +40,6 @@
 
 ---
 
-### الطريقة الثانية: بناء محلي (إذا عندك Mac)
-
-```bash
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
-cd GameHubiOS
-chmod +x Scripts/*.sh
-bash Scripts/build_all.sh
-open GameHub.xcodeproj
-# Cmd + R
-```
-
----
-
 ## ربط اللعبة
 
 ### إضافة لعبة

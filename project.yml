@@ -15,6 +15,8 @@ settings:
     ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     ENABLE_BITCODE: "NO"
     CODE_SIGN_STYLE: Manual
+    CLANG_C_LANGUAGE_STANDARD: "gnu17"
+    GCC_C_LANGUAGE_STANDARD: "gnu17"
 
 targets:
   GameHub:
@@ -37,3 +39,14 @@ targets:
         CODE_SIGN_IDENTITY: ""
         CODE_SIGNING_REQUIRED: "NO"
         CODE_SIGNING_ALLOWED: "NO"
+        OTHER_LDFLAGS:
+          - "-lpthread"
+          - "-lresolv"
+          - "-ldl"
+          - "-lrt"
+        OTHER_CFLAGS:
+          - "-I$(SRCROOT)/GameHub/Native/Include"
+        SWIFT_OBJC_BRIDGING_HEADER: "GameHub/GameHub-Bridging-Header.h"
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - "__IOS__=1"
+          - "MAP_JIT_WORKAROUND=1"

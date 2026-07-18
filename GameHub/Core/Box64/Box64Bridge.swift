@@ -5,6 +5,7 @@ class Box64Bridge {
 
     private var isInitialized = false
     private var box64InstallPath: String = ""
+    private var ctx: OpaquePointer?
 
     struct Box64Config {
         var enableDynarec: Bool = true
@@ -31,6 +32,12 @@ class Box64Bridge {
         box64InstallPath = documentsPath.appendingPathComponent("Box64").path
         setupBox64Binary()
         setupEnvironment()
+
+        ctx = box64_create()
+        if let ctx = ctx {
+            box64_init(ctx, box64InstallPath)
+        }
+
         isInitialized = true
     }
 
@@ -82,6 +89,21 @@ class Box64Bridge {
             return nil
         }
 
+        setenv("WINEPREFIX", containerPath, 1)
+        setenv("HOME", containerPath, 1)
+        setenv("WINEARCH", "win64", 1)
+        setenv("WINEDEBUG", "-all", 1)
+        setenv("WINEESYNC", "1", 1)
+        setenv("WINEFSYNC", "1", 1)
+        setenv("STAGING_SHARED_MEMORY", "1", 1)
+        setenv("DXVK_HUD", "fps", 1)
+        setenv("DXVK_ASYNC", "1", 1)
+        setenv("WINE_DLL Overrides", "dxgi,d3d11,d3d9=native,builtin", 1)
+
+        for (key, value) in environment {
+            setenv(key, value, 1)
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: box64Binary)
         process.arguments = [wine64Path, executablePath]
@@ -89,17 +111,14 @@ class Box64Bridge {
         var env = ProcessInfo.processInfo.environment
         env["WINEPREFIX"] = containerPath
         env["HOME"] = containerPath
-        env["DISPLAY"] = ":0"
         env["WINEARCH"] = "win64"
         env["WINEDEBUG"] = "-all"
         env["WINEESYNC"] = "1"
         env["WINEFSYNC"] = "1"
         env["STAGING_SHARED_MEMORY"] = "1"
-        env["MVK_CONFIG_LOG_LEVEL"] = "0"
-        env["DXVK_LOG_LEVEL"] = "none"
         env["DXVK_HUD"] = "fps"
-        env["VKD3D_CONFIG"] = "dxr"
-        env["DYLD_LIBRARY_PATH"] = containerPath + "/lib:" + (env["DYLD_LIBRARY_PATH"] ?? "")
+        env["DXVK_ASYNC"] = "1"
+        env["WINE_DLL Overrides"] = "dxgi,d3d11,d3d9=native,builtin"
 
         for (key, value) in environment {
             env[key] = value
@@ -140,6 +159,11 @@ class Box64Bridge {
         }
     }
 
+    func getEmulatorStatus() -> String {
+        guard let ctx = ctx else { return "not initialized" }
+        return String(cString: box64_get_status(ctx))
+    }
+
     func updateConfig(_ updater: (inout Box64Config) -> Void) {
         updater(&config)
         setupEnvironment()
@@ -148,5 +172,13 @@ class Box64Bridge {
     func getBox64Version() -> String {
         let result = executeX86Binary(path: "", arguments: ["--version"])
         return result == 0 ? "installed" : "not found"
+    }
+
+    func deinitialize() {
+        if let ctx = ctx {
+            box64_destroy(ctx)
+            self.ctx = nil
+        }
+        isInitialized = false
     }
 }

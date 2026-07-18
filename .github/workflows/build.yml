@@ -165,13 +165,267 @@ jobs:
               echo "Missing symbols to stub: $MISSING_COUNT"
               head -30 /tmp/missing_syms.txt
               
-              # Generate stubs C file
+              # Generate stubs C file — skip standard C/POSIX/system symbols
+              cat > /tmp/skip_syms.txt << 'SKIPEOF'
+abort
+abs
+accept
+access
+acos
+acosf
+asin
+asinf
+atan
+atan2
+atan2f
+atanf
+atof
+atoi
+atol
+bzero
+cabs
+cacos
+casin
+catan
+cbrt
+cbrtf
+ceil
+ceilf
+cfree
+chdir
+chmod
+clock
+close
+closedir
+cos
+cosf
+cosh
+coshf
+creat
+difftime
+dlopen
+dlsym
+dlclose
+dlerror
+dup
+dup2
+erf
+erfc
+erff
+exit
+exp
+exp2
+expf
+expm1
+fabs
+fabsf
+fclose
+fcntl
+fdopen
+feof
+ferror
+fflush
+fgetc
+fgetpos
+fgets
+fileno
+flock
+floor
+floorf
+fmod
+fmodf
+fopen
+fork
+fprintf
+fputc
+fputs
+fread
+free
+frexp
+fscanf
+fseek
+fsetpos
+fstat
+ftell
+fwrite
+gamma
+getcwd
+getenv
+getpid
+getppid
+getuid
+geteuid
+getgid
+getegid
+gmtime
+hypot
+hypotf
+ioctl
+isalnum
+isalpha
+isatty
+iscntrl
+isdigit
+isgraph
+islower
+isprint
+ispunct
+isspace
+isupper
+isxdigit
+labs
+lchown
+ldexp
+ldexpf
+lgamma
+link
+localtime
+log
+log10
+log10f
+log1p
+log2
+log2f
+logf
+lseek
+lstat
+malloc
+memchr
+memcmp
+memcpy
+memmove
+memset
+mkdir
+mktime
+mmap
+munmap
+mprotect
+madvise
+modf
+nanosleep
+open
+opendir
+pathconf
+perror
+pipe
+poll
+pow
+powf
+printf
+putc
+putchar
+puts
+putenv
+pwrite
+qsort
+raise
+rand
+readdir
+read
+readlink
+realloc
+realpath
+remove
+rename
+rmdir
+round
+roundf
+scanf
+select
+setbuf
+setenv
+setjmp
+setpgid
+setrlimit
+setsockopt
+setuid
+signal
+sigaction
+sigprocmask
+sinf
+sinh
+sleep
+snprintf
+socket
+socketpair
+sprintf
+sqrt
+sqrtf
+srand
+sscanf
+stat
+strcasecmp
+strcat
+strchr
+strcmp
+strcpy
+strcspn
+strdup
+strerror
+strlcat
+strlcpy
+strlen
+strncasecmp
+strncat
+strncmp
+strncpy
+strndup
+strpbrk
+strrchr
+strspn
+strstr
+strtod
+strtof
+strtok
+strtol
+strtoll
+strtoul
+strtoull
+symlink
+sysconf
+tan
+tanf
+tanh
+tanhf
+time
+tmpfile
+tolower
+toupper
+umask
+uname
+ungetc
+unlink
+unsetenv
+usleep
+vfork
+vfprintf
+vprintf
+vsnprintf
+vsprintf
+wait
+waitpid
+write
+writev
+SKIPEOF
+              
               {
                   echo '#include <stdint.h>'
-                  echo '#include <string.h>'
+                  echo '#include <stdlib.h>'
+                  echo '#undef memcpy'
+                  echo '#undef memset'
+                  echo '#undef memmove'
+                  echo '#undef bzero'
+                  echo '#undef memcmp'
+                  echo '#undef strcpy'
+                  echo '#undef strncpy'
+                  echo '#undef strcat'
                   echo ''
                   while IFS= read -r sym; do
                       [ -z "$sym" ] && continue
+                      # Skip if in skip list
+                      grep -qFx "$sym" /tmp/skip_syms.txt 2>/dev/null && continue
+                      # Skip symbols starting with underscore (compiler internals)
+                      case "$sym" in _*) continue;; esac
                       echo "int $sym(void) { return 0; }"
                   done < /tmp/missing_syms.txt
               } > auto_stubs.c
@@ -179,9 +433,9 @@ jobs:
               STUB_LINES=$(wc -l < auto_stubs.c)
               echo "Generated $STUB_LINES lines of stubs"
               
-              # Compile stubs
+              # Compile stubs (suppress all warnings — these are intentionally wrong signatures)
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
-                  -Wno-implicit-function-declaration -Wno-int-conversion \
+                  -w \
                   -c auto_stubs.c -o auto_stubs.o
               
               # Link as executable with stubs

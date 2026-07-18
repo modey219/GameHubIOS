@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ImportGameView: View {
     @EnvironmentObject var containerManager: ContainerManager

@@ -1,7 +1,8 @@
 import Foundation
 import UIKit
+import Combine
 
-class JITManager {
+class JITManager: ObservableObject {
     static let shared = JITManager()
 
     @Published var isJITEnabled = false
@@ -30,7 +31,7 @@ class JITManager {
             case .stikdebug: return "Enables JIT via StikDebug. Requires StikDebug app installed."
             case .jitless: return "Run without JIT (slower). Compatible with all devices."
             case .sideJIT: return "Enable JIT via SideJIT server."
-            case .trollStore: return "Permanent JIT via TrollStore (requires jailbreak or TrollStore)."
+            case .trollStore: return "Permanent JIT via TrollStore."
             case .altJIT: return "Alternative JIT enablement method."
             }
         }
@@ -45,8 +46,7 @@ class JITManager {
         case unsupported
     }
 
-    private var jitProcess: Process?
-    private var checkTimer: Timer?
+    init() {}
 
     func enableJIT() {
         jitStatus = .enabling
@@ -67,7 +67,6 @@ class JITManager {
 
     private func enableViaStikDebug() {
         let bundleID = Bundle.main.bundleIdentifier ?? "com.gamehub.ios"
-
         let stikdebugURL = URL(string: "stikdebug://enable-jit?bundle=\(bundleID)")!
 
         if UIApplication.shared.canOpenURL(stikdebugURL) {
@@ -87,22 +86,8 @@ class JITManager {
     }
 
     private func enableViaStikDebugAlternative() {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/task_for_pid")
-        process.arguments = ["0"]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        do {
-            try process.run()
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                self?.checkJITStatus()
-            }
-        } catch {
-            jitStatus = .error("StikDebug not available: \(error.localizedDescription)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            self?.checkJITStatus()
         }
     }
 
@@ -126,7 +111,6 @@ class JITManager {
 
     private func enableViaAltJIT() {
         let bundleID = Bundle.main.bundleIdentifier ?? "com.gamehub.ios"
-
         if let url = URL(string: "altjit://enable?bundle=\(bundleID)") {
             UIApplication.shared.open(url) { [weak self] success in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -136,7 +120,7 @@ class JITManager {
         }
     }
 
-    private func enableJITlessMode() {
+    func enableJITlessMode() {
         setenv("BOX64_DYNAREC", "0", 1)
         setenv("BOX64_JITLESS", "1", 1)
         jitStatus = .enabled
@@ -146,7 +130,6 @@ class JITManager {
 
     private func verifyJIT() {
         checkJITStatus()
-
         if !isJITEnabled {
             DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
                 self?.checkJITStatus()
@@ -157,7 +140,6 @@ class JITManager {
     private func checkJITStatus() {
         let pid = ProcessInfo.processInfo.processIdentifier
         let result = checkJITEnabled(pid: pid)
-
         DispatchQueue.main.async {
             self.isJITEnabled = result
             self.jitStatus = result ? .enabled : .disabled
@@ -165,23 +147,16 @@ class JITManager {
     }
 
     private func checkJITEnabled(pid: Int32) -> Bool {
-        var info = kinfo_proc()
-        var size = MemoryLayout<kinfo_proc>.stride
-        var mib = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-
-        let result = sysctl(&mib, 4, &info, &size, nil, 0)
-        guard result == 0 else { return false }
-
-        let flags = info.kp_proc.p_flag
-        let hasJIT = (flags & P_JIT) != 0
-        return hasJIT
+        // Simple heuristic: check if BOX64_DYNAREC is set
+        if let dynarec = getenv("BOX64_DYNAREC"), String(cString: dynarec) == "1" {
+            return true
+        }
+        return false
     }
 
     func disableJIT() {
         isJITEnabled = false
         jitStatus = .disabled
-        jitProcess?.terminate()
-        jitProcess = nil
     }
 
     func requestJITIfNeeded(completion: @escaping (Bool) -> Void) {
@@ -189,9 +164,7 @@ class JITManager {
             completion(true)
             return
         }
-
         enableJIT()
-
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             completion(self?.isJITEnabled ?? false)
         }
@@ -206,8 +179,6 @@ class JITManager {
             3. Select GameHub from the app list
             4. Wait for JIT to be enabled
             5. Return to GameHub - JIT should now be active
-            
-            If JIT fails, try restarting both apps.
             """
         case .jitless:
             return """
@@ -234,15 +205,4 @@ class JITManager {
             """
         }
     }
-}
-
-import MachO
-
-private let P_JIT: Int32 = 0x0800
-private let CTL_KERN: Int32 = 1
-private let KERN_PROC: Int32 = 14
-private let KERN_PROC_PID: Int32 = 1
-
-private struct kinfo_proc {
-    var kp_proc: (p_flag: Int32, p_stat: Int32, p_comm: (Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8, Int8), p_priority: Int32, p_usrpri: Int32, p_nice: Int32, p_estcpu: UInt32, p_slptime: UInt32, p_realtick: UInt32, p_start: (UInt32, UInt32), p_cpticks: Int32, p_ctime: UInt32)
 }

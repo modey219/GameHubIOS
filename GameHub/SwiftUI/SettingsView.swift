@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var settingsManager: SettingsManager
@@ -192,12 +193,12 @@ struct SettingsView: View {
     }
 
     private func exportSettings() {
-        if let data = try? JSONEncoder().encode(settingsManager) {
-            let activityVC = UIActivityViewController(activityItems: [data], applicationActivities: nil)
-            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let root = scene.windows.first?.rootViewController {
-                root.present(activityVC, animated: true)
-            }
+        let defaults = UserDefaults.standard
+        guard let data = try? JSONSerialization.data(withJSONObject: defaults.dictionaryRepresentation(), options: .prettyPrinted) else { return }
+        let activityVC = UIActivityViewController(activityItems: [data], applicationActivities: nil)
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = scene.windows.first?.rootViewController {
+            root.present(activityVC, animated: true)
         }
     }
 

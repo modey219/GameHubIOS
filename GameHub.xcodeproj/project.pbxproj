@@ -25,6 +25,7 @@
 		AA000017 /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000017; };
 		AA000018 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB000018; };
 		AA000019 /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = AB000019; };
+		AA000020 /* ProcessStub.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000021; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +49,7 @@
 		AB000018 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AB000019 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders.metal; sourceTree = "<group>"; };
 		AB000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AB000021 /* ProcessStub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessStub.swift; sourceTree = "<group>"; };
 		AC000001 /* GameHub.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GameHub.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -90,6 +92,7 @@
 		AD000004 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				AB000021 /* ProcessStub.swift */,
 				AD000005 /* Box64 */,
 				AD000006 /* Wine */,
 				AD000007 /* Graphics */,
@@ -169,7 +172,7 @@
 				AA000001, AA000002, AA000003, AA000004, AA000005,
 				AA000006, AA000007, AA000008, AA000009, AA000010,
 				AA000011, AA000012, AA000013, AA000014, AA000015,
-				AA000016, AA000017, AA000019,
+				AA000016, AA000017, AA000019, AA000020,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -287,7 +290,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = GameHub/Info.plist;
+				INFOPLIST_FILE = GameHub/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GameHub;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -317,7 +320,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = GameHub/Info.plist;
+				INFOPLIST_FILE = GameHub/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GameHub;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

@@ -44,6 +44,6 @@ typedef struct {
     char wine_version[64];
 } box64_status_t;
 
-box64_status_t box64_get_status(box64_context_t *ctx);
+box64_status_t box64_get_status_detail(box64_context_t *ctx);
 
 #endif

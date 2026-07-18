@@ -132,10 +132,10 @@ struct linux_flock {
 #define LINUX_O_DIRECTORY 0x10000
 #define LINUX_O_CLOEXEC   0x80000
 
-#define LINUX PROT_NONE   0
-#define LINUX PROT_READ   1
-#define LINUX PROT_WRITE  2
-#define LINUX PROT_EXEC   4
+#define LINUX_PROT_NONE   0
+#define LINUX_PROT_READ   1
+#define LINUX_PROT_WRITE  2
+#define LINUX_PROT_EXEC   4
 
 #define LINUX_MAP_SHARED    0x01
 #define LINUX_MAP_PRIVATE   0x02

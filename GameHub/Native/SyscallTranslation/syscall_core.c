@@ -13,7 +13,9 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/mman.h>
+#if __has_include(<sys/shm.h>)
 #include <sys/shm.h>
+#endif
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <dirent.h>
@@ -27,7 +29,9 @@
 
 #ifdef __APPLE__
 #include <mach/mach.h>
+#if __has_include(<sys/kauth.h>)
 #include <sys/kauth.h>
+#endif
 #endif
 
 #ifndef MAP_JIT

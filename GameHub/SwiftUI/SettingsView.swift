@@ -118,38 +118,40 @@ struct SettingsView: View {
     }
 
     private var advancedSettings: some View {
-        Section(header: Text("Box64")) {
-            Toggle("Dynarec (JIT)", isOn: $settingsManager.enableDynarec)
-            Toggle("Big Block", isOn: $settingsManager.dynarecBigBlock)
-            Toggle("Strong Memory", isOn: $settingsManager.dynarecStrongMem)
-            Toggle("Safe Flags", isOn: $settingsManager.dynarecSafeFlags)
-            Toggle("Call/Ret Optimization", isOn: $settingsManager.dynarecCallRet)
-            Toggle("Dirty Optimization", isOn: $settingsManager.dynarecDirty)
-        }
-
-        Section(header: Text("Wine")) {
-            Toggle("ESync", isOn: $settingsManager.wineESync)
-            Toggle("FSync", isOn: $settingsManager.wineFSync)
-            Toggle("CSMT", isOn: $settingsManager.wineCSMT)
-
-            Picker("Debug Channels", selection: $settingsManager.wineDebugChannels) {
-                Text("Off").tag("")
-                Text("All").tag("+all")
-                Text("WineD3D").tag("+wined3d")
-                Text("Vulkan").tag("+vulkan")
-                Text("Sound").tag("+sound")
+        Group {
+            Section(header: Text("Box64")) {
+                Toggle("Dynarec (JIT)", isOn: $settingsManager.enableDynarec)
+                Toggle("Big Block", isOn: $settingsManager.dynarecBigBlock)
+                Toggle("Strong Memory", isOn: $settingsManager.dynarecStrongMem)
+                Toggle("Safe Flags", isOn: $settingsManager.dynarecSafeFlags)
+                Toggle("Call/Ret Optimization", isOn: $settingsManager.dynarecCallRet)
+                Toggle("Dirty Optimization", isOn: $settingsManager.dynarecDirty)
             }
-        }
 
-        Section(header: Text("Data")) {
-            Button(action: exportSettings) {
-                Label("Export Settings", systemImage: "square.and.arrow.up")
+            Section(header: Text("Wine")) {
+                Toggle("ESync", isOn: $settingsManager.wineESync)
+                Toggle("FSync", isOn: $settingsManager.wineFSync)
+                Toggle("CSMT", isOn: $settingsManager.wineCSMT)
+
+                Picker("Debug Channels", selection: $settingsManager.wineDebugChannels) {
+                    Text("Off").tag("")
+                    Text("All").tag("+all")
+                    Text("WineD3D").tag("+wined3d")
+                    Text("Vulkan").tag("+vulkan")
+                    Text("Sound").tag("+sound")
+                }
             }
-            Button(action: importSettings) {
-                Label("Import Settings", systemImage: "square.and.arrow.down")
-            }
-            Button(action: resetSettings, role: .destructive) {
-                Label("Reset All Settings", systemImage: "trash")
+
+            Section(header: Text("Data")) {
+                Button(action: exportSettings) {
+                    Label("Export Settings", systemImage: "square.and.arrow.up")
+                }
+                Button(action: importSettings) {
+                    Label("Import Settings", systemImage: "square.and.arrow.down")
+                }
+                Button(role: .destructive, action: resetSettings) {
+                    Label("Reset All Settings", systemImage: "trash")
+                }
             }
         }
     }

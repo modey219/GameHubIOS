@@ -94,7 +94,7 @@ class Process {
             guard let self = self else { return }
             var status: Int32 = 0
             waitpid(self.pid, &status, 0)
-            self.terminationStatus = WEXITSTATUS(status)
+            self.terminationStatus = Int32((status >> 8) & 0xFF)
             self._isRunning = false
             DispatchQueue.main.async {
                 self.terminationHandler?(self)
@@ -106,7 +106,7 @@ class Process {
         if pid > 0 {
             var status: Int32 = 0
             waitpid(pid, &status, 0)
-            terminationStatus = WEXITSTATUS(status)
+            terminationStatus = Int32((status >> 8) & 0xFF)
             _isRunning = false
         }
     }

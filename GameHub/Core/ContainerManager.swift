@@ -163,7 +163,7 @@ class ContainerManager: ObservableObject {
             let destPath = containerDir + "/" + file.destination
             let destDir = (destPath as NSString).deletingLastPathComponent
             try? fileManager.createDirectory(atPath: destDir, withIntermediateDirectories: true)
-            try? fileManager.copyItem(at: file.source, toPath: destPath)
+            try? fileManager.copyItem(atPath: file.source.path, toPath: destPath)
         }
     }
 

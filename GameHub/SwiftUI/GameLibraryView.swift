@@ -88,7 +88,7 @@ struct GameLibraryView: View {
                             Button(action: { showGameSettings(game) }) {
                                 Label("Settings", systemImage: "gear")
                             }
-                            Button(action: { deleteGame(game) }, role: .destructive) {
+                            Button(role: .destructive, action: { deleteGame(game) }) {
                                 Label("Delete", systemImage: "trash")
                             }
                         }

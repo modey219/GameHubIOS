@@ -3,6 +3,7 @@ import UIKit
 import GameController
 
 class InputManager: ObservableObject {
+    static let shared = InputManager()
     @Published var connectedControllers: [GCController] = []
     @Published var activeProfile: InputProfile?
     @Published var isTouchscreenActive = false
@@ -86,7 +87,7 @@ class InputManager: ObservableObject {
     }
 
     private func handleGamepadInput(gamepad: GCExtendedGamepad, element: GCControllerElement) {
-        guard let profile = activeProfile else { return }
+        guard let _ = activeProfile else { return }
 
         if element == gamepad.leftThumbstick {
             let x = gamepad.leftThumbstick.xAxis.value

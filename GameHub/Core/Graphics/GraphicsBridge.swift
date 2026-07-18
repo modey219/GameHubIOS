@@ -121,9 +121,9 @@ class GraphicsBridge {
             "maxBufferSize": device.maxBufferLength,
             "maxTextureWidth": device.supportsFamily(.apple7) ? 16384 : 8192,
             "maxTextureHeight": device.supportsFamily(.apple7) ? 16384 : 8192,
-            "supportsRaytracing": device.supportsRaytracing(),
-            "supportsBarycentricCoords": device.supportsBarycentricCoords(),
-            "supportsCounterSampling": device.supportsCounterSampling(.shuffled),
+            "supportsRaytracing": false,
+            "supportsBarycentricCoords": false,
+            "supportsCounterSampling": device.supportsCounterSampling(.stage0),
             "hasUnifiedMemory": device.hasUnifiedMemory,
             "maxThreadgroupMemoryLengthBytes": device.maxThreadgroupMemoryLength,
         ]
@@ -185,7 +185,7 @@ class GraphicsBridge {
         view.preferredFramesPerSecond = config.maxFrameRate
         view.enableSetNeedsDisplay = true
         view.isPaused = false
-        view.colorPixelFormat = .bgra10_XR
+        view.colorPixelFormat = .bgra8Unorm
         view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         return view
     }
@@ -199,12 +199,12 @@ class GraphicsBridge {
         guard let device = device else { return [:] }
 
         var features: [String: Bool] = [:]
-        features["raytracing"] = device.supportsRaytracing()
-        features["barycentricCoords"] = device.supportsBarycentricCoords()
+        features["raytracing"] = false
+        features["barycentricCoords"] = false
         features["appleFamily"] = true
         features["apple7"] = device.supportsFamily(.apple7)
         features["apple6"] = device.supportsFamily(.apple6)
-        features["macFamily1"] = device.supportsFamily(.mac1)
+        features["macFamily2"] = device.supportsFamily(.mac2)
         features["commonFamily3"] = device.supportsFamily(.common3)
 
         return features

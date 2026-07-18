@@ -50,58 +50,46 @@ jobs:
           AR=$(xcrun --sdk iphoneos --find ar)
           
           COMPAT_DIR="$PWD/GameHub/Native/Compat"
+          
+          # Build include flags: every subdirectory under src/ so #include "foo.h" resolves
+          INC_FLAGS="-I$COMPAT_DIR -I$BOX64_SRC/src/include -I$BOX64_SRC/src"
+          while IFS= read -r d; do
+              INC_FLAGS="$INC_FLAGS -I$d"
+          done < <(find "$BOX64_SRC/src" -type d)
+          
           CFLAGS="-arch arm64 -mios-version-min=16.0 -isysroot $SDK -O2 -fembed-bitcode-marker"
           CFLAGS="$CFLAGS -DARM64 -DDYNAREC -DNOGIT -D__IOS__=1 -DTARGET_IPHONE=1"
           CFLAGS="$CFLAGS -DBAD_SIGNAL=1 -DBOX64_ENV=1"
-          CFLAGS="$CFLAGS -I$COMPAT_DIR -I$BOX64_SRC/src/include -I$BOX64_SRC/src"
+          CFLAGS="$CFLAGS $INC_FLAGS"
           CFLAGS="$CFLAGS -Wno-unused-variable -Wno-unused-function -Wno-incompatible-pointer-types"
           CFLAGS="$CFLAGS -Wno-int-conversion -Wno-pointer-sign -Wno-implicit-function-declaration"
           CFLAGS="$CFLAGS -Wno-deprecated-declarations -Wno-missing-declarations"
           CFLAGS="$CFLAGS -Wno-missing-prototypes -Wno-strict-prototypes"
           
-          SOURCES=""
-          for dir in src src/emu src/custommem src/os src/tools src/libtools; do
-              if [ -d "$BOX64_SRC/$dir" ]; then
-                  for f in "$BOX64_SRC/$dir"/*.c; do
-                      [ -f "$f" ] && SOURCES="$SOURCES $f"
-                  done
-              fi
-          done
-          
-          if [ -d "$BOX64_SRC/src/dynarec" ]; then
-              for f in "$BOX64_SRC/src/dynarec"/*.c; do
-                  [ -f "$f" ] && SOURCES="$SOURCES $f"
-              done
-              if [ -d "$BOX64_SRC/src/dynarec/arm64" ]; then
-                  for f in "$BOX64_SRC/src/dynarec/arm64"/*.c "$BOX64_SRC/src/dynarec/arm64"/*.S; do
-                      [ -f "$f" ] && SOURCES="$SOURCES $f"
-                  done
-              fi
-          fi
-          
-          if [ -d "$BOX64_SRC/src/wrapped" ]; then
-              for f in "$BOX64_SRC/src/wrapped"/*.c; do
-                  [ -f "$f" ] && SOURCES="$SOURCES $f"
-              done
-          fi
-          
-          SRC_COUNT=$(echo $SOURCES | wc -w)
+          # Find ALL .c files under src/
+          SOURCES=$(find "$BOX64_SRC/src" -name "*.c" -type f)
+          SRC_COUNT=$(echo "$SOURCES" | wc -l | tr -d ' ')
           echo "Found $SRC_COUNT source files"
           
           COMPILED=0
           FAILED=0
+          FAIL_LIST=""
           
           for src in $SOURCES; do
-              BASENAME=$(basename "$src" .c)
-              OBJ="$OUTPUT_DIR/objects/${BASENAME}.o"
+              OBJ="$OUTPUT_DIR/objects/$(basename "$src" .c).o"
               
-              if $CC $CFLAGS -c "$src" -o "$OBJ" 2>/dev/null; then
+              if $CC $CFLAGS -c "$src" -o "$OBJ" 2>/tmp/box64_err_$$; then
                   COMPILED=$((COMPILED + 1))
               else
                   FAILED=$((FAILED + 1))
+                  FAIL_LIST="$FAIL_LIST $(basename "$src")"
+                  LAST_ERR=$(cat /tmp/box64_err_$$ 2>/dev/null | head -3)
+                  echo "FAIL: $(basename "$src"): $LAST_ERR"
               fi
+              rm -f /tmp/box64_err_$$
           done
           
+          echo ""
           echo "Compiled: $COMPILED / $SRC_COUNT (Failed: $FAILED)"
           
           if [ $COMPILED -gt 0 ]; then
@@ -110,10 +98,10 @@ jobs:
               $AR rcs "$OUTPUT_DIR/libbox64.a" *.o
               echo "Created libbox64.a: $(ls -la "$OUTPUT_DIR/libbox64.a")"
               
-              # Also link as executable for runtime use
+              # Link as executable — Apple ld does NOT support -start-group/-end-group
               cd "$OUTPUT_DIR"
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
-                  -Wl,-start-group objects/*.o -Wl,-end-group \
+                  objects/*.o \
                   -o box64 -lm
               chmod 755 box64
               echo "Created box64 executable: $(ls -la box64)"

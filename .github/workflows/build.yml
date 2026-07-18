@@ -147,36 +147,26 @@ jobs:
 
       - name: Build iOS App
         run: |
-          set +e
+          set -o pipefail
           xcodebuild \
             -project GameHub.xcodeproj \
             -scheme GameHub \
             -configuration Release \
             -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             ENABLE_BITCODE=NO \
             DEVELOPMENT_TEAM="" \
-            > build.log 2>&1
-          XCODE_EXIT=$?
-          set -e
-          echo "xcodebuild exit code: $XCODE_EXIT"
-          echo ""
-          echo "=== BUILD RESULT ==="
-          grep -i "BUILD SUCCEEDED\|BUILD FAILED" build.log | tail -5 || true
-          echo ""
-          echo "=== ERROR LINES ==="
-          grep -i "error:" build.log | head -50 || true
-          echo ""
-          echo "=== FATAL LINES ==="
-          grep -i "fatal\|note:" build.log | head -20 || true
-          echo ""
-          echo "=== LAST 200 LINES ==="
-          tail -200 build.log
-          exit $XCODE_EXIT
+            2>&1 | tee build.log
+
+      - name: Dump build log on failure
+        if: failure()
+        run: |
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -300 build.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload build log
         if: always()
@@ -185,24 +175,6 @@ jobs:
           name: build-log
           path: build.log
           retention-days: 5
-
-      - name: Show build errors
-        if: failure()
-        run: |
-          echo "### BUILD ERRORS" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f build.log ]; then
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            grep -i "error\|fatal\|cannot\|missing\|not found\|no such" build.log | head -50 >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Last 150 lines:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -150 build.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          else
-            echo "No build.log file found" >> $GITHUB_STEP_SUMMARY
-          fi
 
       - name: Verify build output
         run: |

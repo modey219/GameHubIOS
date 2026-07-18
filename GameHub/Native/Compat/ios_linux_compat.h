@@ -58,12 +58,10 @@ typedef void *timer_t;
 #define si_call_addr _si_fields._sigfault._addr
 #endif
 
-/* struct __jmp_buf_tag — needed by dynarec */
-struct __jmp_buf_tag {
-    __jmp_buf __jmpbuf;
-    int __mask_was_saved;
-    __sigset_t __saved_mask;
-};
+/* __jmp_buf — glibc name for what iOS/macOS calls jmp_buf */
+#ifndef __jmp_buf
+typedef jmp_buf __jmp_buf;
+#endif
 
 /* sys/sysmacros.h — empty, macros provided elsewhere */
 /* sys/vfs.h — redirect to sys/mount.h or provide minimal */

@@ -191,6 +191,7 @@ typedef struct {
 #define SHT_GNU_HASH    0x6ffffff6
 #define SHT_GNU_VERSYM  0x6fffffff
 #define SHT_GNU_VERNEED 0x6ffffffe
+#define SHT_SHLIB       9
 
 #define SHN_UNDEF       0
 #define SHN_ABS         0xfff1
@@ -317,6 +318,15 @@ typedef struct {
 #define PT_GNU_STACK    0x6474e551
 #define PT_GNU_RELRO    0x6474e552
 #define PT_GNU_EH_FRAME 0x6474e550
+#define PT_TLS          7
+
+#define ELFMAG          "\177ELF"
+#define SELFMAG         4
+
+#define R_386_COPY      5
+#define R_386_GLOB_DAT  6
+#define R_386_JMP_SLOT  7
+#define R_386_RELATIVE  8
 
 #define GRP.jdesktop   1
 

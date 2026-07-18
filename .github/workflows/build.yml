@@ -70,7 +70,7 @@ jobs:
           CFLAGS="$CFLAGS -DSTEP=1 -DSTACKALIGN=16"
           
           # Exclude files that cannot compile on Darwin
-          EXCLUDE="custommmap.c emit_signal_wine.c os_wine.c hostext_wine.c random_wine.c emit_signals_linux.c freq_linux.c hostext_linux.c os_linux.c obstack.c threads32.c dynacache.c signals.c signal32.c sigtools.c syscall_user_dispatch.c dynarec_arm64_arch.c elfhacks.c my_x11_xevent.c myalign64_32.c myalignxcb32.c sdl1rwops.c sdl2rwops.c libc_net32.c arm64_printer.c threads.c myalign32.c libdl.c symbolfuncs_linux.c"
+          EXCLUDE="custommmap.c emit_signal_wine.c os_wine.c hostext_wine.c random_wine.c emit_signals_linux.c freq_linux.c hostext_linux.c os_linux.c obstack.c threads32.c dynacache.c signals.c signal32.c sigtools.c syscall_user_dispatch.c dynarec_arm64_arch.c elfhacks.c my_x11_xevent.c myalign64_32.c myalignxcb32.c sdl1rwops.c sdl2rwops.c libc_net32.c arm64_printer.c threads.c myalign32.c libdl.c symbolfuncs_linux.c mallochook.c elfload_dump.c elfload_dump32.c x86int3.c elfhash32.c box32stack.c globalsymbols32.c"
           
           # Find core .c files under src/ (excluding wrapped/ and wrapped32/ — Linux-only libs)
           SOURCES=""
@@ -153,8 +153,11 @@ jobs:
               cd "$OUTPUT_DIR"
               
               # Find undefined symbols not defined in our objects
-              nm objects/*.o 2>/dev/null | grep ' U _' | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_undef.txt
-              nm objects/*.o 2>/dev/null | grep -E ' [TtDdBbAaRrCcGg] _' | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_def.txt
+              # Use robust approach: undefined = symbols with ' U ' in nm output
+              nm objects/*.o 2>/dev/null | grep ' U ' | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_undef.txt
+              
+              # Defined = everything else (T, D, B, A, R, C, c, S, s, t, d, b, a, r, g, G, W, w, etc.)
+              nm objects/*.o 2>/dev/null | grep -v ' U ' | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_def.txt
               
               # Missing = undefined in our objects, not defined in our objects
               comm -23 /tmp/all_undef.txt /tmp/all_def.txt > /tmp/missing_syms.txt
@@ -192,6 +195,28 @@ jobs:
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
                   -w -ffreestanding -nostdinc \
                   -c auto_stubs.c -o auto_stubs.o
+              
+              # Post-compile: find any duplicate symbols between stubs and objects
+              # and remove them by filtering stubs
+              STUB_DEFS=$(nm auto_stubs.o 2>/dev/null | awk '{print $NF}' | sed 's/^_//' | sort -u)
+              OBJ_DEFS=$(nm objects/*.o 2>/dev/null | grep -v ' U ' | awk '{print $NF}' | sed 's/^_//' | sort -u)
+              DUPS=$(comm -12 <(echo "$STUB_DEFS") <(echo "$OBJ_DEFS"))
+              DUP_COUNT=$(echo "$DUPS" | grep -c . || true)
+              if [ "$DUP_COUNT" -gt 0 ]; then
+                  echo "Post-compile: filtering $DUP_COUNT duplicate symbols from stubs"
+                  # Re-generate stubs excluding duplicates
+                  {
+                      echo '// Auto-generated stubs (deduplicated)'
+                      while IFS= read -r sym; do
+                          [ -z "$sym" ] && continue
+                          echo "void $sym(void) {}"
+                      done < <(comm -23 <(echo "$STUB_DEFS") <(echo "$OBJ_DEFS"))
+                  } > auto_stubs_dedup.c
+                  $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
+                      -w -ffreestanding -nostdinc \
+                      -c auto_stubs_dedup.c -o auto_stubs.o
+                  echo "Recompiled deduplicated stubs"
+              fi
               
               # Link as executable with stubs
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \

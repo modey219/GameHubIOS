@@ -96,6 +96,17 @@ struct mmsghdr {
 #define RTLD_NEXT ((void *)-1)
 #endif
 
+/* ======== RTLD_DI_LINKMAP (glibc extension, not on macOS) ======== */
+#ifndef RTLD_DI_LINKMAP
+#define RTLD_DI_LINKMAP 2
+#endif
+
+/* ======== dlinfo stub ======== */
+static inline int dlinfo(void *handle, int request, void *info) {
+    (void)handle; (void)request; (void)info;
+    return -1;
+}
+
 /* ======== cpu_set_t — defined in sched.h compat, not here ======== */
 
 /* ======== More Linux syscall numbers ======== */
@@ -134,8 +145,8 @@ struct __jmp_buf_tag {
    We don't redefine jmp_buf — the struct is enough for sizeof/declarations. */
 #endif
 
-/* ======== sched compat ======== */
-static inline int sched_getcpu(void) { return 0; }
+/* ======== sched compat — provided by sched.h compat ======== */
+/* sched_getcpu() and cpu_set_t are in sched.h compat */
 static inline int sched_yield(void) { return 0; }
 
 #endif

@@ -51,9 +51,10 @@
 #define SYS_unlinkat    263
 #define SYS_readlinkat  267
 
-static inline long syscall(long number, ...) {
-    (void)number;
-    return -1;
-}
+#ifndef _COMPAT_SYSCALL_FUNC
+#define _COMPAT_SYSCALL_FUNC
+/* syscall() is provided by <unistd.h> on macOS/iOS with _DARWIN_C_SOURCE.
+   Only define if not already declared. */
+#endif
 
 #endif

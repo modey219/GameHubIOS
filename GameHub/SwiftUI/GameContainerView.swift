@@ -556,28 +556,34 @@ struct GameContainerView: View {
         logMsg("JIT enabled: \(jitManager.isJITEnabled)")
         flushLog()
 
-        logMsg("Calling Box64Bridge.shared.launchWine()...")
-        flushLog()
-        let launchResult = Box64Bridge.shared.launchWine(
-            wine64Path: wine64Path,
-            executablePath: finalExePath,
-            containerPath: containerPath,
-            environment: container.environment
-        )
+        let capturedContainer = container
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            logMsg("Calling Box64Bridge.shared.launchWine()...")
+            flushLog()
+            let launchResult = Box64Bridge.shared.launchWine(
+                wine64Path: wine64Path,
+                executablePath: finalExePath,
+                containerPath: containerPath,
+                environment: capturedContainer.environment
+            )
 
-        if launchResult.wineLaunched {
-            logMsg("launchWine SUCCESS")
-            isRunning = true
-            UnixSocketBridge.shared.startServer()
-            AudioBridge.shared.startAudioServer()
-        } else {
-            let detail = launchResult.error ?? "Unknown error"
-            logMsg("launchWine FAILED: \(detail)")
-            errorMessage = detail
-            showError = true
-            isRunning = false
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if launchResult.wineLaunched {
+                    logMsg("launchWine SUCCESS")
+                    self.isRunning = true
+                    UnixSocketBridge.shared.startServer()
+                    AudioBridge.shared.startAudioServer()
+                } else {
+                    let detail = launchResult.error ?? "Unknown error"
+                    logMsg("launchWine FAILED: \(detail)")
+                    self.errorMessage = detail
+                    self.showError = true
+                    self.isRunning = false
+                }
+                flushLog()
+            }
         }
-        flushLog()
     }
 
     private func togglePause() {

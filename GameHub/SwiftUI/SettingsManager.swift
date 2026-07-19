@@ -296,6 +296,24 @@ class SettingsManager: ObservableObject {
             "onlineMode","localMultiplayer","lastBackupDate"
         ]
         for key in keys { UserDefaults.standard.removeObject(forKey: key) }
+
+        darkMode = false; hapticFeedback = true; showFPS = true; resolutionScale = 1.0
+        keepScreenOn = true; autoSaveState = false; showTouchButtons = true; memoryLimitMB = 512
+        gpuDriver = .moltenVK; useDXVK = true; useVKD3D = true; vsync = true; maxFrameRate = 60
+        msaaLevel = 0; anisotropicFiltering = 0; textureQuality = 2; shaderPrecision = "high"
+        forceVulkan = false; dxvkAsync = true; dxvkHud = "fps"; mvkLogLevel = 0
+        audioDriver = .coreaudio; volume = 1.0; sampleRate = 44100; audioBufferSize = 4
+        audioLatency = "normal"; audioEnabled = true
+        virtualGamepad = true; vibration = true; gamepadType = "xbox"; sensitivity = 1.0
+        deadzone = 0.15; analogStickMode = "absolute"; touchSensitivity = 1.0; buttonOpacity = 0.6
+        wineESync = true; wineFSync = false; wineCSMT = true; wineDebugLevel = "none"
+        wineDllOverrides = ""; wineRenderer = "vulkan"; protonMode = false
+        wineVirtualDesktop = false; wineVirtualDesktopSize = "1920x1080"
+        enableDynarec = true; dynarecBigBlock = true; dynarecStrongMem = true; dynarecSafeFlags = true
+        dynarecAltiVec = 1; dynarecCallRet = false; dynarecLogLevel = 0; dynarecRestricted = false
+        dynarecNativeFlags = true; box64StdMalloc = false
+        forceLandscape = true; autoRotate = false; brightness = 1.0; showControllerButton = true
+        onlineMode = false; localMultiplayer = false; lastBackupDate = "Never"
     }
 
     func getExportData() -> [String: Any] {

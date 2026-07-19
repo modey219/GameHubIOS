@@ -12,6 +12,9 @@ class DisplayRenderer: NSObject, ObservableObject {
 
     private var device: MTLDevice?
     private var commandQueue: MTLCommandQueue?
+    private var texturePool: [MTLTexture] = []
+    private var lastTextureWidth = 0
+    private var lastTextureHeight = 0
 
     private var frameCount: Int = 0
     private var lastFPSTime: Date = Date()
@@ -66,15 +69,28 @@ class DisplayRenderer: NSObject, ObservableObject {
 
     func updateFrame(_ pixelData: Data, width: Int, height: Int) {
         guard let dev = device else { return }
-        let descriptor = MTLTextureDescriptor()
-        descriptor.textureType = .type2D
-        descriptor.width = width
-        descriptor.height = height
-        descriptor.pixelFormat = .bgra8Unorm
-        descriptor.usage = [.shaderRead]
-        descriptor.storageMode = .shared
 
-        guard let newTexture = dev.makeTexture(descriptor: descriptor) else { return }
+        textureLock.lock()
+        var tex: MTLTexture?
+        if width == lastTextureWidth && height == lastTextureHeight, !texturePool.isEmpty {
+            tex = texturePool.removeFirst()
+        }
+        textureLock.unlock()
+
+        if tex == nil {
+            let descriptor = MTLTextureDescriptor()
+            descriptor.textureType = .type2D
+            descriptor.width = width
+            descriptor.height = height
+            descriptor.pixelFormat = .bgra8Unorm
+            descriptor.usage = [.shaderRead]
+            descriptor.storageMode = .shared
+            tex = dev.makeTexture(descriptor: descriptor)
+            lastTextureWidth = width
+            lastTextureHeight = height
+        }
+
+        guard let newTexture = tex else { return }
         pixelData.withUnsafeBytes { rawBufferPointer in
             guard let pointer = rawBufferPointer.baseAddress else { return }
             newTexture.replace(
@@ -86,7 +102,11 @@ class DisplayRenderer: NSObject, ObservableObject {
         }
 
         textureLock.lock()
+        let oldTexture = currentTexture
         currentTexture = newTexture
+        if let old = oldTexture, old.width == width && old.height == height {
+            texturePool.append(old)
+        }
         textureLock.unlock()
 
         DispatchQueue.main.async {

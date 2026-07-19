@@ -50,13 +50,12 @@ class AudioBridge: ObservableObject {
         audioThread = DispatchQueue(label: "com.gamehub.audio", qos: .userInteractive)
         audioThread?.async { [weak self] in self?.startPosixSocketServer() }
         startAudioQueue()
-        isPlaying = true
+        DispatchQueue.main.async { self.isPlaying = true }
     }
 
     func stopAudio() {
-        isPlaying = false
+        DispatchQueue.main.async { self.isPlaying = false }
         isServerRunning = false
-        if let q = audioQueue { AudioQueueStop(q, true); AudioQueueDispose(q, true); audioQueue = nil }
         socketLock.lock()
         let cs = clientSocket
         let ss = serverSocket
@@ -65,6 +64,7 @@ class AudioBridge: ObservableObject {
         socketLock.unlock()
         if cs >= 0 { close(cs) }
         if ss >= 0 { close(ss) }
+        if let q = audioQueue { AudioQueueStop(q, true); AudioQueueDispose(q, true); audioQueue = nil }
         try? FileManager.default.removeItem(atPath: socketPath)
     }
 
@@ -72,8 +72,11 @@ class AudioBridge: ObservableObject {
         isServerRunning = true
         unlink(socketPath)
 
-        serverSocket = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard serverSocket >= 0 else { return }
+        let ss = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard ss >= 0 else { return }
+        socketLock.lock()
+        serverSocket = ss
+        socketLock.unlock()
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
@@ -86,19 +89,25 @@ class AudioBridge: ObservableObject {
 
         let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
         let bindResult = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(serverSocket, $0, addrLen) }
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(ss, $0, addrLen) }
         }
-        guard bindResult == 0 else { close(serverSocket); serverSocket = -1; return }
-        guard listen(serverSocket, 1) == 0 else { close(serverSocket); serverSocket = -1; return }
+        guard bindResult == 0 else { close(ss); socketLock.lock(); serverSocket = -1; socketLock.unlock(); return }
+        guard listen(ss, 1) == 0 else { close(ss); socketLock.lock(); serverSocket = -1; socketLock.unlock(); return }
 
         while isServerRunning {
+            socketLock.lock()
+            let currentSS = serverSocket
+            socketLock.unlock()
+            guard currentSS >= 0 else { break }
             var clientAddr = sockaddr_un()
             var clientLen = socklen_t(MemoryLayout<sockaddr_un>.size)
             let client = withUnsafeMutablePointer(to: &clientAddr) { ptr in
-                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { accept(serverSocket, $0, &clientLen) }
+                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { accept(currentSS, $0, &clientLen) }
             }
             if client >= 0 {
+                socketLock.lock()
                 clientSocket = client
+                socketLock.unlock()
                 receiveAudioData()
             }
         }

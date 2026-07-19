@@ -33,7 +33,6 @@ static void raw_log(const char *msg) {
     if (g_log_fd >= 0) {
         write(g_log_fd, msg, strlen(msg));
         write(g_log_fd, "\n", 1);
-        fsync(g_log_fd);
     }
 }
 
@@ -70,7 +69,6 @@ static void signal_handler(int sig) {
         }
         write(g_log_fd, sigbuf, siglen);
         write(g_log_fd, "\n", 1);
-        fsync(g_log_fd);
         close(g_log_fd);
         g_log_fd = -1;
     }

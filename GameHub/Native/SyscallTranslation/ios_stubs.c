@@ -49,7 +49,6 @@ void box64_exit_intercept(int status) {
             char buf[128];
             int n = snprintf(buf, sizeof(buf), "[Stubs] exit(%d) intercepted — returning\n", status);
             write(fd, buf, n);
-            fsync(fd);
             close(fd);
         }
     }

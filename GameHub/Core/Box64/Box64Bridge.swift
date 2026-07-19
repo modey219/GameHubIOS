@@ -27,7 +27,6 @@ class Box64Bridge {
             if logFD >= 0 {
                 line.withCString { ptr in
                     _ = write(logFD, ptr, strlen(ptr))
-                    fsync(logFD)
                 }
             }
         }
@@ -178,14 +177,14 @@ class Box64Bridge {
             let cError = box64_get_wine_error()
             let errStr = cError != nil ? String(cString: cError!) : ""
             Self.log("ERROR: box64_launch_wine failed: \(errStr)")
-            result.error = "Failed to launch Box64+Wine (error \(rc)):\n\(errStr)\n\n"
-            result.error! += "Binary: \(wine64Path)\n"
-            result.error! += "Exe: \(executablePath)\n\n"
-            result.error! += "iOS cannot execute unsigned binaries from the Documents folder.\n"
-            result.error! += "Possible fixes:\n"
-            result.error! += "1. Jailbreak your device (JIT enabled)\n"
-            result.error! += "2. Use TrollStore for unsigned execution\n"
-            result.error! += "3. Enable JIT via StikDebug first"
+            result.error = "Failed to launch Box64+Wine (error \(rc)):\n\(errStr)\n\n" +
+                "Binary: \(wine64Path)\n" +
+                "Exe: \(executablePath)\n\n" +
+                "iOS cannot execute unsigned binaries from the Documents folder.\n" +
+                "Possible fixes:\n" +
+                "1. Jailbreak your device (JIT enabled)\n" +
+                "2. Use TrollStore for unsigned execution\n" +
+                "3. Enable JIT via StikDebug first"
             return result
         }
 
@@ -205,7 +204,8 @@ class Box64Bridge {
 
     func getEmulatorStatus() -> String {
         guard let ctx = ctx else { return "not initialized" }
-        return String(cString: box64_get_status(ctx))
+        guard let cStr = box64_get_status(ctx) else { return "unknown" }
+        return String(cString: cStr)
     }
 
     func getRunnerLog() -> String {

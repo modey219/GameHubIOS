@@ -25,7 +25,6 @@ static void bridge_log(const char *msg) {
     if (fd >= 0) {
         write(fd, msg, strlen(msg));
         write(fd, "\n", 1);
-        fsync(fd);
         close(fd);
     }
 }

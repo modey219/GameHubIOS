@@ -506,11 +506,27 @@ struct SettingsView: View {
 class SettingsImportDelegate: NSObject, UIDocumentPickerDelegate, ObservableObject {
     static let shared = SettingsImportDelegate()
 
+    private let allowedKeys: Set<String> = [
+        "darkMode","hapticFeedback","showFPS","resolutionScale","keepScreenOn","autoSaveState","showTouchButtons","memoryLimitMB",
+        "gpuDriver","useDXVK","useVKD3D","vsync","maxFrameRate","msaaLevel","anisotropicFiltering",
+        "textureQuality","shaderPrecision","forceVulkan","dxvkAsync","dxvkHud","mvkLogLevel",
+        "audioDriver","volume","sampleRate","audioBufferSize","audioLatency","audioEnabled",
+        "virtualGamepad","vibration","gamepadType","sensitivity","deadzone","analogStickMode",
+        "touchSensitivity","buttonOpacity",
+        "wineESync","wineFSync","wineCSMT","wineDebugLevel","wineDllOverrides","wineRenderer",
+        "protonMode","wineVirtualDesktop","wineVirtualDesktopSize",
+        "enableDynarec","dynarecBigBlock","dynarecStrongMem","dynarecSafeFlags","dynarecAltiVec",
+        "dynarecCallRet","dynarecLogLevel","dynarecRestricted","dynarecNativeFlags","box64StdMalloc",
+        "forceLandscape","autoRotate","brightness","showControllerButton",
+        "onlineMode","localMultiplayer","lastBackupDate"
+    ]
+
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let url = urls.first,
               let data = try? Data(contentsOf: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         for (key, value) in json {
+            guard allowedKeys.contains(key) else { continue }
             UserDefaults.standard.set(value, forKey: key)
         }
         NotificationCenter.default.post(name: .settingsImported, object: nil)

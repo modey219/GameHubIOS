@@ -82,69 +82,72 @@ struct GameHubApp: App {
     }
 
     private func performSetup() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            autoreleasepool {
-                let fm = FileManager.default
-                guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
-                    DispatchQueue.main.async { self.isLoading = false }
-                    return
-                }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let fm = FileManager.default
+            guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                DispatchQueue.main.async { self.isLoading = false }
+                return
+            }
 
-                self.updateProgress("Creating directories...")
-                let dirs = ["Box64", "Containers", "Graphics"]
-                for dir in dirs {
-                    try? fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
-                }
+            self.updateProgress("Creating directories...")
+            let dirs = ["Box64", "Containers", "Graphics"]
+            for dir in dirs {
+                try? fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
+            }
 
-                let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
-                let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
+            let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
+            let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
 
-                if !box64Exists || !wineExists {
-                    self.updateProgress("Extracting bundled binaries...")
-                    do {
+            if !box64Exists || !wineExists {
+                self.updateProgress("Extracting bundled binaries...")
+                do {
+                    try autoreleasepool {
                         try Box64Bridge.shared.setupAllBundledBinaries { detail in
                             self.updateProgress(detail)
                         }
-                    } catch {
-                        print("[MNEmulator] Extraction error: \(error)")
-                        DispatchQueue.main.async {
-                            self.setupError = "Extraction error: \(error.localizedDescription)"
-                            self.isLoading = false
-                        }
-                        return
                     }
+                } catch {
+                    print("[MNEmulator] Extraction error: \(error)")
+                    DispatchQueue.main.async {
+                        self.setupError = "Extraction error: \(error.localizedDescription)"
+                        self.isLoading = false
+                    }
+                    return
                 }
+            }
 
-                autoreleasepool {
-                    self.updateProgress("Initializing Box64...")
-                    Box64Bridge.log("performSetup: before Box64 init")
-                    Box64Bridge.shared.initialize()
-                    Box64Bridge.log("performSetup: after Box64 init")
-                }
+            autoreleasepool {
+                self.updateProgress("Initializing Box64...")
+                Box64Bridge.log("performSetup: before Box64 init")
+                Box64Bridge.shared.initialize()
+                Box64Bridge.log("performSetup: after Box64 init, isInitialized=\(Box64Bridge.shared.isSetupComplete)")
+            }
 
-                autoreleasepool {
-                    self.updateProgress("Initializing Wine...")
-                    Box64Bridge.log("performSetup: before Wine init")
-                    WineBridge.shared.initialize()
-                    Box64Bridge.log("performSetup: after Wine init")
-                }
+            autoreleasepool {
+                self.updateProgress("Initializing Wine...")
+                Box64Bridge.log("performSetup: before Wine init")
+                WineBridge.shared.initialize()
+                Box64Bridge.log("performSetup: after Wine init")
+            }
 
-                autoreleasepool {
-                    self.updateProgress("Setting up prefix...")
-                    Box64Bridge.log("performSetup: before prefix init")
-                    WinePrefixManager.shared.initializePrefix()
-                    Box64Bridge.log("performSetup: after prefix init")
-                }
+            autoreleasepool {
+                self.updateProgress("Setting up prefix...")
+                Box64Bridge.log("performSetup: before prefix init")
+                WinePrefixManager.shared.initializePrefix()
+                Box64Bridge.log("performSetup: after prefix init")
+            }
 
+            autoreleasepool {
                 self.updateProgress("Applying settings...")
                 Box64Bridge.log("performSetup: before applySettings")
                 settingsManager.applySettings()
                 Box64Bridge.log("performSetup: after applySettings - DONE")
+            }
 
-                DispatchQueue.main.async {
-                    withAnimation(.easeIn(duration: 0.3)) {
-                        self.isLoading = false
-                    }
+            DispatchQueue.main.async {
+                withAnimation(.easeIn(duration: 0.3)) {
+                    self.isLoading = false
                 }
             }
         }

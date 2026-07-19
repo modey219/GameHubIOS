@@ -111,6 +111,12 @@ class Box64Bridge {
 
         progressCallback?("Extracting DXVK...")
         autoreleasepool {
+            let memMB = Self.memoryUsageMB()
+            Self.log("before DXVK extraction: memory = \(memMB)MB")
+            if memMB > 350 {
+                Self.log("skipping DXVK extraction — memory too high (\(memMB)MB)")
+                return
+            }
             do { try extractDXVK() } catch { Self.log("extractDXVK skipped: \(error)") }
         }
         Self.log("setupAllBundledBinaries: memory after all = \(Self.memoryUsageMB())MB")
@@ -338,12 +344,15 @@ class Box64Bridge {
               let outStream = OutputStream(toFileAtPath: dst, append: false) else { return }
         inStream.open()
         outStream.open()
-        let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: bufSize)
-        defer { buf.deallocate() }
+        let buf = malloc(bufSize)
+        defer { free(buf) }
+        guard let bufPtr = buf?.bindMemory(to: UInt8.self, capacity: bufSize) else {
+            inStream.close(); outStream.close(); return
+        }
         while inStream.hasBytesAvailable {
-            let read = inStream.read(buf, maxLength: bufSize)
-            if read <= 0 { break }
-            outStream.write(buf, maxLength: read)
+            let bytesRead = inStream.read(bufPtr, maxLength: bufSize)
+            if bytesRead <= 0 { break }
+            outStream.write(bufPtr, maxLength: bytesRead)
         }
         inStream.close()
         outStream.close()

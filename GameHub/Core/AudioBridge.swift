@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import AudioToolbox
+import os
 
 class AudioBridge: ObservableObject {
     static let shared = AudioBridge()
@@ -20,7 +21,9 @@ class AudioBridge: ObservableObject {
     private var socketPath: String
 
     var audioBuffer = Data()
-    var bufferLock = NSLock()
+    private var _bufferLock = os_unfair_lock()
+    private func bufferLock() { os_unfair_lock_lock(&_bufferLock) }
+    private func bufferUnlock() { os_unfair_lock_unlock(&_bufferLock) }
 
     init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -82,7 +85,7 @@ class AudioBridge: ObservableObject {
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
-        let pathLen = min(socketPath.count, MemoryLayout.size(ofValue: addr.sun_path) - 1)
+        let pathLen = min(socketPath.utf8.count, MemoryLayout.size(ofValue: addr.sun_path) - 1)
         socketPath.withCString { cPath in
             withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
                 UnsafeMutableRawPointer(ptr).copyMemory(from: cPath, byteCount: pathLen)
@@ -126,7 +129,7 @@ class AudioBridge: ObservableObject {
             guard running, cs >= 0 else { break }
             let n = recv(cs, &buffer, buffer.count, 0)
             if n > 0 {
-                bufferLock.lock()
+                bufferLock()
                 if audioBuffer.count < 1024 * 1024 {
                     audioBuffer.append(contentsOf: buffer.prefix(n))
                 } else {
@@ -134,7 +137,7 @@ class AudioBridge: ObservableObject {
                     audioBuffer.removeFirst(dropBytes)
                     audioBuffer.append(contentsOf: buffer.prefix(n))
                 }
-                bufferLock.unlock()
+                bufferUnlock()
             } else if n == 0 || (n < 0 && errno != EINTR) { break }
         }
     }
@@ -163,20 +166,20 @@ class AudioBridge: ObservableObject {
 private func audioQueueCallback(inUserData: UnsafeMutableRawPointer?, inAQ: AudioQueueRef, inBuffer: AudioQueueBufferRef) {
     guard let userData = inUserData else { return }
     let bridge = Unmanaged<AudioBridge>.fromOpaque(userData).takeUnretainedValue()
-    bridge.bufferLock.lock()
+    bridge.bufferLock()
     let available = bridge.audioBuffer.count
     let requested = Int(inBuffer.pointee.mAudioDataByteSize)
     if available >= requested {
         bridge.audioBuffer.copyBytes(to: inBuffer.pointee.mAudioData.assumingMemoryBound(to: UInt8.self), count: requested)
         bridge.audioBuffer.removeFirst(requested)
-        bridge.bufferLock.unlock()
+        bridge.bufferUnlock()
         AudioQueueEnqueueBuffer(inAQ, inBuffer, 0, nil)
     } else {
         if available > 0 {
             bridge.audioBuffer.copyBytes(to: inBuffer.pointee.mAudioData.assumingMemoryBound(to: UInt8.self), count: available)
             bridge.audioBuffer.removeAll()
         }
-        bridge.bufferLock.unlock()
+        bridge.bufferUnlock()
         memset(inBuffer.pointee.mAudioData.assumingMemoryBound(to: UInt8.self), 0, requested)
         AudioQueueEnqueueBuffer(inAQ, inBuffer, 0, nil)
     }

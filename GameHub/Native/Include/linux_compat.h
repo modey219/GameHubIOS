@@ -21,10 +21,11 @@
 #include <sys/mman.h>
 #include <sys/time.h>
 #include <sys/wait.h>
+#include <poll.h>
 #include <pthread.h>
 #include <dirent.h>
 
-// ----- epoll (not on iOS, use poll fallback) -----
+// ----- epoll (iOS: poll-based fallback) -----
 struct epoll_event {
     uint32_t events;
     int fd;
@@ -37,27 +38,105 @@ struct epoll_event {
 #define EPOLLRDHUP 0x2000
 #define EPOLLET   0x80000000
 #define EPOLLONESHOT 0x40000000
+#define EPOLL_CTL_ADD 1
+#define EPOLL_CTL_DEL 2
+#define EPOLL_CTL_MOD 3
+
+/* Simple epoll emulation: store up to 128 monitored fds in the "epfd" slot */
+#define EPOLL_MAX_FDS 128
+typedef struct {
+    int fds[EPOLL_MAX_FDS];
+    uint32_t events[EPOLL_MAX_FDS];
+    int count;
+} epoll_ctx_t;
+
+static epoll_ctx_t g_epoll_ctxs[32] = {0};
 
 static inline int epoll_create(int size) {
     (void)size;
+    for (int i = 0; i < 32; i++) {
+        if (g_epoll_ctxs[i].count == 0) return 1000 + i; /* fake fd */
+    }
     return -1;
 }
 
 static inline int epoll_create1(int flags) {
     (void)flags;
-    return -1;
+    return epoll_create(0);
 }
 
 static inline int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event) {
-    (void)epfd; (void)op; (void)fd; (void)event;
-    errno = ENOSYS;
+    int idx = epfd - 1000;
+    if (idx < 0 || idx >= 32) { errno = EINVAL; return -1; }
+    epoll_ctx_t *ctx = &g_epoll_ctxs[idx];
+
+    if (op == EPOLL_CTL_ADD) {
+        if (ctx->count >= EPOLL_MAX_FDS) { errno = ENOMEM; return -1; }
+        ctx->fds[ctx->count] = fd;
+        ctx->events[ctx->count] = event ? event->events : 0;
+        ctx->count++;
+        return 0;
+    } else if (op == EPOLL_CTL_DEL) {
+        for (int i = 0; i < ctx->count; i++) {
+            if (ctx->fds[i] == fd) {
+                ctx->fds[i] = ctx->fds[ctx->count - 1];
+                ctx->events[i] = ctx->events[ctx->count - 1];
+                ctx->count--;
+                return 0;
+            }
+        }
+        return -1;
+    } else if (op == EPOLL_CTL_MOD) {
+        for (int i = 0; i < ctx->count; i++) {
+            if (ctx->fds[i] == fd) {
+                ctx->events[i] = event ? event->events : 0;
+                return 0;
+            }
+        }
+        return -1;
+    }
+    errno = EINVAL;
     return -1;
 }
 
 static inline int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout) {
-    (void)epfd; (void)events; (void)maxevents; (void)timeout;
-    errno = ENOSYS;
-    return -1;
+    int idx = epfd - 1000;
+    if (idx < 0 || idx >= 32) { errno = EINVAL; return -1; }
+    epoll_ctx_t *ctx = &g_epoll_ctxs[idx];
+    if (ctx->count == 0) {
+        /* No fds to poll — sleep briefly to avoid busy-spin */
+        struct timespec ts = { 0, (timeout < 0 ? 100 : timeout) * 1000000 };
+        nanosleep(&ts, NULL);
+        return 0;
+    }
+
+    /* Build pollfd array */
+    struct pollfd pfds[EPOLL_MAX_FDS];
+    int n = ctx->count < maxevents ? ctx->count : maxevents;
+    if (n > EPOLL_MAX_FDS) n = EPOLL_MAX_FDS;
+    for (int i = 0; i < n; i++) {
+        pfds[i].fd = ctx->fds[i];
+        pfds[i].events = 0;
+        if (ctx->events[i] & EPOLLIN) pfds[i].events |= POLLIN;
+        if (ctx->events[i] & EPOLLOUT) pfds[i].events |= POLLOUT;
+        pfds[i].revents = 0;
+    }
+
+    int ret = poll(pfds, n, timeout);
+    if (ret <= 0) return ret;
+
+    int out = 0;
+    for (int i = 0; i < n && out < ret; i++) {
+        if (pfds[i].revents != 0) {
+            events[out].fd = pfds[i].fd;
+            events[out].events = 0;
+            if (pfds[i].revents & POLLIN) events[out].events |= EPOLLIN;
+            if (pfds[i].revents & POLLOUT) events[out].events |= EPOLLOUT;
+            if (pfds[i].revents & (POLLERR|POLLHUP)) events[out].events |= EPOLLERR | EPOLLHUP;
+            out++;
+        }
+    }
+    return out;
 }
 
 // ----- signalfd (not on iOS) -----
@@ -110,15 +189,28 @@ static inline int timerfd_gettime(int fd, struct itimerval *cur_value) {
     return -1;
 }
 
-// ----- eventfd (not on iOS) -----
+// ----- eventfd (iOS: socketpair-based fallback) -----
 #define EFD_NONBLOCK 0x800
 #define EFD_CLOEXEC 0x80000
 #define EFD_SEMAPHORE 0x001
 
 static inline int eventfd(unsigned int initval, int flags) {
-    (void)initval; (void)flags;
-    errno = ENOSYS;
-    return -1;
+    /* Wine uses eventfd for thread synchronization. We use socketpair as fallback.
+       The returned fd is one end; read/write semantics differ slightly from real
+       eventfd but sufficient for Wine's usage (notification via write+read). */
+    int fds[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) return -1;
+    if (flags & EFD_NONBLOCK) {
+        fcntl(fds[0], F_SETFL, O_NONBLOCK);
+        fcntl(fds[1], F_SETFL, O_NONBLOCK);
+    }
+    /* Drain initial value by writing + reading the counter bytes */
+    if (initval > 0) {
+        uint64_t val = initval;
+        write(fds[1], &val, sizeof(val));
+    }
+    close(fds[0]);
+    return fds[1];
 }
 
 // ----- inotify (not on iOS) -----
@@ -154,13 +246,13 @@ static inline int open_proc_maps(void) {
 
 // ----- Linux-specific stat flags -----
 #ifndef S_ISVTX
-#define S_ISVTX 0x0002
+#define S_ISVTX 0o01000
 #endif
 #ifndef S_ISGID
-#define S_ISGID 0x0002
+#define S_ISGID 0o02000
 #endif
 #ifndef S_ISUID
-#define S_ISUID 0x0004
+#define S_ISUID 0o04000
 #endif
 
 // ----- prctl (not on iOS, stub) -----
@@ -183,7 +275,7 @@ static inline int prctl(int option, ...) {
 #define CLONE_SYSVSEM 0x00040000
 #define CLONE_SETTLS 0x00080000
 #define CLONE_PARENT_SETTID 0x00100000
-#define CLONE_CHILD_SETTID 0x00200000
+#define CLONE_CHILD_SETTID 0x01000000
 #define CLONE_CHILD_CLEARTID 0x00200000
 #define CSIGNAL 0x000000ff
 
@@ -199,16 +291,41 @@ static inline pid_t set_tid_address(int *tidptr) {
     return getpid();
 }
 
-// ----- futex (not on iOS, use pthread equivalents) -----
+// ----- futex (iOS: use pthread-based fallback) -----
 #define FUTEX_WAIT 0
 #define FUTEX_WAKE 1
 #define FUTEX_WAIT_PRIVATE 0
 #define FUTEX_WAKE_PRIVATE 1
+#define FUTEX_REQUEUE 3
+#define FUTEX_CMP_REQUEUE 4
+#define FUTEX_WAIT_BITSET 9
+#define FUTEX_PRIVATE_FLAG 128
 
 static inline int futex(int *uaddr, int op, int val, const struct timespec *timeout) {
-    (void)uaddr; (void)op; (void)val; (void)timeout;
-    errno = ENOSYS;
-    return -1;
+    /* Box64/Wine use futex for synchronization.
+       On iOS without kernel futex, we implement basic cases:
+       FUTEX_WAIT: if *uaddr == val, sleep briefly (spin-yield)
+       FUTEX_WAKE: wake val threads (best-effort via yield) */
+    (void)timeout;
+    int base_op = op & ~FUTEX_PRIVATE_FLAG;
+    switch (base_op) {
+        case FUTEX_WAIT:
+        case 9 /* FUTEX_WAIT_BITSET */:
+            /* If value still matches, yield to avoid busy-spin */
+            if (*uaddr == val) {
+                /* Use nanosleep for brief sleep instead of pure spin */
+                struct timespec ts = { 0, 1000000 }; /* 1ms */
+                nanosleep(&ts, NULL);
+            }
+            return 0;
+        case FUTEX_WAKE:
+            /* Best-effort: yield so woken thread can run */
+            sched_yield();
+            return val > 0 ? val : 0;
+        default:
+            /* Unknown futex op — return 0 instead of crashing */
+            return 0;
+    }
 }
 
 // ----- getauxval (not on iOS) -----

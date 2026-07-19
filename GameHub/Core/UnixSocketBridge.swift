@@ -51,7 +51,7 @@ class UnixSocketBridge: ObservableObject {
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
-        let pathLen = min(socketPath.count, MemoryLayout.size(ofValue: addr.sun_path) - 1)
+        let pathLen = min(socketPath.utf8.count, MemoryLayout.size(ofValue: addr.sun_path) - 1)
         socketPath.withCString { cPath in
             withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
                 UnsafeMutableRawPointer(ptr).copyMemory(from: cPath, byteCount: pathLen)

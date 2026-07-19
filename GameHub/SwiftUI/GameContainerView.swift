@@ -455,9 +455,13 @@ struct GameContainerView: View {
     }
 
     private func stopGame() {
+        guard isRunning else { return }
         isRunning = false
         displayRenderer.stopRendering()
         timer?.invalidate()
+        timer = nil
+        logTimer?.invalidate()
+        logTimer = nil
         UnixSocketBridge.shared.stopServer()
         AudioBridge.shared.stopAudio()
         Box64Bridge.shared.stopWine()

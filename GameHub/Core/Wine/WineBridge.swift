@@ -64,11 +64,18 @@ class WineBridge {
     }
 
     func killWine() {
-        let process = NativeProcess()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "killall -9 wineserver 2>/dev/null; killall -9 wine64 2>/dev/null; killall -9 box64 2>/dev/null"]
-        try? process.run()
-        DispatchQueue.global(qos: .utility).async { process.waitUntilExit() }
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let wineserverPath = docs.appendingPathComponent("Wine/bin/wineserver").path
+
+        if fm.fileExists(atPath: wineserverPath) {
+            let process = NativeProcess()
+            process.executableURL = URL(fileURLWithPath: wineserverPath)
+            process.arguments = ["-k"]
+            try? process.run()
+            DispatchQueue.global(qos: .utility).async { process.waitUntilExit() }
+        }
     }
 
     func getWinePrefixPath() -> String { winePrefix }

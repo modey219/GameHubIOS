@@ -83,6 +83,7 @@ struct GameHubApp: App {
 
     private func performSetup() {
         DispatchQueue.global(qos: .userInitiated).async {
+        autoreleasepool {
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
                 DispatchQueue.main.async { self.isLoading = false }
@@ -139,6 +140,7 @@ struct GameHubApp: App {
                     self.isLoading = false
                 }
             }
+        }
         }
     }
 

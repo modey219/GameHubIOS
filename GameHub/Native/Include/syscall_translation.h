@@ -14,7 +14,7 @@ typedef struct {
     int flags;
     int is_socket;
     int is_epoll;
-    int epoll_fds[64];
+    int epoll_fds[1];
     int epoll_count;
 } fd_mapping_t;
 

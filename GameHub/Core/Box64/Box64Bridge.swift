@@ -13,9 +13,13 @@ class Box64Bridge {
 
     private static let logQueue = DispatchQueue(label: "com.box64.swiftlog")
     private static var logFD: Int32 = -1
+    private static let logDateFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        return f
+    }()
 
     static func log(_ msg: String) {
-        let ts = ISO8601DateFormatter().string(from: Date())
+        let ts = logDateFormatter.string(from: Date())
         let line = "[\(ts)] \(msg)\n"
         logQueue.sync {
             if logFD < 0 {
@@ -84,64 +88,27 @@ class Box64Bridge {
 
         progressCallback?("Extracting Box64...")
         autoreleasepool {
-            do { try extractBox64() } catch { Self.log("extractBox64 failed: \(error)") }
+            try extractBox64()
         }
         Self.log("memory after Box64 extraction = \(Self.memoryUsageMB())MB")
 
         progressCallback?("Extracting Wine...")
         autoreleasepool {
-            do { try extractWine() } catch { Self.log("extractWine failed: \(error)") }
+            try extractWine()
         }
         Self.log("memory after Wine extraction = \(Self.memoryUsageMB())MB")
 
         progressCallback?("Extracting MoltenVK...")
         autoreleasepool {
-            do { try extractMoltenVK() } catch { Self.log("extractMoltenVK failed: \(error)") }
+            do { try extractMoltenVK() } catch { Self.log("extractMoltenVK skipped: \(error)") }
         }
         Self.log("memory after MoltenVK extraction = \(Self.memoryUsageMB())MB")
 
         progressCallback?("Extracting DXVK...")
         autoreleasepool {
-            do { try extractDXVK() } catch { Self.log("extractDXVK failed: \(error)") }
+            do { try extractDXVK() } catch { Self.log("extractDXVK skipped: \(error)") }
         }
-        Self.log("memory after DXVK extraction = \(Self.memoryUsageMB())MB")
-
-        progressCallback?("Copying binaries to temp...")
-        copyBinariesToTemp()
         Self.log("setupAllBundledBinaries: memory after all = \(Self.memoryUsageMB())MB")
-    }
-
-    private func copyBinariesToTemp() {
-        let fm = FileManager.default
-        let tmp = NSTemporaryDirectory()
-
-        let box64Src = box64InstallPath + "/box64"
-        let box64Tmp = tmp + "box64"
-        Self.log("copyBinariesToTemp: box64Src=\(box64Src) exists=\(fm.fileExists(atPath: box64Src))")
-        if fm.fileExists(atPath: box64Src) && !fm.fileExists(atPath: box64Tmp) {
-            Self.log("copyBinariesToTemp: copying box64...")
-            do {
-                try fm.copyItem(atPath: box64Src, toPath: box64Tmp)
-                try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: box64Tmp)
-                Self.log("copyBinariesToTemp: box64 copied OK")
-            } catch {
-                Self.log("copyBinariesToTemp: box64 copy failed: \(error)")
-            }
-        }
-
-        let wine64Src = wineInstallPath + "/bin/wine64"
-        let wine64Tmp = tmp + "wine64"
-        Self.log("copyBinariesToTemp: wine64Src=\(wine64Src) exists=\(fm.fileExists(atPath: wine64Src))")
-        if fm.fileExists(atPath: wine64Src) && !fm.fileExists(atPath: wine64Tmp) {
-            Self.log("copyBinariesToTemp: copying wine64...")
-            do {
-                try fm.copyItem(atPath: wine64Src, toPath: wine64Tmp)
-                try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wine64Tmp)
-                Self.log("copyBinariesToTemp: wine64 copied OK")
-            } catch {
-                Self.log("copyBinariesToTemp: wine64 copy failed: \(error)")
-            }
-        }
     }
 
     func initialize() {
@@ -162,12 +129,12 @@ class Box64Bridge {
             Self.log("box64_create OK, calling box64_init...")
             box64_init(ctx, box64InstallPath)
             Self.log("box64_init done")
+            isInitialized = true
         } else {
             Self.log("box64_create returned NULL!")
         }
 
-        isInitialized = true
-        Self.log("initialize() complete")
+        Self.log("initialize() complete, isInitialized=\(isInitialized)")
     }
 
     private func setupEnvironment() {

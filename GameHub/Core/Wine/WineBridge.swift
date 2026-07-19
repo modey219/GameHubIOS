@@ -29,19 +29,8 @@ class WineBridge {
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         winePrefix = docs.appendingPathComponent("Wine").path
         wineBinaryPath = docs.appendingPathComponent("Wine/bin/wine64").path
-        setupWinePrefix()
         setupEnvironment()
         isInitialized = true
-    }
-
-    private func setupWinePrefix() {
-        let fm = FileManager.default
-        let wineDir = URL(fileURLWithPath: winePrefix)
-        let dirs = ["drive_c", "drive_c/windows", "drive_c/windows/system32",
-                     "drive_c/users", "drive_c/Program Files", "drive_c/games", "input", "logs"]
-        for path in dirs {
-            try? fm.createDirectory(at: wineDir.appendingPathComponent(path), withIntermediateDirectories: true)
-        }
     }
 
     private func setupEnvironment() {

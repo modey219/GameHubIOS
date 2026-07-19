@@ -533,8 +533,11 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         }
         case 168: {
             struct pollfd *pfd = (struct pollfd *)(uintptr_t)a1;
+            if (a2 > 1024) a2 = 1024;
+            if (a2 <= 0) return -EINVAL;
             struct pollfd *hpfd = calloc(a2, sizeof(struct pollfd));
             int *map = calloc(a2, sizeof(int));
+            if (!hpfd || !map) { free(hpfd); free(map); return -ENOMEM; }
             for (int i = 0; i < a2; i++) {
                 hpfd[i].fd = host_fd_for_linux(ctx, pfd[i].fd);
                 hpfd[i].events = pfd[i].events;
@@ -651,6 +654,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             if (pipe(hp) < 0) return -errno;
             int s0 = find_free_fd_slot(ctx);
             int s1 = find_free_fd_slot(ctx);
+            if (s0 < 0 || s1 < 0) { close(hp[0]); close(hp[1]); return -EMFILE; }
             register_host_fd(ctx, s0, hp[0], 0);
             register_host_fd(ctx, s1, hp[1], 0);
             int *fd = (int *)(uintptr_t)a1;

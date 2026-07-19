@@ -168,11 +168,15 @@ class JITManager: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
-            let dynarec = getenv("BOX64_DYNAREC")
-            let dynarecVal = dynarec != nil ? String(cString: dynarec!) : ""
+            var dynarecVal = ""
+            if let dynarec = getenv("BOX64_DYNAREC") {
+                dynarecVal = String(cString: dynarec)
+            }
 
-            let jitless = getenv("BOX64_JITLESS")
-            let jitlessVal = jitless != nil ? String(cString: jitless!) : ""
+            var jitlessVal = ""
+            if let jitless = getenv("BOX64_JITLESS") {
+                jitlessVal = String(cString: jitless)
+            }
 
             let sysctlJIT = self.checkSysctlJIT()
             let taskInfoJIT = self.checkTaskInfoJIT()

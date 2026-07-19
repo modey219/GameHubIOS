@@ -1,5 +1,4 @@
 import Foundation
-import MachO
 
 class Box64Bridge {
     static let shared = Box64Bridge()
@@ -114,12 +113,6 @@ class Box64Bridge {
         Self.log("box64InstallPath = \(box64InstallPath)")
         Self.log("wineInstallPath = \(wineInstallPath)")
         setupEnvironment()
-
-        let availMB = os_proc_available_memory() / (1024 * 1024)
-        Self.log("Available memory: \(availMB) MB")
-        if availMB < 80 {
-            Self.log("WARNING: Very low memory! Box64 may be killed by jetsam.")
-        }
 
         Self.log("calling box64_create()...")
         ctx = box64_create()

@@ -9,7 +9,6 @@ struct GameHubApp: App {
     @State private var isLoading = true
     @State private var setupError: String?
     @State private var setupProgress = "Initializing..."
-    @State private var setupDetail = ""
 
     var body: some Scene {
         WindowGroup {
@@ -56,14 +55,11 @@ struct GameHubApp: App {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
                         .font(.title2)
-                    Text("Setup Error")
-                        .font(.headline)
                     Text(error)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-
                     Button("Continue Anyway") {
                         isLoading = false
                     }
@@ -79,11 +75,6 @@ struct GameHubApp: App {
                     Text(setupProgress)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-                    if !setupDetail.isEmpty {
-                        Text(setupDetail)
-                            .font(.caption2)
-                            .foregroundColor(.secondary.opacity(0.7))
-                    }
                 }
             }
         }
@@ -91,68 +82,64 @@ struct GameHubApp: App {
     }
 
     private func performSetup() {
-        DispatchQueue.main.async {
-            self._performSetupInner()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fm = FileManager.default
+            guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                DispatchQueue.main.async { self.isLoading = false }
+                return
+            }
+
+            self.updateProgress("Creating directories...")
+            let dirs = ["Box64", "Containers", "Graphics"]
+            for dir in dirs {
+                try? fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
+            }
+
+            self.updateProgress("Initializing graphics...")
+            GraphicsBridge.shared.initialize()
+
+            let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
+            let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
+
+            if !box64Exists || !wineExists {
+                self.updateProgress("Extracting bundled binaries...")
+                do {
+                    try Box64Bridge.shared.setupAllBundledBinaries { detail in
+                        self.updateProgress(detail)
+                    }
+                } catch {
+                    print("[MNEmulator] Extraction error: \(error)")
+                    DispatchQueue.main.async {
+                        self.setupError = "Extraction error: \(error.localizedDescription)"
+                        self.isLoading = false
+                    }
+                    return
+                }
+            }
+
+            self.updateProgress("Initializing Box64...")
+            Box64Bridge.shared.initialize()
+
+            self.updateProgress("Initializing Wine...")
+            WineBridge.shared.initialize()
+
+            self.updateProgress("Setting up prefix...")
+            WinePrefixManager.shared.initializePrefix()
+
+            self.updateProgress("Applying settings...")
+            settingsManager.applySettings()
+
+            DispatchQueue.main.async {
+                withAnimation(.easeIn(duration: 0.3)) {
+                    self.isLoading = false
+                }
+            }
         }
     }
 
-    private func _performSetupInner() {
-        let fm = FileManager.default
-
-        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            isLoading = false
-            return
-        }
-
-        setupProgress = "Creating directories..."
-        let dirs = ["Box64", "Containers", "Graphics"]
-        for dir in dirs {
-            try? fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
-        }
-
-        setupProgress = "Initializing graphics..."
-        setupDetail = ""
-        GraphicsBridge.shared.initialize()
-
-        let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
-        let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
-
-        if !box64Exists || !wineExists {
-            setupProgress = "Extracting bundled binaries..."
-            do {
-                try Box64Bridge.shared.setupAllBundledBinaries { detail in
-                    DispatchQueue.main.async {
-                        self.setupDetail = detail
-                    }
-                }
-                setupProgress = "Binaries extracted!"
-                setupDetail = ""
-            } catch {
-                print("[MNEmulator] Extraction error: \(error)")
-                    self.setupError = "Extraction error: \(error.localizedDescription)"
-                return
-            }
-        } else {
-            setupProgress = "Using cached binaries..."
-        }
-
-        setupProgress = "Initializing Box64..."
-        Box64Bridge.shared.initialize()
-
-        setupProgress = "Initializing Wine..."
-        WineBridge.shared.initialize()
-
-        setupProgress = "Setting up prefix..."
-        WinePrefixManager.shared.initializePrefix()
-
-        setupProgress = "Applying settings..."
-        settingsManager.applySettings()
-
-        setupProgress = "Done!"
+    private func updateProgress(_ text: String) {
         DispatchQueue.main.async {
-            withAnimation(.easeIn(duration: 0.3)) {
-                self.isLoading = false
-            }
+            self.setupProgress = text
         }
     }
 }

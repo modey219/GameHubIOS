@@ -168,7 +168,6 @@ class JITManager: ObservableObject {
         guard result == 0 else { return false }
 
         var info = kinfo_proc()
-        var count = Int(size) / MemoryLayout<kinfo_proc>.size
         let sysctlResult = sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0)
         guard sysctlResult == 0 else { return false }
 

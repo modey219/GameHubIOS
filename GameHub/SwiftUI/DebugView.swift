@@ -274,8 +274,8 @@ struct DebugView: View {
         do {
             try process.run()
             process.waitUntilExit()
-            let output = pipe.readOutput(timeout: 2)
-            let errOutput = errPipe.readOutput(timeout: 0.5)
+            let output = pipe?.readOutput(timeout: 2) ?? ""
+            let errOutput = errPipe?.readOutput(timeout: 0.5) ?? ""
             let combined = output + (errOutput.isEmpty ? "" : "\n\(errOutput)")
             if process.terminationStatus == 0 {
                 return "OK: \(combined.prefix(100))"
@@ -340,8 +340,8 @@ struct DebugView: View {
             do {
                 try process.run()
                 process.waitUntilExit()
-                let out = outPipe.readOutput(timeout: 3)
-                let err = errPipe.readOutput(timeout: 1)
+                let out = outPipe?.readOutput(timeout: 3) ?? ""
+                let err = errPipe?.readOutput(timeout: 1) ?? ""
                 let combined = (out + (err.isEmpty ? "" : "\n\(err)")).trimmingCharacters(in: .whitespacesAndNewlines)
 
                 DispatchQueue.main.async {

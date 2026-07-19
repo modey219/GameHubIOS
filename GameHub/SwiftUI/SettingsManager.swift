@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 class SettingsManager: ObservableObject {
 
@@ -83,8 +84,6 @@ class SettingsManager: ObservableObject {
     // MARK: - Init
     init() {
         let d = UserDefaults.standard
-        let g = d.object(forKey:) 
-        let gs = d.string(forKey:)
         let gi = { (k: String, def: Int) -> Int in (d.object(forKey: k) as? Int) ?? def }
         let gf = { (k: String, def: Float) -> Float in (d.object(forKey: k) as? Float) ?? def }
         let gd = { (k: String, def: Double) -> Double in (d.object(forKey: k) as? Double) ?? def }

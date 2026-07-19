@@ -30,6 +30,8 @@ class Process {
     private var pid: pid_t = 0
     private var _isRunning = false
 
+    var processIdentifier: pid_t { pid }
+
     init() {}
 
     func run() throws {
@@ -99,7 +101,11 @@ class Process {
             guard let self = self else { return }
             var status: Int32 = 0
             waitpid(self.pid, &status, 0)
-            self.terminationStatus = WIFEXITED(status) ? WEXITSTATUS(status) : Int32(-1)
+            if (status & 0x7f) == 0 {
+                self.terminationStatus = (status >> 8) & 0xff
+            } else {
+                self.terminationStatus = -1
+            }
             self._isRunning = false
             DispatchQueue.main.async { self.terminationHandler?(self) }
         }
@@ -109,7 +115,11 @@ class Process {
         if pid > 0 {
             var status: Int32 = 0
             waitpid(pid, &status, 0)
-            terminationStatus = WIFEXITED(status) ? WEXITSTATUS(status) : Int32(-1)
+            if (status & 0x7f) == 0 {
+                terminationStatus = (status >> 8) & 0xff
+            } else {
+                terminationStatus = -1
+            }
             _isRunning = false
         }
     }

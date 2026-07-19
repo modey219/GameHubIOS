@@ -300,8 +300,8 @@ class Box64Bridge {
             print("[Box64] Launched: box64 \(wine64Path) \(executablePath)")
 
             DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
-                let out = outPipe.readOutput(timeout: 1)
-                let err = errPipe.readOutput(timeout: 1)
+                let out = outPipe?.readOutput(timeout: 1) ?? ""
+                let err = errPipe?.readOutput(timeout: 1) ?? ""
                 if !out.isEmpty || !err.isEmpty {
                     print("[Box64] stdout: \(out)")
                     print("[Box64] stderr: \(err)")
@@ -311,7 +311,7 @@ class Box64Bridge {
             result.process = process
             return result
         } catch {
-            let errOut = errPipe.readOutput(timeout: 0.5)
+            let errOut = errPipe?.readOutput(timeout: 0.5) ?? ""
             result.error = "posix_spawn failed: \(error.localizedDescription)"
             if !errOut.isEmpty {
                 result.error! += "\n\nOutput: \(errOut)"

@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <setjmp.h>
+#include <signal.h>
 
 extern char **environ;
 
@@ -15,22 +16,10 @@ extern int emulate(x64emu_t *emu, elfheader_t *elf_header);
 extern void endBox64(void);
 extern int box64_quit;
 
-static jmp_buf g_exit_jmpbuf;
-static volatile int g_exit_jmp_active = 0;
 static volatile int g_runner_running = 0;
 static volatile int g_runner_exit_code = 0;
 static char g_runner_error[1024] = {0};
 static char g_runner_status[256] = {0};
-
-void box64_exit_intercept(int code) {
-    if (g_exit_jmp_active) {
-        g_runner_exit_code = code;
-        g_runner_running = 0;
-        snprintf(g_runner_status, sizeof(g_runner_status), "exit(%d)", code);
-        longjmp(g_exit_jmpbuf, code + 1);
-    }
-    _exit(code);
-}
 
 typedef struct {
     const char *wine64_path;
@@ -61,14 +50,6 @@ static void *wine_thread_func(void *arg) {
     x64emu_t *emu = NULL;
     elfheader_t *elf_header = NULL;
 
-    int jmp_result = setjmp(g_exit_jmpbuf);
-    if (jmp_result != 0) {
-        fprintf(stderr, "[Runner] Caught exit (code=%d)\n", g_runner_exit_code);
-        g_runner_running = 0;
-        return NULL;
-    }
-    g_exit_jmp_active = 1;
-
     fprintf(stderr, "[Runner] Calling initialize(%d)\n", argc);
     int ret = initialize(argc, argv, environ, &emu, &elf_header, 1);
     if (ret != 0) {
@@ -77,7 +58,6 @@ static void *wine_thread_func(void *arg) {
         fprintf(stderr, "[Runner] %s\n", g_runner_error);
         g_runner_running = 0;
         g_runner_exit_code = -1;
-        g_exit_jmp_active = 0;
         return NULL;
     }
 
@@ -89,7 +69,6 @@ static void *wine_thread_func(void *arg) {
     fprintf(stderr, "[Runner] emulate() returned %d\n", ret);
     g_runner_exit_code = ret;
     g_runner_running = 0;
-    g_exit_jmp_active = 0;
     snprintf(g_runner_status, sizeof(g_runner_status), "exited (%d)", ret);
 
     return NULL;

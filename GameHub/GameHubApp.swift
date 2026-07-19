@@ -9,35 +9,8 @@ struct GameHubApp: App {
     @State private var isLoading = true
     @State private var setupError: String?
     @State private var setupProgress = "Initializing..."
-
-    private static let logFile: URL? = {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("setup_memory.log")
-    }()
-
-    private static func memMB() -> UInt64 {
-        var info = mach_task_basic_info()
-        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
-        let r = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
-            }
-        }
-        return r == KERN_SUCCESS ? UInt64(info.resident_size) / (1024 * 1024) : 0
-    }
-
-    private static func logMem(_ stage: String) {
-        let mb = memMB()
-        let line = "[MEM] \(stage): \(mb)MB\n"
-        guard let url = logFile else { return }
-        if let fh = FileHandle(forWritingAtPath: url.path) {
-            fh.seekToEndOfFile()
-            fh.write(line.data(using: .utf8) ?? Data())
-            fh.closeFile()
-        } else {
-            try? line.data(using: .utf8)?.write(to: url)
-        }
-    }
+    @State private var setupLog: [String] = []
+    @State private var currentStep = 0
 
     var body: some Scene {
         WindowGroup {
@@ -60,13 +33,12 @@ struct GameHubApp: App {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     performSetup()
                 }
-                startMemoryPressureMonitor()
             }
         }
     }
 
     private var splashView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             Image(systemName: "gamecontroller.fill")
                 .font(.system(size: 64))
                 .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
@@ -99,16 +71,52 @@ struct GameHubApp: App {
                     .cornerRadius(12)
                 }
             } else {
-                VStack(spacing: 12) {
+                VStack(spacing: 8) {
                     ProgressView()
                         .scaleEffect(1.2)
                     Text(setupProgress)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
+
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(Array(setupLog.enumerated()), id: \.offset) { idx, line in
+                                    Text(line)
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundColor(.green)
+                                        .id(idx)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                        }
+                        .frame(maxHeight: 120)
+                        .background(Color.black.opacity(0.8))
+                        .cornerRadius(8)
+                        .padding(.horizontal, 24)
+                        .onChange(of: setupLog.count) { _ in
+                            withAnimation { proxy.scrollTo(setupLog.count - 1, anchor: .bottom) }
+                        }
+                    }
                 }
             }
         }
         .padding()
+    }
+
+    private func logStep(_ n: Int, _ text: String) {
+        let ts = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(ts)] STEP \(n): \(text)"
+        NSLog("%@", line)
+        DispatchQueue.main.async {
+            self.setupLog.append(line)
+            if self.setupLog.count > 100 {
+                self.setupLog.removeFirst(50)
+            }
+            self.currentStep = n
+            self.setupProgress = text
+        }
     }
 
     private func performSetup() {
@@ -119,27 +127,20 @@ struct GameHubApp: App {
                 return
             }
 
-            Self.logMem("start")
-            self.updateProgress("Creating directories...")
-            let dirs = ["Box64", "Containers", "Graphics"]
-            for dir in dirs {
-                try? fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
-            }
-            Self.logMem("dirs created")
-
+            logStep(1, "Checking existing files...")
             let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
             let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
+            logStep(1, "Box64 exists: \(box64Exists), Wine exists: \(wineExists)")
 
             if !box64Exists || !wineExists {
-                self.updateProgress("Extracting bundled binaries...")
+                var stepCounter = 2
                 do {
-                    try autoreleasepool {
-                        try Box64Bridge.shared.setupAllBundledBinaries { detail in
-                            self.updateProgress(detail)
-                        }
+                    try Box64Bridge.shared.setupAllBundledBinaries { detail in
+                        stepCounter += 1
+                        self.logStep(stepCounter, detail)
                     }
                 } catch {
-                    print("[MNEmulator] Extraction error: \(error)")
+                    logStep(-1, "EXTRACTION FAILED: \(error)")
                     DispatchQueue.main.async {
                         self.setupError = "Extraction error: \(error.localizedDescription)"
                         self.isLoading = false
@@ -147,35 +148,22 @@ struct GameHubApp: App {
                     return
                 }
             }
-            Self.logMem("extraction done")
 
-            autoreleasepool {
-                self.updateProgress("Initializing Box64...")
-                Self.logMem("before Box64 init")
-                Box64Bridge.shared.initialize()
-                Self.logMem("after Box64 init")
-            }
+            logStep(20, "Initializing Box64...")
+            Box64Bridge.shared.initialize()
+            logStep(20, "Box64 init complete")
 
-            autoreleasepool {
-                self.updateProgress("Initializing Wine...")
-                Self.logMem("before Wine init")
-                WineBridge.shared.initialize()
-                Self.logMem("after Wine init")
-            }
+            logStep(21, "Initializing Wine...")
+            WineBridge.shared.initialize()
+            logStep(21, "Wine init complete")
 
-            autoreleasepool {
-                self.updateProgress("Setting up prefix...")
-                Self.logMem("before prefix init")
-                WinePrefixManager.shared.initializePrefix()
-                Self.logMem("after prefix init")
-            }
+            logStep(22, "Setting up prefix...")
+            WinePrefixManager.shared.initializePrefix()
+            logStep(22, "Prefix init complete")
 
-            autoreleasepool {
-                self.updateProgress("Applying settings...")
-                Self.logMem("before applySettings")
-                settingsManager.applySettings()
-                Self.logMem("after applySettings - DONE")
-            }
+            logStep(23, "Applying settings...")
+            settingsManager.applySettings()
+            logStep(23, "ALL DONE!")
 
             DispatchQueue.main.async {
                 withAnimation(.easeIn(duration: 0.3)) {
@@ -183,28 +171,5 @@ struct GameHubApp: App {
                 }
             }
         }
-    }
-
-    private func updateProgress(_ text: String) {
-        DispatchQueue.main.async {
-            self.setupProgress = text
-        }
-    }
-
-    private func startMemoryPressureMonitor() {
-        let source = DispatchSource.makeMemoryPressureSource(
-            eventMask: [.warning, .critical],
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler {
-            let mb = Self.memMB()
-            Self.logMem("MEMORY_PRESSURE mem=\(mb)MB")
-            if mb > 1400 {
-                Self.logMem("CRITICAL: exceeding 1400MB, clearing caches")
-                URLCache.shared.removeAllCachedResponses()
-                NotificationCenter.default.post(name: .init("MemoryPressureCritical"), object: nil)
-            }
-        }
-        source.resume()
     }
 }

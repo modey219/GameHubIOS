@@ -89,37 +89,39 @@ class Box64Bridge {
 
         try fm.createDirectory(at: docs.appendingPathComponent("Graphics"), withIntermediateDirectories: true)
 
-        Self.log("setupAllBundledBinaries: memory before extraction = \(Self.memoryUsageMB())MB")
-
         progressCallback?("Extracting Box64...")
+        NSLog("[MNEmulator] extractBox64 start")
         try autoreleasepool {
             try extractBox64()
         }
-        Self.log("memory after Box64 extraction = \(Self.memoryUsageMB())MB")
+        NSLog("[MNEmulator] extractBox64 done")
 
         progressCallback?("Extracting Wine...")
+        NSLog("[MNEmulator] extractWine start")
         try autoreleasepool {
             try extractWine()
         }
-        Self.log("memory after Wine extraction = \(Self.memoryUsageMB())MB")
+        NSLog("[MNEmulator] extractWine done")
 
         progressCallback?("Extracting MoltenVK...")
+        NSLog("[MNEmulator] extractMoltenVK start")
         autoreleasepool {
-            do { try extractMoltenVK() } catch { Self.log("extractMoltenVK skipped: \(error)") }
+            do { try extractMoltenVK() } catch { NSLog("[MNEmulator] extractMoltenVK skipped: \(error)") }
         }
-        Self.log("memory after MoltenVK extraction = \(Self.memoryUsageMB())MB")
+        NSLog("[MNEmulator] extractMoltenVK done")
 
         progressCallback?("Extracting DXVK...")
+        NSLog("[MNEmulator] extractDXVK start")
         autoreleasepool {
             let memMB = Self.memoryUsageMB()
-            Self.log("before DXVK extraction: memory = \(memMB)MB")
+            NSLog("[MNEmulator] before DXVK: memory = \(memMB)MB")
             if memMB > 350 {
-                Self.log("skipping DXVK extraction — memory too high (\(memMB)MB)")
+                NSLog("[MNEmulator] skipping DXVK — memory too high (\(memMB)MB)")
                 return
             }
-            do { try extractDXVK() } catch { Self.log("extractDXVK skipped: \(error)") }
+            do { try extractDXVK() } catch { NSLog("[MNEmulator] extractDXVK skipped: \(error)") }
         }
-        Self.log("setupAllBundledBinaries: memory after all = \(Self.memoryUsageMB())MB")
+        NSLog("[MNEmulator] extractDXVK done — all extraction complete")
     }
 
     func initialize() {

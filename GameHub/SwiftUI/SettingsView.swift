@@ -482,14 +482,16 @@ struct SettingsView: View {
 
     private func clearShaderCache() {
         let fm = FileManager.default
-        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
         let shaderCache = docs.appendingPathComponent("ShaderCache").path
         try? fm.removeItem(atPath: shaderCache)
     }
 
     private func clearAllContainers() {
         let fm = FileManager.default
-        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
         let containers = docs.appendingPathComponent("Containers").path
         try? fm.removeItem(atPath: containers)
     }

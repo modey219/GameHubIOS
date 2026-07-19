@@ -44,7 +44,8 @@ class InputManager: ObservableObject {
     private var rightStickCenter: CGPoint = .zero
 
     private let inputSocketPath: String = {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
         return docs.appendingPathComponent("Containers/input.sock").path
     }()
 
@@ -203,7 +204,8 @@ class InputManager: ObservableObject {
     private func sendInputToWine(_ input: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: input) else { return }
 
-        let inputDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let inputDir = (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory()))
             .appendingPathComponent("Wine/input")
         try? FileManager.default.createDirectory(at: inputDir, withIntermediateDirectories: true)
 

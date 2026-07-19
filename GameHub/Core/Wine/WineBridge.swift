@@ -25,7 +25,8 @@ class WineBridge {
 
     func initialize() {
         guard !isInitialized else { return }
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
         winePrefix = docs.appendingPathComponent("Wine").path
         wineBinaryPath = docs.appendingPathComponent("Wine/bin/wine64").path
         setupWinePrefix()
@@ -56,7 +57,8 @@ class WineBridge {
     func launchGame(executablePath: String, arguments: [String] = [], containerPath: String? = nil) -> Box64Bridge.LaunchResult {
         let targetPrefix = containerPath ?? winePrefix
         let wine64Path = (containerPath != nil)
-            ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            ? (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSTemporaryDirectory()))
                 .appendingPathComponent("Wine/bin/wine64").path
             : wineBinaryPath
 
@@ -73,7 +75,7 @@ class WineBridge {
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", "killall -9 wineserver 2>/dev/null; killall -9 wine64 2>/dev/null; killall -9 box64 2>/dev/null"]
         try? process.run()
-        process.waitUntilExit()
+        DispatchQueue.global(qos: .utility).async { process.waitUntilExit() }
     }
 
     func getWinePrefixPath() -> String { winePrefix }

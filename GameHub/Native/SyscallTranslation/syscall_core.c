@@ -307,7 +307,12 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             if (ho < 0) return -EBADF;
             int dest_fd = host_fd_for_linux(ctx, a2);
             if (dest_fd >= 0) close(dest_fd);
-            int hn = dup2(ho, dest_fd >= 0 ? dest_fd : ho);
+            int hn;
+            if (dest_fd >= 0) {
+                hn = dup2(ho, dest_fd);
+            } else {
+                hn = dup(ho);
+            }
             if (hn < 0) return -errno;
             register_host_fd(ctx, a2, hn, ctx->process.fds[a1].flags);
             return a2;

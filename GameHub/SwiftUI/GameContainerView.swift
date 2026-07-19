@@ -475,7 +475,8 @@ struct GameContainerView: View {
         func flushLog() {
             let full = log.joined(separator: "\n")
             let fm = FileManager.default
-            let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSTemporaryDirectory())
             let logPath = docs.appendingPathComponent("launch.log").path
             let data = full.data(using: .utf8)
             if let d = data {
@@ -499,7 +500,8 @@ struct GameContainerView: View {
         logMsg("Settings applied")
 
         let fm = FileManager.default
-        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
         let containerPath = docs.appendingPathComponent("Containers/\(container.id.uuidString)").path
 
         let box64Path = docs.appendingPathComponent("Box64/box64").path
@@ -608,27 +610,31 @@ struct GameContainerView: View {
     }
 
     private func refreshRunnerLog() {
-        var parts: [String] = []
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let logFiles = [
-            "launch.log", "swift_box64.log", "bridge.log", "box64_runner.log"
-        ]
-        for name in logFiles {
-            let path = docs.appendingPathComponent(name).path
-            if let data = FileManager.default.contents(atPath: path),
-               let content = String(data: data, encoding: .utf8), !content.isEmpty {
-                parts.append("=== \(name) ===\n\(content)")
+        DispatchQueue.global(qos: .utility).async {
+            var parts: [String] = []
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSTemporaryDirectory())
+            let logFiles = [
+                "launch.log", "swift_box64.log", "bridge.log", "box64_runner.log"
+            ]
+            for name in logFiles {
+                let path = docs.appendingPathComponent(name).path
+                if let data = FileManager.default.contents(atPath: path),
+                   let content = String(data: data, encoding: .utf8), !content.isEmpty {
+                    parts.append("=== \(name) ===\n\(content)")
+                }
             }
-        }
-        if let cPath = box64_runner_get_log_path() {
-            let path = String(cString: cPath)
-            if !path.isEmpty, !parts.contains(where: { $0.contains(path) }),
-               let data = FileManager.default.contents(atPath: path),
-               let content = String(data: data, encoding: .utf8), !content.isEmpty {
-                parts.append("=== runner ===\n\(content)")
+            if let cPath = box64_runner_get_log_path() {
+                let path = String(cString: cPath)
+                if !path.isEmpty, !parts.contains(where: { $0.contains(path) }),
+                   let data = FileManager.default.contents(atPath: path),
+                   let content = String(data: data, encoding: .utf8), !content.isEmpty {
+                    parts.append("=== runner ===\n\(content)")
+                }
             }
+            let output = parts.isEmpty ? "No logs found. Run a game first." : parts.joined(separator: "\n\n")
+            DispatchQueue.main.async { self.wineOutput = output }
         }
-        wineOutput = parts.isEmpty ? "No logs found. Run a game first." : parts.joined(separator: "\n\n")
     }
 }
 

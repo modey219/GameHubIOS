@@ -14,7 +14,8 @@ class UnixSocketBridge: ObservableObject {
     private var socketPath: String
 
     init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
         socketPath = docs.appendingPathComponent("Wine/input.sock").path
     }
 
@@ -40,8 +41,11 @@ class UnixSocketBridge: ObservableObject {
         isServerRunning = true
         unlink(socketPath)
 
-        serverSocket = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard serverSocket >= 0 else { return }
+        let ss = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard ss >= 0 else { return }
+        socketLock.lock()
+        serverSocket = ss
+        socketLock.unlock()
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
@@ -54,19 +58,25 @@ class UnixSocketBridge: ObservableObject {
 
         let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
         let bindResult = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(serverSocket, $0, addrLen) }
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(ss, $0, addrLen) }
         }
-        guard bindResult == 0 else { close(serverSocket); serverSocket = -1; return }
-        guard listen(serverSocket, 1) == 0 else { close(serverSocket); serverSocket = -1; return }
+        guard bindResult == 0 else { close(ss); socketLock.lock(); serverSocket = -1; socketLock.unlock(); return }
+        guard listen(ss, 1) == 0 else { close(ss); socketLock.lock(); serverSocket = -1; socketLock.unlock(); return }
 
         while isServerRunning {
+            socketLock.lock()
+            let ss = serverSocket
+            socketLock.unlock()
+            guard ss >= 0 else { break }
             var clientAddr = sockaddr_un()
             var clientLen = socklen_t(MemoryLayout<sockaddr_un>.size)
             let client = withUnsafeMutablePointer(to: &clientAddr) { ptr in
-                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { accept(serverSocket, $0, &clientLen) }
+                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { accept(ss, $0, &clientLen) }
             }
             if client >= 0 {
+                socketLock.lock()
                 clientSocket = client
+                socketLock.unlock()
                 DispatchQueue.main.async { self.isConnected = true }
                 receiveData()
             }

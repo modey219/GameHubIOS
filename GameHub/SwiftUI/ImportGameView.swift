@@ -52,7 +52,8 @@ struct ImportGameView: View {
             Text("Select .exe files or game folders from your device")
                 .font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center)
 
-            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSTemporaryDirectory())
             VStack(alignment: .leading, spacing: 4) {
                 Text("Place files in:").font(.caption).bold()
                 Text(docs.appendingPathComponent("Containers").path)
@@ -68,7 +69,8 @@ struct ImportGameView: View {
             Text("iTunes / Finder").font(.headline)
             Text("Connect iPhone to computer → Select device → File Sharing → MN emulator → Drag & drop .exe files")
                 .font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
-            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSTemporaryDirectory())
             Text(docs.path).font(.caption).foregroundColor(.secondary).textSelection(.enabled)
                 .padding().background(Color(.systemGray6)).cornerRadius(8).padding(.horizontal)
         }
@@ -121,7 +123,8 @@ struct ImportGameView: View {
             webServer = nil
             webServerRunning = false
         } else {
-            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].path
+            let docs = (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSTemporaryDirectory())).path
             let server = SimpleHTTPServer(port: webServerPort, directory: docs) { fileName in
                 DispatchQueue.main.async { [self] in
                     self.uploadedFiles.append(fileName)

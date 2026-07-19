@@ -169,13 +169,16 @@ class Box64Bridge {
 
     func getRunnerLog() -> String {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        var parts: [String] = []
+
+        if let savedLog = UserDefaults.standard.string(forKey: "last_launch_log"), !savedLog.isEmpty {
+            parts.append("=== Launch Log (UserDefaults) ===\n\(savedLog)")
+        }
 
         let candidates = [
-            docs.appendingPathComponent("box64_runner.log").path,
             docs.appendingPathComponent("launch.log").path,
+            docs.appendingPathComponent("box64_runner.log").path,
         ]
-
-        var parts: [String] = []
 
         for path in candidates {
             if let data = FileManager.default.contents(atPath: path),
@@ -190,7 +193,7 @@ class Box64Bridge {
             if !path.isEmpty, !candidates.contains(path),
                let data = FileManager.default.contents(atPath: path),
                let content = String(data: data, encoding: .utf8), !content.isEmpty {
-                parts.append("=== runner.log ===\n\(content)")
+                parts.append("=== runner ===\n\(content)")
             }
         }
 

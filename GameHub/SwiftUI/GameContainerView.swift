@@ -467,7 +467,23 @@ struct GameContainerView: View {
         var log: [String] = []
         func logMsg(_ msg: String) {
             let ts = ISO8601DateFormatter().string(from: Date())
-            log.append("[\(ts)] \(msg)")
+            let line = "[\(ts)] \(msg)"
+            log.append(line)
+            NSLog("%@", line)
+            let key = "launch_log_\(log.count)"
+            UserDefaults.standard.set(line, forKey: key)
+        }
+
+        func flushLog() {
+            let full = log.joined(separator: "\n")
+            let fm = FileManager.default
+            let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let logPath = docs.appendingPathComponent("launch.log").path
+            let data = full.data(using: .utf8)
+            if let d = data {
+                fm.createFile(atPath: logPath, contents: d)
+            }
+            UserDefaults.standard.set(full, forKey: "last_launch_log")
         }
 
         guard !container.executablePath.isEmpty else {
@@ -478,6 +494,7 @@ struct GameContainerView: View {
 
         logMsg("launchGame() called")
         logMsg("executablePath: \(container.executablePath)")
+        flushLog()
 
         settingsManager.applySettings()
         logMsg("Settings applied")
@@ -492,15 +509,18 @@ struct GameContainerView: View {
         logMsg("box64Path: \(box64Path) exists=\(fm.fileExists(atPath: box64Path))")
         logMsg("wine64Path: \(wine64Path) exists=\(fm.fileExists(atPath: wine64Path))")
         logMsg("containerPath: \(containerPath)")
+        flushLog()
 
         guard fm.fileExists(atPath: box64Path) else {
             errorMessage = "Box64 binary not found at:\n\(box64Path)\n\nPlease restart the app to extract bundled binaries."
             showError = true
+            flushLog()
             return
         }
         guard fm.fileExists(atPath: wine64Path) else {
             errorMessage = "Wine binary not found at:\n\(wine64Path)\n\nPlease restart the app to extract bundled binaries."
             showError = true
+            flushLog()
             return
         }
 
@@ -508,6 +528,7 @@ struct GameContainerView: View {
         WinePrefixManager.shared.setupVKD3DForContainer(containerPath)
         WinePrefixManager.shared.setupContainerRegistry(containerPath)
         logMsg("Wine prefix setup done")
+        flushLog()
 
         let driveCPath = containerPath + "/drive_c"
         let gameDir = driveCPath + "/games/\(container.name)"
@@ -532,8 +553,10 @@ struct GameContainerView: View {
 
         jitManager.enableJIT()
         logMsg("JIT enabled: \(jitManager.isJITEnabled)")
+        flushLog()
 
         logMsg("Calling Box64Bridge.shared.launchWine()...")
+        flushLog()
         let launchResult = Box64Bridge.shared.launchWine(
             wine64Path: wine64Path,
             executablePath: finalExePath,
@@ -544,19 +567,13 @@ struct GameContainerView: View {
         if launchResult.wineLaunched {
             logMsg("launchWine SUCCESS")
             isRunning = true
-            wineOutput = log.joined(separator: "\n") + "\n\nWine launched successfully.\nExe: \(finalExePath)"
         } else {
             let detail = launchResult.error ?? "Unknown error"
             logMsg("launchWine FAILED: \(detail)")
-            wineOutput = log.joined(separator: "\n")
             errorMessage = detail
             showError = true
         }
-
-        do {
-            let logPath = docs.appendingPathComponent("launch.log").path
-            try log.joined(separator: "\n").write(toFile: logPath, atomically: true, encoding: .utf8)
-        } catch {}
+        flushLog()
 
         UnixSocketBridge.shared.startServer()
         AudioBridge.shared.startAudioServer()

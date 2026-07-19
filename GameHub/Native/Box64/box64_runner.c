@@ -5,13 +5,16 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <signal.h>
+#include <setjmp.h>
 #include <sys/stat.h>
-#include <time.h>
+#include <fcntl.h>
 
 extern char **environ;
 
 typedef struct elfheader_s elfheader_t;
 typedef struct x64emu_s x64emu_t;
+
+extern void box64_set_exit_jmp(volatile jmp_buf *buf);
 
 extern int initialize(int argc, const char **argv, char **env, x64emu_t **emulator, elfheader_t **elfheader, int exec);
 extern int emulate(x64emu_t *emu, elfheader_t *elf_header);
@@ -22,29 +25,28 @@ static volatile int g_runner_running = 0;
 static volatile int g_runner_exit_code = 0;
 static char g_runner_error[1024] = {0};
 static char g_runner_status[256] = {0};
-static FILE *g_log_file = NULL;
 static char g_log_path[512] = {0};
+static volatile int g_log_fd = -1;
 
-static void runner_log(const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    char buf[1024];
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    if (g_log_file) {
-        fprintf(g_log_file, "%s\n", buf);
-        fflush(g_log_file);
+static jmp_buf g_exit_jmp;
+static volatile int g_exit_set = 0;
+
+static void raw_log(const char *msg) {
+    if (g_log_fd >= 0) {
+        write(g_log_fd, msg, strlen(msg));
+        write(g_log_fd, "\n", 1);
+        fsync(g_log_fd);
     }
-    fprintf(stderr, "%s\n", buf);
 }
 
-void runner_write_crash_log(const char *reason) {
-    runner_log("[CRASH] %s", reason);
-    if (g_log_file) {
-        fflush(g_log_file);
-        fclose(g_log_file);
-        g_log_file = NULL;
-    }
+static void runner_log(const char *fmt, ...) {
+    char buf[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    raw_log(buf);
+    fprintf(stderr, "%s\n", buf);
 }
 
 static void signal_handler(int sig) {
@@ -55,10 +57,14 @@ static void signal_handler(int sig) {
         case SIGABRT: name = "SIGABRT"; break;
         case SIGFPE:  name = "SIGFPE"; break;
         case SIGILL:  name = "SIGILL"; break;
+        case SIGPIPE: name = "SIGPIPE"; break;
     }
     char buf[256];
-    snprintf(buf, sizeof(buf), "Caught signal %d (%s)", sig, name);
-    runner_write_crash_log(buf);
+    snprintf(buf, sizeof(buf), "[CRASH] Signal %d (%s)", sig, name);
+    raw_log(buf);
+    if (g_exit_set) {
+        longjmp(g_exit_jmp, 128 + sig);
+    }
     _exit(128 + sig);
 }
 
@@ -71,18 +77,14 @@ typedef struct {
 static void setup_logging(const char *prefix_path) {
     const char *home = getenv("HOME");
     if (!home) home = "/tmp";
-
     snprintf(g_log_path, sizeof(g_log_path), "%s/Documents/box64_runner.log", home);
-    g_log_file = fopen(g_log_path, "w");
-    if (!g_log_file) {
+    g_log_fd = open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (g_log_fd < 0) {
         snprintf(g_log_path, sizeof(g_log_path), "%s/box64_runner.log", home);
-        g_log_file = fopen(g_log_path, "w");
+        g_log_fd = open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     }
-    if (!g_log_file) {
-        snprintf(g_log_path, sizeof(g_log_path), "/tmp/box64_runner.log");
-        g_log_file = fopen(g_log_path, "w");
-    }
-    runner_log("[Runner] Log file: %s", g_log_path);
+    runner_log("[Runner] ===== Box64 In-Process Runner =====");
+    runner_log("[Runner] Log path: %s (fd=%d)", g_log_path, g_log_fd);
 }
 
 static void *wine_thread_func(void *arg) {
@@ -98,8 +100,8 @@ static void *wine_thread_func(void *arg) {
     signal(SIGABRT, signal_handler);
     signal(SIGFPE, signal_handler);
     signal(SIGILL, signal_handler);
+    signal(SIGPIPE, SIG_IGN);
 
-    runner_log("[Runner] ===== Box64 In-Process Runner =====");
     runner_log("[Runner] wine64_path=%s", wargs->wine64_path);
     runner_log("[Runner] game_exe=%s", wargs->game_exe ? wargs->game_exe : "(null)");
     runner_log("[Runner] prefix_path=%s", wargs->prefix_path ? wargs->prefix_path : "(null)");
@@ -115,6 +117,19 @@ static void *wine_thread_func(void *arg) {
     x64emu_t *emu = NULL;
     elfheader_t *elf_header = NULL;
 
+    runner_log("[Runner] Setting up exit jump point...");
+    int jump_val = setjmp(g_exit_jmp);
+    if (jump_val != 0) {
+        runner_log("[Runner] Caught exit/longjmp with code %d", jump_val);
+        g_runner_exit_code = jump_val;
+        g_runner_running = 0;
+        snprintf(g_runner_status, sizeof(g_runner_status), "exited-via-intercept (%d)", jump_val);
+        if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
+        return NULL;
+    }
+    g_exit_set = 1;
+    box64_set_exit_jmp(&g_exit_jmp);
+
     runner_log("[Runner] Calling initialize(%d)", argc);
     int ret = initialize(argc, argv, environ, &emu, &elf_header, 1);
     if (ret != 0) {
@@ -123,7 +138,7 @@ static void *wine_thread_func(void *arg) {
         runner_log("[Runner] ERROR: %s", g_runner_error);
         g_runner_running = 0;
         g_runner_exit_code = -1;
-        if (g_log_file) { fclose(g_log_file); g_log_file = NULL; }
+        if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
         return NULL;
     }
 
@@ -137,7 +152,7 @@ static void *wine_thread_func(void *arg) {
     g_runner_running = 0;
     snprintf(g_runner_status, sizeof(g_runner_status), "exited (%d)", ret);
 
-    if (g_log_file) { fclose(g_log_file); g_log_file = NULL; }
+    if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
     return NULL;
 }
 
@@ -156,6 +171,7 @@ int box64_runner_start(const char *wine64_path, const char *game_exe, const char
 
     g_runner_error[0] = 0;
     g_runner_exit_code = 0;
+    g_exit_set = 0;
     snprintf(g_runner_status, sizeof(g_runner_status), "starting");
 
     pthread_t thread;

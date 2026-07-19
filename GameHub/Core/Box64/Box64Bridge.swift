@@ -262,6 +262,35 @@ class Box64Bridge {
         }
     }
 
+    private func shellCopy(src: String, dst: String) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/cp")
+        process.arguments = ["-R", src, dst]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw SetupError.copyFailed("cp -R failed with status \(process.terminationStatus)")
+        }
+    }
+
+    private func streamCopy(src: String, dst: String, fm: FileManager) {
+        let bufSize = 64 * 1024
+        guard let inStream = InputStream(fileAtPath: src),
+              let outStream = OutputStream(toFileAtPath: dst, append: false) else { return }
+        inStream.open()
+        outStream.open()
+        let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: bufSize)
+        defer { buf.deallocate() }
+        while inStream.hasBytesAvailable {
+            let read = inStream.read(buf, maxLength: bufSize)
+            if read <= 0 { break }
+            outStream.write(buf, maxLength: read)
+        }
+        inStream.close()
+        outStream.close()
+        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dst)
+    }
+
     private func extractBox64() throws {
         let fm = FileManager.default
         let destination = (box64InstallPath as NSString).appendingPathComponent("box64")
@@ -270,8 +299,25 @@ class Box64Bridge {
         guard let bundledPath = findBundledResource("box64", isDirectory: false) else {
             throw SetupError.box64Missing
         }
-        try fm.copyItem(atPath: bundledPath, toPath: destination)
-        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destination)
+        streamCopy(src: bundledPath, dst: destination, fm: fm)
+    }
+
+    private func copyDirRecursive(src: String, dst: String, fm: FileManager) throws {
+        try fm.createDirectory(atPath: dst, withIntermediateDirectories: true)
+        let contents = try fm.contentsOfDirectory(atPath: src)
+        for item in contents {
+            autoreleasepool {
+                let srcPath = (src as NSString).appendingPathComponent(item)
+                let dstPath = (dst as NSString).appendingPathComponent(item)
+                var isDir: ObjCBool = false
+                fm.fileExists(atPath: srcPath, isDirectory: &isDir)
+                if isDir.boolValue {
+                    try? copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
+                } else {
+                    streamCopy(src: srcPath, dst: dstPath, fm: fm)
+                }
+            }
+        }
     }
 
     private func extractWine() throws {
@@ -285,7 +331,22 @@ class Box64Bridge {
         if fm.fileExists(atPath: wineInstallPath) {
             try? fm.removeItem(atPath: wineInstallPath)
         }
-        try fm.copyItem(atPath: bundledWineDir, toPath: wineInstallPath)
+
+        try fm.createDirectory(atPath: wineInstallPath, withIntermediateDirectories: true)
+        let contents = try fm.contentsOfDirectory(atPath: bundledWineDir)
+        for item in contents {
+            autoreleasepool {
+                let srcPath = (bundledWineDir as NSString).appendingPathComponent(item)
+                let dstPath = (wineInstallPath as NSString).appendingPathComponent(item)
+                var isDir: ObjCBool = false
+                fm.fileExists(atPath: srcPath, isDirectory: &isDir)
+                if isDir.boolValue {
+                    try? copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
+                } else {
+                    streamCopy(src: srcPath, dst: dstPath, fm: fm)
+                }
+            }
+        }
 
         let binaries = ["bin/wine", "bin/wine64", "bin/wineserver", "bin/wineboot"]
         for bin in binaries {
@@ -304,7 +365,21 @@ class Box64Bridge {
 
         guard let bundledMVK = findBundledResource("MoltenVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: mvkDir) { try? fm.removeItem(atPath: mvkDir) }
-        try fm.copyItem(atPath: bundledMVK, toPath: mvkDir)
+        try fm.createDirectory(atPath: mvkDir, withIntermediateDirectories: true)
+        let contents = try fm.contentsOfDirectory(atPath: bundledMVK)
+        for item in contents {
+            autoreleasepool {
+                let srcPath = (bundledMVK as NSString).appendingPathComponent(item)
+                let dstPath = (mvkDir as NSString).appendingPathComponent(item)
+                var isDir: ObjCBool = false
+                fm.fileExists(atPath: srcPath, isDirectory: &isDir)
+                if isDir.boolValue {
+                    try? copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
+                } else {
+                    streamCopy(src: srcPath, dst: dstPath, fm: fm)
+                }
+            }
+        }
     }
 
     private func extractDXVK() throws {
@@ -314,6 +389,20 @@ class Box64Bridge {
 
         guard let bundledDXVK = findBundledResource("DXVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: dxvkDir) { try? fm.removeItem(atPath: dxvkDir) }
-        try fm.copyItem(atPath: bundledDXVK, toPath: dxvkDir)
+        try fm.createDirectory(atPath: dxvkDir, withIntermediateDirectories: true)
+        let contents = try fm.contentsOfDirectory(atPath: bundledDXVK)
+        for item in contents {
+            autoreleasepool {
+                let srcPath = (bundledDXVK as NSString).appendingPathComponent(item)
+                let dstPath = (dxvkDir as NSString).appendingPathComponent(item)
+                var isDir: ObjCBool = false
+                fm.fileExists(atPath: srcPath, isDirectory: &isDir)
+                if isDir.boolValue {
+                    try? copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
+                } else {
+                    streamCopy(src: srcPath, dst: dstPath, fm: fm)
+                }
+            }
+        }
     }
 }

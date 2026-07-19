@@ -2,6 +2,7 @@ import Foundation
 
 class WineBridge {
     static let shared = WineBridge()
+    private let lock = NSLock()
     private var isInitialized = false
     private var winePrefix: String = ""
     private var wineBinaryPath: String = ""
@@ -20,17 +21,20 @@ class WineBridge {
     }
 
     var isInstalled: Bool {
-        FileManager.default.fileExists(atPath: wineBinaryPath)
+        lock.lock(); defer { lock.unlock() }
+        return FileManager.default.fileExists(atPath: wineBinaryPath)
     }
 
     func initialize() {
-        guard !isInitialized else { return }
+        lock.lock()
+        guard !isInitialized else { lock.unlock(); return }
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         winePrefix = docs.appendingPathComponent("Wine").path
         wineBinaryPath = docs.appendingPathComponent("Wine/bin/wine64").path
         setupEnvironment()
         isInitialized = true
+        lock.unlock()
     }
 
     private func setupEnvironment() {

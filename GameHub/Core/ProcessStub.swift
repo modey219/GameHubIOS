@@ -24,13 +24,27 @@ class NativeProcess {
     var environment: [String: String]?
     var standardOutput: Any?
     var standardError: Any?
-    var terminationStatus: Int32 = 0
     var terminationHandler: ((NativeProcess) -> Void)?
 
-    private var pid: pid_t = 0
+    private let lock = NSLock()
+    private var _terminationStatus: Int32 = 0
+    private var _pid: pid_t = 0
     private var _isRunning = false
 
-    var processIdentifier: pid_t { pid }
+    var terminationStatus: Int32 {
+        lock.lock(); defer { lock.unlock() }
+        return _terminationStatus
+    }
+
+    var processIdentifier: pid_t {
+        lock.lock(); defer { lock.unlock() }
+        return _pid
+    }
+
+    var isRunning: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return _isRunning
+    }
 
     init() {}
 
@@ -94,48 +108,66 @@ class NativeProcess {
                           userInfo: [NSLocalizedDescriptionKey: "posix_spawn failed (\(result)): \(errStr)\nBinary: \(path)"])
         }
 
-        pid = localPid
+        lock.lock()
+        _pid = localPid
         _isRunning = true
+        lock.unlock()
 
         DispatchQueue.global().async { [weak self] in
             guard let self = self else { return }
             var status: Int32 = 0
-            waitpid(self.pid, &status, 0)
+            waitpid(localPid, &status, 0)
+            self.lock.lock()
             if (status & 0x7f) == 0 {
-                self.terminationStatus = (status >> 8) & 0xff
+                self._terminationStatus = (status >> 8) & 0xff
             } else {
-                self.terminationStatus = -1
+                self._terminationStatus = -1
             }
             self._isRunning = false
+            self.lock.unlock()
             DispatchQueue.main.async { self.terminationHandler?(self) }
         }
     }
 
     func waitUntilExit() {
-        if pid > 0 {
+        let currentPid: pid_t = lock.lock(); let p = _pid; lock.unlock()
+        if p > 0 {
             var status: Int32 = 0
-            waitpid(pid, &status, 0)
+            waitpid(p, &status, 0)
+            lock.lock()
             if (status & 0x7f) == 0 {
-                terminationStatus = (status >> 8) & 0xff
+                _terminationStatus = (status >> 8) & 0xff
             } else {
-                terminationStatus = -1
+                _terminationStatus = -1
             }
             _isRunning = false
+            lock.unlock()
         }
     }
 
     func terminate() {
-        if pid > 0 && _isRunning {
+        let (pid, running): (pid_t, Bool) = {
+            lock.lock(); defer { lock.unlock() }
+            return (_pid, _isRunning)
+        }()
+        if pid > 0 && running {
             kill(pid, SIGTERM)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                if self?._isRunning == true, let pid = self?.pid { kill(pid, SIGKILL) }
+                guard let self = self else { return }
+                self.lock.lock()
+                let stillRunning = self._isRunning
+                let curPid = self._pid
+                self.lock.unlock()
+                if stillRunning { kill(curPid, SIGKILL) }
             }
         }
     }
 
-    var isRunning: Bool { _isRunning }
-
     deinit {
-        if pid > 0 && _isRunning { kill(pid, SIGKILL) }
+        let (pid, running): (pid_t, Bool) = {
+            lock.lock(); defer { lock.unlock() }
+            return (_pid, _isRunning)
+        }()
+        if pid > 0 && running { kill(pid, SIGKILL) }
     }
 }

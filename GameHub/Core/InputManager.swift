@@ -42,6 +42,7 @@ class InputManager: ObservableObject {
 
     private var mousePosition: CGPoint = .zero
     private var rightStickCenter: CGPoint = .zero
+    private let inputLock = NSLock()
 
     private let inputSocketPath: String = {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -136,7 +137,10 @@ class InputManager: ObservableObject {
         let deltaX = x * sensitivity
         let deltaY = y * sensitivity
         if abs(deltaX) > 0.5 || abs(deltaY) > 0.5 {
-            sendMouseMove(x: mousePosition.x + CGFloat(deltaX), y: mousePosition.y + CGFloat(deltaY))
+            inputLock.lock()
+            let pos = mousePosition
+            inputLock.unlock()
+            sendMouseMove(x: pos.x + CGFloat(deltaX), y: pos.y + CGFloat(deltaY))
         }
     }
 
@@ -167,7 +171,9 @@ class InputManager: ObservableObject {
     }
 
     func sendMouseMove(x: CGFloat, y: CGFloat) {
+        inputLock.lock()
         mousePosition = CGPoint(x: x, y: y)
+        inputLock.unlock()
         let input: [String: Any] = [
             "type": "mouse_move",
             "x": Double(x),
@@ -207,8 +213,11 @@ class InputManager: ObservableObject {
         guard let data = try? JSONSerialization.data(withJSONObject: input) else { return }
 
         let now = Date()
-        guard now.timeIntervalSince(lastInputWrite) >= 0.1 else { return }
+        inputLock.lock()
+        let lastWrite = lastInputWrite
+        guard now.timeIntervalSince(lastWrite) >= 0.1 else { inputLock.unlock(); return }
         lastInputWrite = now
+        inputLock.unlock()
 
         let inputDir = (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory()))
@@ -259,7 +268,10 @@ class InputManager: ObservableObject {
     }
 
     func handlePan(translation: CGPoint) {
-        sendMouseMove(x: mousePosition.x + translation.x * 2, y: mousePosition.y + translation.y * 2)
+        inputLock.lock()
+        let pos = mousePosition
+        inputLock.unlock()
+        sendMouseMove(x: pos.x + translation.x * 2, y: pos.y + translation.y * 2)
     }
 
     func toggleKeyboard() {

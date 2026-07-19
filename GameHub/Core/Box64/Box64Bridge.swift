@@ -165,7 +165,12 @@ class Box64Bridge {
         Self.log("wine64Path=\(wine64Path) container=\(containerPath)")
         var result = LaunchResult()
 
-        guard isInitialized, let ctx = ctx else {
+        lock.lock()
+        let initialized = isInitialized
+        let ctxPtr = ctx
+        lock.unlock()
+
+        guard initialized, let ctx = ctxPtr else {
             Self.log("ERROR: Box64 not initialized")
             result.error = "Box64 not initialized. Please restart the app."
             return result
@@ -209,7 +214,9 @@ class Box64Bridge {
         }
 
         Self.log("launchWine SUCCESS")
+        lock.lock()
         _isRunning = true
+        lock.unlock()
         result.wineLaunched = true
         result.box64Output = "Wine launched via box64 bridge (thread-based)"
 
@@ -219,7 +226,9 @@ class Box64Bridge {
     func stopWine() {
         guard let ctx = ctx else { return }
         box64_stop(ctx)
+        lock.lock()
         _isRunning = false
+        lock.unlock()
     }
 
     func getEmulatorStatus() -> String {
@@ -229,12 +238,15 @@ class Box64Bridge {
     }
 
     func getRunnerLog() -> String {
+        let maxLinesPerFile = 500
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         var parts: [String] = []
 
         if let savedLog = UserDefaults.standard.string(forKey: "last_launch_log"), !savedLog.isEmpty {
-            parts.append("=== Launch Log (UserDefaults) ===\n\(savedLog)")
+            let lines = savedLog.components(separatedBy: "\n")
+            let trimmed = lines.count > maxLinesPerFile ? Array(lines.suffix(maxLinesPerFile)) : lines
+            parts.append("=== Launch Log (UserDefaults) ===\n\(trimmed.joined(separator: "\n"))")
         }
 
         let candidates = [
@@ -248,7 +260,9 @@ class Box64Bridge {
             if let data = FileManager.default.contents(atPath: path),
                let content = String(data: data, encoding: .utf8), !content.isEmpty {
                 let label = (path as NSString).lastPathComponent
-                parts.append("=== \(label) ===\n\(content)")
+                let lines = content.components(separatedBy: "\n")
+                let trimmed = lines.count > maxLinesPerFile ? Array(lines.suffix(maxLinesPerFile)) : lines
+                parts.append("=== \(label) (\(trimmed.count)/\(lines.count) lines) ===\n\(trimmed.joined(separator: "\n"))")
             }
         }
 
@@ -257,7 +271,9 @@ class Box64Bridge {
             if !path.isEmpty, !candidates.contains(path),
                let data = FileManager.default.contents(atPath: path),
                let content = String(data: data, encoding: .utf8), !content.isEmpty {
-                parts.append("=== runner ===\n\(content)")
+                let lines = content.components(separatedBy: "\n")
+                let trimmed = lines.count > maxLinesPerFile ? Array(lines.suffix(maxLinesPerFile)) : lines
+                parts.append("=== runner (\(trimmed.count)/\(lines.count) lines) ===\n\(trimmed.joined(separator: "\n"))")
             }
         }
 
@@ -265,11 +281,15 @@ class Box64Bridge {
     }
 
     func deinitialize() {
+        lock.lock()
         if let ctx = ctx {
             box64_destroy(ctx)
             self.ctx = nil
         }
         isInitialized = false
+        _isRunning = false
+        lock.unlock()
+        if logFD >= 0 { close(logFD); logFD = -1 }
     }
 
     enum SetupError: LocalizedError {

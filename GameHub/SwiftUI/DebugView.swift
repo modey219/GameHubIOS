@@ -185,6 +185,7 @@ struct DebugView: View {
     private func log(_ msg: String) {
         let ts = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         logs.append("[\(ts)] \(msg)")
+        if logs.count > 500 { logs.removeFirst(logs.count - 500) }
     }
 
     private func checkBinaries() {
@@ -408,7 +409,8 @@ struct DebugView: View {
         }
         let lines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
         logs.append(contentsOf: lines.suffix(100))
-        log("Loaded \(lines.count) lines from swift_box64.log")
+        if logs.count > 500 { logs.removeFirst(logs.count - 500) }
+        log("Loaded \(min(lines.count, 100)) lines from swift_box64.log")
     }
 
     private static func fileSize(_ path: String) -> String {

@@ -2,6 +2,12 @@ import Foundation
 import Metal
 import MetalKit
 
+private class DisplayLinkProxy {
+    weak var renderer: DisplayRenderer?
+    init(_ renderer: DisplayRenderer) { self.renderer = renderer }
+    @objc func renderFrame() { renderer?.renderFrame() }
+}
+
 class DisplayRenderer: NSObject, ObservableObject {
     @Published var fps: Double = 0
     @Published var isRendering = false
@@ -20,6 +26,7 @@ class DisplayRenderer: NSObject, ObservableObject {
     private var frameCount: Int = 0
     private var lastFPSTime: Date = Date()
     private var displayLink: CADisplayLink?
+    private var proxy: DisplayLinkProxy?
 
     override init() {
         super.init()
@@ -36,7 +43,9 @@ class DisplayRenderer: NSObject, ObservableObject {
         lastFPSTime = Date()
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            let link = CADisplayLink(target: self, selector: #selector(self.renderFrame))
+            let p = DisplayLinkProxy(self)
+            self.proxy = p
+            let link = CADisplayLink(target: p, selector: #selector(DisplayLinkProxy.renderFrame))
             link.preferredFramesPerSecond = 60
             link.add(to: .main, forMode: .common)
             self.displayLink = link
@@ -45,13 +54,14 @@ class DisplayRenderer: NSObject, ObservableObject {
 
     func stopRendering() {
         isRendering = false
-        DispatchQueue.main.async { [weak self] in
-            self?.displayLink?.invalidate()
-            self?.displayLink = nil
+        DispatchQueue.main.async {
+            self.displayLink?.invalidate()
+            self.displayLink = nil
+            self.proxy = nil
         }
     }
 
-    @objc private func renderFrame() {
+    private func renderFrame() {
         guard isRendering else { return }
         updateFPS()
     }
@@ -76,6 +86,8 @@ class DisplayRenderer: NSObject, ObservableObject {
         if width == lastTextureWidth && height == lastTextureHeight, !texturePool.isEmpty {
             tex = texturePool.removeFirst()
         }
+        let cachedW = lastTextureWidth
+        let cachedH = lastTextureHeight
         textureLock.unlock()
 
         if tex == nil {
@@ -87,8 +99,10 @@ class DisplayRenderer: NSObject, ObservableObject {
             descriptor.usage = [.shaderRead]
             descriptor.storageMode = .shared
             tex = dev.makeTexture(descriptor: descriptor)
+            textureLock.lock()
             lastTextureWidth = width
             lastTextureHeight = height
+            textureLock.unlock()
         }
 
         guard let newTexture = tex else { return }

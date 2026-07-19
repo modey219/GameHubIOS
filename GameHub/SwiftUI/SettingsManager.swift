@@ -83,6 +83,8 @@ class SettingsManager: ObservableObject {
     @Published var lastBackupDate: String { didSet { save() } }
 
     // MARK: - Init
+    private var _suppressSave = false
+
     init() {
         let d = UserDefaults.standard
         let gi = { (k: String, def: Int) -> Int in (d.object(forKey: k) as? Int) ?? def }
@@ -172,6 +174,7 @@ class SettingsManager: ObservableObject {
     }
 
     func save() {
+        guard !_suppressSave else { return }
         let d = UserDefaults.standard
         let set = { (k: String, v: Any) in d.set(v, forKey: k) }
 
@@ -281,6 +284,7 @@ class SettingsManager: ObservableObject {
     }
 
     func resetToDefaults() {
+        _suppressSave = true
         let keys = [
             "darkMode","hapticFeedback","showFPS","resolutionScale","keepScreenOn","autoSaveState","showTouchButtons","memoryLimitMB",
             "gpuDriver","useDXVK","useVKD3D","vsync","maxFrameRate","msaaLevel","anisotropicFiltering",
@@ -314,6 +318,8 @@ class SettingsManager: ObservableObject {
         dynarecNativeFlags = true; box64StdMalloc = false
         forceLandscape = true; autoRotate = false; brightness = 1.0; showControllerButton = true
         onlineMode = false; localMultiplayer = false; lastBackupDate = "Never"
+        _suppressSave = false
+        save()
     }
 
     func getExportData() -> [String: Any] {

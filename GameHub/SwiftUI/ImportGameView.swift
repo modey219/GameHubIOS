@@ -269,19 +269,24 @@ class SimpleHTTPServer {
     }
 
     private func handleUpload(clientFD: Int32, request: String, buffer: [UInt8], bytesRead: Int) {
+        let maxUploadSize = 500 * 1024 * 1024
         var fullData = Data(buffer.prefix(bytesRead))
 
         if let range = request.range(of: "\r\n\r\n") {
             let headerEnd = request.distance(from: request.startIndex, to: range.upperBound)
             if headerEnd < bytesRead {
-                var remaining = Data()
-                while true {
+                while fullData.count < maxUploadSize {
                     var chunk = [UInt8](repeating: 0, count: 65536)
                     let n = recv(clientFD, &chunk, chunk.count, 0)
                     if n <= 0 { break }
-                    remaining.append(contentsOf: chunk.prefix(n))
+                    fullData.append(contentsOf: chunk.prefix(n))
                 }
-                fullData.append(remaining)
+                if fullData.count >= maxUploadSize {
+                    let html = "<!DOCTYPE html><html><body><h1>Upload too large (max 500MB)</h1><a href='/'>Back</a></body></html>"
+                    let response = "HTTP/1.1 413 Payload Too Large\r\nContent-Type: text/html\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"
+                    response.withCString { ptr in _ = send(clientFD, ptr, strlen(ptr), 0) }
+                    return
+                }
             }
         }
 

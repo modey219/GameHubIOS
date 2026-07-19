@@ -24,8 +24,8 @@ class UnixSocketBridge: ObservableObject {
     }
 
     func stopServer() {
-        isServerRunning = false
         socketLock.lock()
+        isServerRunning = false
         let cs = clientSocket
         let ss = serverSocket
         clientSocket = -1
@@ -38,7 +38,9 @@ class UnixSocketBridge: ObservableObject {
     }
 
     private func startPosixServer() {
+        socketLock.lock()
         isServerRunning = true
+        socketLock.unlock()
         unlink(socketPath)
 
         let ss = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -63,11 +65,12 @@ class UnixSocketBridge: ObservableObject {
         guard bindResult == 0 else { close(ss); socketLock.lock(); serverSocket = -1; socketLock.unlock(); return }
         guard listen(ss, 1) == 0 else { close(ss); socketLock.lock(); serverSocket = -1; socketLock.unlock(); return }
 
-        while isServerRunning {
+        while true {
             socketLock.lock()
+            let running = isServerRunning
             let ss = serverSocket
             socketLock.unlock()
-            guard ss >= 0 else { break }
+            guard running, ss >= 0 else { break }
             var clientAddr = sockaddr_un()
             var clientLen = socklen_t(MemoryLayout<sockaddr_un>.size)
             let client = withUnsafeMutablePointer(to: &clientAddr) { ptr in
@@ -85,8 +88,13 @@ class UnixSocketBridge: ObservableObject {
 
     private func receiveData() {
         var buffer = [UInt8](repeating: 0, count: 65536)
-        while clientSocket >= 0 && isServerRunning {
-            let n = recv(clientSocket, &buffer, buffer.count, 0)
+        while true {
+            socketLock.lock()
+            let running = isServerRunning
+            let cs = clientSocket
+            socketLock.unlock()
+            guard running, cs >= 0 else { break }
+            let n = recv(cs, &buffer, buffer.count, 0)
             if n > 0 {
                 processInputData(Data(buffer.prefix(n)))
             } else if n == 0 || (n < 0 && errno != EINTR) { break }

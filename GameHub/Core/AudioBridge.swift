@@ -55,8 +55,8 @@ class AudioBridge: ObservableObject {
 
     func stopAudio() {
         DispatchQueue.main.async { self.isPlaying = false }
-        isServerRunning = false
         socketLock.lock()
+        isServerRunning = false
         let cs = clientSocket
         let ss = serverSocket
         clientSocket = -1
@@ -69,7 +69,9 @@ class AudioBridge: ObservableObject {
     }
 
     private func startPosixSocketServer() {
+        socketLock.lock()
         isServerRunning = true
+        socketLock.unlock()
         unlink(socketPath)
 
         let ss = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -94,11 +96,12 @@ class AudioBridge: ObservableObject {
         guard bindResult == 0 else { close(ss); socketLock.lock(); serverSocket = -1; socketLock.unlock(); return }
         guard listen(ss, 1) == 0 else { close(ss); socketLock.lock(); serverSocket = -1; socketLock.unlock(); return }
 
-        while isServerRunning {
+        while true {
             socketLock.lock()
+            let running = isServerRunning
             let currentSS = serverSocket
             socketLock.unlock()
-            guard currentSS >= 0 else { break }
+            guard running, currentSS >= 0 else { break }
             var clientAddr = sockaddr_un()
             var clientLen = socklen_t(MemoryLayout<sockaddr_un>.size)
             let client = withUnsafeMutablePointer(to: &clientAddr) { ptr in
@@ -115,14 +118,21 @@ class AudioBridge: ObservableObject {
 
     private func receiveAudioData() {
         var buffer = [UInt8](repeating: 0, count: 65536)
-        while clientSocket >= 0 && isServerRunning {
-            let n = recv(clientSocket, &buffer, buffer.count, 0)
+        while true {
+            socketLock.lock()
+            let running = isServerRunning
+            let cs = clientSocket
+            socketLock.unlock()
+            guard running, cs >= 0 else { break }
+            let n = recv(cs, &buffer, buffer.count, 0)
             if n > 0 {
                 bufferLock.lock()
                 if audioBuffer.count < 1024 * 1024 {
                     audioBuffer.append(contentsOf: buffer.prefix(n))
                 } else {
-                    audioBuffer.removeAll()
+                    let dropBytes = min(audioBuffer.count, 65536)
+                    audioBuffer.removeFirst(dropBytes)
+                    audioBuffer.append(contentsOf: buffer.prefix(n))
                 }
                 bufferLock.unlock()
             } else if n == 0 || (n < 0 && errno != EINTR) { break }

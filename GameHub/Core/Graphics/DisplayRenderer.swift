@@ -5,7 +5,7 @@ import MetalKit
 private class DisplayLinkProxy {
     weak var renderer: DisplayRenderer?
     init(_ renderer: DisplayRenderer) { self.renderer = renderer }
-    @objc func renderFrame() { renderer?.renderFrame() }
+    @objc func renderFrame() { renderer?.onRenderFrame() }
 }
 
 class DisplayRenderer: NSObject, ObservableObject {
@@ -61,7 +61,7 @@ class DisplayRenderer: NSObject, ObservableObject {
         }
     }
 
-    private func renderFrame() {
+    func onRenderFrame() {
         guard isRendering else { return }
         updateFPS()
     }
@@ -86,8 +86,6 @@ class DisplayRenderer: NSObject, ObservableObject {
         if width == lastTextureWidth && height == lastTextureHeight, !texturePool.isEmpty {
             tex = texturePool.removeFirst()
         }
-        let cachedW = lastTextureWidth
-        let cachedH = lastTextureHeight
         textureLock.unlock()
 
         if tex == nil {

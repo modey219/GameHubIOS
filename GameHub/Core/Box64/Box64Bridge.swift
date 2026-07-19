@@ -304,7 +304,7 @@ class Box64Bridge {
         isInitialized = false
         _isRunning = false
         lock.unlock()
-        if logFD >= 0 { close(logFD); logFD = -1 }
+        if Self.logFD >= 0 { close(Self.logFD); Self.logFD = -1 }
     }
 
     enum SetupError: LocalizedError {

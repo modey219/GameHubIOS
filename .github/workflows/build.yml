@@ -58,7 +58,7 @@ jobs:
           done < <(find "$BOX64_SRC/src" -type d)
           
           CFLAGS="-arch arm64 -mios-version-min=16.0 -isysroot $SDK -O2 -fembed-bitcode-marker"
-          CFLAGS="$CFLAGS -DARM64 -DDYNAREC -DNOGIT -D__IOS__=1 -DTARGET_IPHONE=1"
+          CFLAGS="$CFLAGS -DARM64 -DNOGIT -D__IOS__=1 -DTARGET_IPHONE=1"
           CFLAGS="$CFLAGS -DBAD_SIGNAL=1 -DBOX64_ENV=1 -D_XOPEN_SOURCE=600 -D_DARWIN_C_SOURCE"
           CFLAGS="$CFLAGS $INC_FLAGS"
           CFLAGS="$CFLAGS -Wno-unused-variable -Wno-unused-function -Wno-incompatible-pointer-types"
@@ -92,30 +92,7 @@ jobs:
           # Skip ALL wrapped/ files — Linux-only library wrappers (GTK, X11, Wayland, PulseAudio, ICU etc.)
           # Not needed for Wine on iOS. Only core libc/libm/libpthread would be needed but those are provided by system.
           
-          # Include dynarec (EXCLUDE avx_, problematic .S, and STEP-dependent files)
-          if [ -d "$BOX64_SRC/src/dynarec" ]; then
-              for f in "$BOX64_SRC/src/dynarec"/*.c; do
-                  [ -f "$f" ] || continue
-                  BASE=$(basename "$f")
-                  case "$BASE" in *avx*) continue;; esac
-                  SKIP=0
-                  for ex in $EXCLUDE; do [ "$BASE" = "$ex" ] && SKIP=1 && break; done
-                  [ $SKIP -eq 0 ] && SOURCES="$SOURCES $f"
-              done
-              if [ -d "$BOX64_SRC/src/dynarec/arm64" ]; then
-                  for f in "$BOX64_SRC/src/dynarec/arm64"/*.c "$BOX64_SRC/src/dynarec/arm64"/*.S; do
-                      [ -f "$f" ] || continue
-                      BASE=$(basename "$f")
-                      # Skip AVX files
-                      case "$BASE" in *avx*) continue;; esac
-                      # Skip problematic assembly (LSE instructions, undefined locals, iOS incompat)
-                      case "$BASE" in arm64_lock.S|arm64_next.S|arm64_epilog.S|arm64_prolog.S) continue;; esac
-                      SKIP=0
-                      for ex in $EXCLUDE; do [ "$BASE" = "$ex" ] && SKIP=1 && break; done
-                      [ $SKIP -eq 0 ] && SOURCES="$SOURCES $f"
-                  done
-              fi
-          fi
+          # Skip ALL wrapped/ files and dynarec — use Box64 interpreter only (DYNAREC crashes on iOS due to JIT memory requirements)
           
           # Add our iOS stubs (without exit macro - stubs defines box64_exit_intercept)
           STUB_SRC="$PWD/GameHub/Native/SyscallTranslation/ios_stubs.c"

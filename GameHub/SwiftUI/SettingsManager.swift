@@ -225,16 +225,9 @@ class SettingsManager: ObservableObject {
     }
 
     func applySettings() {
-        // Box64
-        setenv("BOX64_DYNAREC", enableDynarec ? "1" : "0", 1)
-        setenv("BOX64_DYNAREC_BIGBLOCK", dynarecBigBlock ? "1" : "0", 1)
-        setenv("BOX64_DYNAREC_STRONGMEM", dynarecStrongMem ? "1" : "0", 1)
-        setenv("BOX64_DYNAREC_SAFEFLAGS", dynarecSafeFlags ? "1" : "0", 1)
-        setenv("BOX64_DYNAREC_ALTIVEC", "\(dynarecAltiVec)", 1)
-        setenv("BOX64_DYNAREC_CALLRET", dynarecCallRet ? "1" : "0", 1)
+        // Box64 - DYNAREC disabled (not compiled for iOS)
+        setenv("BOX64_DYNAREC", "0", 1)
         setenv("BOX64_LOG", "\(dynarecLogLevel)", 1)
-        setenv("BOX64_DYNAREC_RESTRICTED", dynarecRestricted ? "1" : "0", 1)
-        setenv("BOX64_DYNAREC_NATIVEFLAGS", dynarecNativeFlags ? "1" : "0", 1)
         if box64StdMalloc { setenv("BOX64_STD_MALLOC", "1", 1) }
 
         // Wine

@@ -185,8 +185,8 @@ class JITManager: ObservableObject {
                 } else if sysctlJIT || taskInfoJIT {
                     self.isJITEnabled = true
                     self.jitStatus = .enabled
-                    self.statusMessage = "JIT enabled! Dynamic recompilation active."
-                    setenv("BOX64_DYNAREC", "1", 1)
+                    self.statusMessage = "JIT enabled (interpreter mode - no DYNAREC on iOS)."
+                    setenv("BOX64_DYNAREC", "0", 1)
                 } else if dynarecVal == "1" {
                     self.isJITEnabled = true
                     self.jitStatus = .enabled

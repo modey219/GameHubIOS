@@ -99,11 +99,12 @@ class Box64Bridge {
     }
 
     private func setupEnvironment() {
-        setenv("BOX64_DYNAREC", "1", 1)
-        setenv("BOX64_DYNAREC_BIGBLOCK", "1", 1)
-        setenv("BOX64_DYNAREC_STRONGMEM", "1", 1)
-        setenv("BOX64_DYNAREC_SAFEFLAGS", "1", 1)
+        setenv("BOX64_DYNAREC", "0", 1)
         setenv("BOX64_NOBANNED", "1", 1)
+        setenv("BOX64_LOG", "1", 1)
+        setenv("BOX64_SHOWSEGV", "1", 1)
+        setenv("BOX64_SHOWEXIT", "1", 1)
+        setenv("BOX64_NOSSE", "1", 1)
         setenv("HOME", FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Wine").path, 1)
     }
 

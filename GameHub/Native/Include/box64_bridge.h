@@ -49,4 +49,11 @@ box64_status_t box64_get_status_detail(box64_context_t *ctx);
 
 const char *box64_get_wine_error(void);
 
+int box64_runner_start(const char *wine64_path, const char *game_exe, const char *prefix_path);
+int box64_runner_stop(void);
+int box64_runner_is_running(void);
+const char *box64_runner_get_error(void);
+const char *box64_runner_get_status(void);
+int box64_runner_get_exit_code(void);
+
 #endif

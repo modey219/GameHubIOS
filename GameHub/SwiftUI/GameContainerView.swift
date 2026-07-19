@@ -458,9 +458,9 @@ struct GameContainerView: View {
         isRunning = false
         displayRenderer.stopRendering()
         timer?.invalidate()
-        Box64Bridge.shared.stopWine()
         UnixSocketBridge.shared.stopServer()
         AudioBridge.shared.stopAudio()
+        Box64Bridge.shared.stopWine()
     }
 
     private func launchGame() {
@@ -567,7 +567,7 @@ struct GameContainerView: View {
                 environment: capturedContainer.environment
             )
 
-            DispatchQueue.main.async { [self] in
+            DispatchQueue.main.async {
                 if launchResult.wineLaunched {
                     logMsg("launchWine SUCCESS")
                     self.isRunning = true
@@ -626,7 +626,9 @@ struct GameContainerView: View {
                 let path = docs.appendingPathComponent(name).path
                 if let data = FileManager.default.contents(atPath: path),
                    let content = String(data: data, encoding: .utf8), !content.isEmpty {
-                    parts.append("=== \(name) ===\n\(content)")
+                    let lines = content.components(separatedBy: "\n")
+                    let trimmed = lines.count > 200 ? Array(lines.suffix(200)) : lines
+                    parts.append("=== \(name) ===\n\(trimmed.joined(separator: "\n"))")
                 }
             }
             if let cPath = box64_runner_get_log_path() {
@@ -634,7 +636,9 @@ struct GameContainerView: View {
                 if !path.isEmpty, !parts.contains(where: { $0.contains(path) }),
                    let data = FileManager.default.contents(atPath: path),
                    let content = String(data: data, encoding: .utf8), !content.isEmpty {
-                    parts.append("=== runner ===\n\(content)")
+                    let lines = content.components(separatedBy: "\n")
+                    let trimmed = lines.count > 200 ? Array(lines.suffix(200)) : lines
+                    parts.append("=== runner ===\n\(trimmed.joined(separator: "\n"))")
                 }
             }
             let output = parts.isEmpty ? "No logs found. Run a game first." : parts.joined(separator: "\n\n")

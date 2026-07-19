@@ -346,7 +346,10 @@ class SettingsManager: ObservableObject {
     }
 
     func importFromData(_ json: [String: Any]) {
+        _suppressSave = true
         let d = UserDefaults.standard
         for (k, v) in json { d.set(v, forKey: k) }
+        _suppressSave = false
+        save()
     }
 }

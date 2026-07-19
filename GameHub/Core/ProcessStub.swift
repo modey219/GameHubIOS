@@ -130,7 +130,7 @@ class NativeProcess {
     }
 
     func waitUntilExit() {
-        let currentPid: pid_t = lock.lock(); let p = _pid; lock.unlock()
+        let p: pid_t = { lock.lock(); defer { lock.unlock() }; return _pid }()
         if p > 0 {
             var status: Int32 = 0
             waitpid(p, &status, 0)

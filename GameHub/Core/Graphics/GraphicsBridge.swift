@@ -4,6 +4,7 @@ import Metal
 class GraphicsBridge {
     static let shared = GraphicsBridge()
 
+    private let lock = NSLock()
     private var device: MTLDevice?
     private var commandQueue: MTLCommandQueue?
     private var isInitialized = false
@@ -25,10 +26,12 @@ class GraphicsBridge {
     }
 
     func initialize() {
-        guard !isInitialized else { return }
+        lock.lock()
+        guard !isInitialized else { lock.unlock(); return }
         device = MTLCreateSystemDefaultDevice()
         commandQueue = device?.makeCommandQueue()
         isInitialized = true
+        lock.unlock()
         if let device = device {
             print("[Graphics] Metal: \(device.name)")
         }

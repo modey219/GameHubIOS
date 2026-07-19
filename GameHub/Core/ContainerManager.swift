@@ -5,6 +5,8 @@ class ContainerManager: ObservableObject {
     @Published var selectedContainer: Container?
     @Published var isLoading = false
 
+    private let lock = NSLock()
+
     struct Container: Identifiable, Codable {
         var id = UUID()
         var name: String
@@ -59,7 +61,9 @@ class ContainerManager: ObservableObject {
             inputConfig: Container.InputConfig()
         )
         setupContainerFiles(container: container)
+        lock.lock()
         containers.append(container)
+        lock.unlock()
         saveContainers()
         return container
     }
@@ -93,9 +97,14 @@ class ContainerManager: ObservableObject {
     }
 
     func deleteContainer(_ container: Container) {
+        if Box64Bridge.shared.isRunning {
+            Box64Bridge.shared.stopWine()
+        }
         try? fileManager.removeItem(atPath: containersPath + "/\(container.id.uuidString)")
+        lock.lock()
         containers.removeAll { $0.id == container.id }
         if selectedContainer?.id == container.id { selectedContainer = nil }
+        lock.unlock()
         saveContainers()
     }
 
@@ -103,10 +112,12 @@ class ContainerManager: ObservableObject {
         guard !container.executablePath.isEmpty else { return }
         var updated = container
         updated.lastPlayed = Date()
+        lock.lock()
         if let idx = containers.firstIndex(where: { $0.id == container.id }) {
             containers[idx] = updated
-            saveContainers()
         }
+        lock.unlock()
+        saveContainers()
     }
 
     func installGameFiles(containerID: UUID, files: [(source: URL, destination: String)]) {
@@ -142,7 +153,9 @@ class ContainerManager: ObservableObject {
             atPath: containersPath + "/\(container.id.uuidString)",
             toPath: containersPath + "/\(newContainer.id.uuidString)"
         )
+        lock.lock()
         containers.append(newContainer)
+        lock.unlock()
         saveContainers()
         return newContainer
     }

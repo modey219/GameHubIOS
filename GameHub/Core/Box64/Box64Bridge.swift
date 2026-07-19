@@ -119,7 +119,9 @@ class Box64Bridge {
     func initialize() {
         lock.lock()
         guard !isInitialized else { lock.unlock(); return }
-        Self.log("initialize() called")
+        lock.unlock()
+
+        Self.log("initialize() called, memory = \(Self.memoryUsageMB())MB")
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         box64InstallPath = documentsPath.appendingPathComponent("Box64").path
@@ -129,19 +131,26 @@ class Box64Bridge {
         Self.log("wineInstallPath = \(wineInstallPath)")
         setupEnvironment()
 
-        Self.log("calling box64_create()...")
-        ctx = box64_create()
-        if let ctx = ctx {
-            Self.log("box64_create OK, calling box64_init...")
-            box64_init(ctx, box64InstallPath)
-            Self.log("box64_init done")
-            isInitialized = true
-        } else {
-            Self.log("box64_create returned NULL!")
+        Self.log("calling box64_create(), memory = \(Self.memoryUsageMB())MB...")
+        var localCtx: UnsafeMutablePointer<box64_context_t>?
+        autoreleasepool {
+            localCtx = box64_create()
         }
-        lock.unlock()
+        Self.log("box64_create returned \(localCtx != nil ? "OK" : "NULL"), memory = \(Self.memoryUsageMB())MB")
 
-        Self.log("initialize() complete, isInitialized=\(isInitialized)")
+        if let localCtx = localCtx {
+            Self.log("calling box64_init...")
+            box64_init(localCtx, box64InstallPath)
+            Self.log("box64_init done")
+            lock.lock()
+            ctx = localCtx
+            isInitialized = true
+            lock.unlock()
+        } else {
+            Self.log("box64_create returned NULL! Cannot initialize.")
+        }
+
+        Self.log("initialize() complete, isInitialized=\(isInitialized), memory = \(Self.memoryUsageMB())MB")
     }
 
     private func setupEnvironment() {
@@ -200,7 +209,7 @@ class Box64Bridge {
         Self.log("box64_launch_wine returned \(rc)")
         if rc != 0 {
             let cError = box64_get_wine_error()
-            let errStr = cError != nil ? String(cString: cError!) : ""
+            let errStr = cError.map { String(cString: $0) } ?? ""
             Self.log("ERROR: box64_launch_wine failed: \(errStr)")
             result.error = "Failed to launch Box64+Wine (error \(rc)):\n\(errStr)\n\n" +
                 "Binary: \(wine64Path)\n" +
@@ -224,7 +233,10 @@ class Box64Bridge {
     }
 
     func stopWine() {
-        guard let ctx = ctx else { return }
+        lock.lock()
+        let localCtx = ctx
+        lock.unlock()
+        guard let ctx = localCtx else { return }
         box64_stop(ctx)
         lock.lock()
         _isRunning = false
@@ -232,7 +244,10 @@ class Box64Bridge {
     }
 
     func getEmulatorStatus() -> String {
-        guard let ctx = ctx else { return "not initialized" }
+        lock.lock()
+        let localCtx = ctx
+        lock.unlock()
+        guard let ctx = localCtx else { return "not initialized" }
         guard let cStr = box64_get_status(ctx) else { return "unknown" }
         return String(cString: cStr)
     }

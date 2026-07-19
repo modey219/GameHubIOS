@@ -45,13 +45,13 @@ class WineBridge {
     }
 
     private func setupEnvironment() {
-        setenv("WINEPREFIX", winePrefix, 1)
-        setenv("WINEDEBUG", "-all", 1)
-        setenv("DISPLAY", ":0", 1)
-        setenv("WINEARCH", "win64", 1)
-        setenv("WINEESYNC", "1", 1)
-        setenv("WINEFSYNC", "1", 1)
-        setenv("STAGING_SHARED_MEMORY", "1", 1)
+        safeSetenv("WINEPREFIX", winePrefix, 1)
+        safeSetenv("WINEDEBUG", "-all", 1)
+        safeSetenv("DISPLAY", ":0", 1)
+        safeSetenv("WINEARCH", "win64", 1)
+        safeSetenv("WINEESYNC", "1", 1)
+        safeSetenv("WINEFSYNC", "1", 1)
+        safeSetenv("STAGING_SHARED_MEMORY", "1", 1)
     }
 
     func launchGame(executablePath: String, arguments: [String] = [], containerPath: String? = nil) -> Box64Bridge.LaunchResult {
@@ -71,7 +71,7 @@ class WineBridge {
     }
 
     func killWine() {
-        let process = Process()
+        let process = NativeProcess()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", "killall -9 wineserver 2>/dev/null; killall -9 wine64 2>/dev/null; killall -9 box64 2>/dev/null"]
         try? process.run()

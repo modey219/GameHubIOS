@@ -112,13 +112,9 @@ int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_e
     snprintf(buf, sizeof(buf), "[Bridge] wine_path=%s prefix=%s", ctx->wine_path, ctx->prefix_path);
     bridge_log(buf);
 
-    setenv("WINEPREFIX", ctx->prefix_path, 1);
-    setenv("WINEDEBUG", "-all", 1);
-    setenv("WINEESYNC", "1", 1);
-    setenv("WINEFSYNC", "1", 1);
-    setenv("STAGING_SHARED_MEMORY", "1", 1);
-    setenv("DXVK_ASYNC", "1", 1);
-    setenv("DXVK_HUD", "fps", 1);
+    /* Environment variables are set by Swift's safeSetenv() before this
+       function is called. Do NOT duplicate them here with raw setenv()
+       as that bypasses the thread-safe lock. */
 
     if (extra_envp) {
         for (int i = 0; extra_envp[i]; i++) {
@@ -177,8 +173,7 @@ int box64_launch_wine_prefix_init(box64_context_t *ctx) {
     if (!ctx || !ctx->initialized) return -1;
     fprintf(stderr, "[Box64] Init prefix: %s\n", ctx->prefix_path);
     mkdir(ctx->prefix_path, 0755);
-    setenv("WINEPREFIX", ctx->prefix_path, 1);
-    setenv("WINEDEBUG", "-all", 1);
+    /* Environment variables are set by Swift before calling this function. */
 
     char wine_bin[1024];
     snprintf(wine_bin, sizeof(wine_bin), "%s/bin/wine64", ctx->wine_path);

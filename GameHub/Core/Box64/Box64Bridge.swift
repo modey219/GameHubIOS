@@ -33,7 +33,7 @@ class Box64Bridge {
     }
 
     struct LaunchResult {
-        var process: Process?
+        var process: NativeProcess?
         var error: String?
         var box64Output: String?
         var wineLaunched: Bool = false
@@ -130,13 +130,13 @@ class Box64Bridge {
     }
 
     private func setupEnvironment() {
-        setenv("BOX64_DYNAREC", "0", 1)
-        setenv("BOX64_NOBANNED", "1", 1)
-        setenv("BOX64_LOG", "1", 1)
-        setenv("BOX64_SHOWSEGV", "1", 1)
-        setenv("BOX64_SHOWEXIT", "1", 1)
-        setenv("BOX64_NOSSE", "1", 1)
-        setenv("HOME", (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        safeSetenv("BOX64_DYNAREC", "0", 1)
+        safeSetenv("BOX64_NOBANNED", "1", 1)
+        safeSetenv("BOX64_LOG", "1", 1)
+        safeSetenv("BOX64_SHOWSEGV", "1", 1)
+        safeSetenv("BOX64_SHOWEXIT", "1", 1)
+        safeSetenv("BOX64_NOSSE", "1", 1)
+        safeSetenv("HOME", (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory).appendingPathComponent("Wine").path, 1)
     }
 
@@ -151,19 +151,19 @@ class Box64Bridge {
             return result
         }
 
-        setenv("WINEPREFIX", containerPath, 1)
-        setenv("WINEARCH", "win64", 1)
-        setenv("WINEDEBUG", "-all", 1)
-        setenv("WINEESYNC", "1", 1)
-        setenv("WINEFSYNC", "1", 1)
-        setenv("STAGING_SHARED_MEMORY", "1", 1)
-        setenv("DXVK_HUD", "fps", 1)
-        setenv("DXVK_ASYNC", "1", 1)
-        setenv("DXVK_LOG_LEVEL", "none", 1)
-        setenv("DISPLAY", ":0", 1)
+        safeSetenv("WINEPREFIX", containerPath, 1)
+        safeSetenv("WINEARCH", "win64", 1)
+        safeSetenv("WINEDEBUG", "-all", 1)
+        safeSetenv("WINEESYNC", "1", 1)
+        safeSetenv("WINEFSYNC", "1", 1)
+        safeSetenv("STAGING_SHARED_MEMORY", "1", 1)
+        safeSetenv("DXVK_HUD", "fps", 1)
+        safeSetenv("DXVK_ASYNC", "1", 1)
+        safeSetenv("DXVK_LOG_LEVEL", "none", 1)
+        safeSetenv("DISPLAY", ":0", 1)
 
         for (key, value) in environment {
-            setenv(key, value, 1)
+            safeSetenv(key, value, 1)
         }
 
         Self.log("calling box64_set_wine_path/set_prefix/set_game...")
@@ -267,7 +267,7 @@ class Box64Bridge {
     }
 
     private func shellCopy(src: String, dst: String) throws {
-        let process = Process()
+        let process = NativeProcess()
         process.executableURL = URL(fileURLWithPath: "/bin/cp")
         process.arguments = ["-R", src, dst]
         try process.run()

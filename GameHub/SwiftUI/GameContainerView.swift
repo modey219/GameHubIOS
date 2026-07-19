@@ -557,7 +557,7 @@ struct GameContainerView: View {
         flushLog()
 
         let capturedContainer = container
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        DispatchQueue.global(qos: .userInitiated).async {
             logMsg("Calling Box64Bridge.shared.launchWine()...")
             flushLog()
             let launchResult = Box64Bridge.shared.launchWine(
@@ -567,8 +567,7 @@ struct GameContainerView: View {
                 environment: capturedContainer.environment
             )
 
-            DispatchQueue.main.async {
-                guard let self = self else { return }
+            DispatchQueue.main.async { [self] in
                 if launchResult.wineLaunched {
                     logMsg("launchWine SUCCESS")
                     self.isRunning = true
@@ -647,7 +646,8 @@ struct GameContainerView: View {
 struct MetalGameView: UIViewRepresentable {
     let renderer: DisplayRenderer
     func makeUIView(context: Context) -> MTKView {
-        let v = MTKView(frame: .zero, device: MTLCreateSystemDefaultDevice())
+        let device = renderer.device ?? MTLCreateSystemDefaultDevice()
+        let v = MTKView(frame: .zero, device: device)
         v.preferredFramesPerSecond = 60
         v.enableSetNeedsDisplay = false
         v.isPaused = false
@@ -659,7 +659,7 @@ struct MetalGameView: UIViewRepresentable {
     func updateUIView(_ uiView: MTKView, context: Context) {
         context.coordinator.updateTexture(from: renderer)
     }
-    func makeCoordinator() -> MetalGameCoordinator { MetalGameCoordinator() }
+    func makeCoordinator() -> MetalGameCoordinator { MetalGameCoordinator(device: renderer.device) }
 }
 
 class MetalGameCoordinator: NSObject, MTKViewDelegate {
@@ -674,9 +674,9 @@ class MetalGameCoordinator: NSObject, MTKViewDelegate {
     let vertexData: [Float] = [-1,-1,0,1, 1,-1,0,1, -1,1,0,1, 1,1,0,1]
     let texCoordData: [Float] = [0,1, 1,1, 0,0, 1,0]
 
-    override init() {
+    init(device: MTLDevice?) {
         super.init()
-        guard let device = MTLCreateSystemDefaultDevice() else { return }
+        guard let device = device else { return }
         commandQueue = device.makeCommandQueue()
 
         vertexBuffer = device.makeBuffer(bytes: vertexData, length: vertexData.count * MemoryLayout<Float>.size, options: [])

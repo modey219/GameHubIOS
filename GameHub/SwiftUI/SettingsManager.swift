@@ -228,48 +228,48 @@ class SettingsManager: ObservableObject {
 
     func applySettings() {
         // Box64 - DYNAREC disabled (not compiled for iOS)
-        setenv("BOX64_DYNAREC", "0", 1)
-        setenv("BOX64_LOG", "\(dynarecLogLevel)", 1)
-        if box64StdMalloc { setenv("BOX64_STD_MALLOC", "1", 1) }
+        safeSetenv("BOX64_DYNAREC", "0", 1)
+        safeSetenv("BOX64_LOG", "\(dynarecLogLevel)", 1)
+        if box64StdMalloc { safeSetenv("BOX64_STD_MALLOC", "1", 1) }
 
         // Memory limit (MB) — inform Wine/Box64 via env vars
         let memMB = memoryLimitMB
-        setenv("BOX64_MAXMEM", "\(memMB)", 1)
-        setenv("WINE_MAX_MEMORY_MB", "\(memMB)", 1)
+        safeSetenv("BOX64_MAXMEM", "\(memMB)", 1)
+        safeSetenv("WINE_MAX_MEMORY_MB", "\(memMB)", 1)
 
         // Wine
-        setenv("WINEESYNC", wineESync ? "1" : "0", 1)
-        setenv("WINEFSYNC", wineFSync ? "1" : "0", 1)
-        setenv("WINEDEBUG", wineDebugLevel, 1)
+        safeSetenv("WINEESYNC", wineESync ? "1" : "0", 1)
+        safeSetenv("WINEFSYNC", wineFSync ? "1" : "0", 1)
+        safeSetenv("WINEDEBUG", wineDebugLevel, 1)
         if !wineDllOverrides.isEmpty {
-            setenv("WINEDLLOVERRIDES", wineDllOverrides, 1)
+            safeSetenv("WINEDLLOVERRIDES", wineDllOverrides, 1)
         }
         if wineVirtualDesktop {
-            setenv("WINEVIRTUALDESKTOP", "1", 1)
-            setenv("WINEDESKTOPSIZE", wineVirtualDesktopSize, 1)
+            safeSetenv("WINEVIRTUALDESKTOP", "1", 1)
+            safeSetenv("WINEDESKTOPSIZE", wineVirtualDesktopSize, 1)
         }
 
         // DXVK
-        setenv("DXVK_FRAME_RATE", "\(maxFrameRate)", 1)
-        setenv("DXVK_HUD", dxvkHud, 1)
-        setenv("DXVK_LOG_LEVEL", "none", 1)
-        setenv("DXVK_ASYNC", dxvkAsync ? "1" : "0", 1)
+        safeSetenv("DXVK_FRAME_RATE", "\(maxFrameRate)", 1)
+        safeSetenv("DXVK_HUD", dxvkHud, 1)
+        safeSetenv("DXVK_LOG_LEVEL", "none", 1)
+        safeSetenv("DXVK_ASYNC", dxvkAsync ? "1" : "0", 1)
 
         // VKD3D
-        setenv("VKD3D_CONFIG", "dxr", 1)
+        safeSetenv("VKD3D_CONFIG", "dxr", 1)
 
         // MoltenVK
-        setenv("MVK_CONFIG_LOG_LEVEL", "\(mvkLogLevel)", 1)
-        setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "1", 1)
+        safeSetenv("MVK_CONFIG_LOG_LEVEL", "\(mvkLogLevel)", 1)
+        safeSetenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "1", 1)
 
         // Graphics
         if forceVulkan {
-            setenv("MESA_VK_DEVICE_SELECT_DEBUG", "1", 1)
+            safeSetenv("MESA_VK_DEVICE_SELECT_DEBUG", "1", 1)
         }
 
         // Audio
         if audioEnabled {
-            setenv("PULSE_SERVER", "127.0.0.1", 1)
+            safeSetenv("PULSE_SERVER", "127.0.0.1", 1)
         }
 
         // Screen

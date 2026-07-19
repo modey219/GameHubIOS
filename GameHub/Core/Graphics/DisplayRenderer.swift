@@ -10,9 +10,10 @@ class DisplayRenderer: NSObject, ObservableObject {
     private(set) var currentTexture: MTLTexture?
     private var textureLock = NSLock()
 
-    private var device: MTLDevice?
+    private(set) var device: MTLDevice?
     private var commandQueue: MTLCommandQueue?
     private var texturePool: [MTLTexture] = []
+    private let maxTexturePoolSize = 4
     private var lastTextureWidth = 0
     private var lastTextureHeight = 0
 
@@ -104,7 +105,7 @@ class DisplayRenderer: NSObject, ObservableObject {
         textureLock.lock()
         let oldTexture = currentTexture
         currentTexture = newTexture
-        if let old = oldTexture, old.width == width && old.height == height {
+        if let old = oldTexture, old.width == width && old.height == height, texturePool.count < maxTexturePoolSize {
             texturePool.append(old)
         }
         textureLock.unlock()

@@ -37,10 +37,10 @@ class AudioManager: ObservableObject {
     func configureForWine() {
         switch audioDriver {
         case .coreaudio:
-            setenv("AUDIODEV", "/dev/dsp", 1)
-            setenv("AUDIO_DRIVER", "coreaudio", 1)
+            safeSetenv("AUDIODEV", "/dev/dsp", 1)
+            safeSetenv("AUDIO_DRIVER", "coreaudio", 1)
         case .pulseaudio:
-            setenv("PULSE_SERVER", "127.0.0.1", 1)
+            safeSetenv("PULSE_SERVER", "127.0.0.1", 1)
         }
     }
 

@@ -55,7 +55,7 @@ static void signal_handler(int sig) {
     if (g_log_fd >= 0) {
         /* Write crash marker using only write() */
         const char *prefix = "[CRASH] Signal ";
-        write(g_log_fd, prefix, 16);
+        write(g_log_fd, prefix, 15);
         /* Write signal number as decimal */
         char sigbuf[16];
         int siglen = 0;
@@ -144,6 +144,7 @@ static void *wine_thread_func(void *arg) {
                  "Box64 crashed with signal %d", crash_sig);
         g_runner_exit_code = -crash_sig;
         free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
+        free(wargs);
         if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
         return NULL;
     }
@@ -159,6 +160,7 @@ static void *wine_thread_func(void *arg) {
         g_runner_running = 0;
         g_runner_exit_code = -1;
         free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
+        free(wargs);
         if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
         return NULL;
     }
@@ -172,6 +174,7 @@ static void *wine_thread_func(void *arg) {
     g_runner_running = 0;
 
     free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
+    free(wargs);
     if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
     return NULL;
 }
@@ -183,10 +186,15 @@ int box64_runner_start(const char *wine64_path, const char *game_exe, const char
 
     setup_logging(prefix_path);
 
-    static wine_runner_args_t args;
-    args.wine64_path = wine64_path ? strdup(wine64_path) : NULL;
-    args.game_exe = game_exe ? strdup(game_exe) : NULL;
-    args.prefix_path = prefix_path ? strdup(prefix_path) : NULL;
+    wine_runner_args_t *args = malloc(sizeof(wine_runner_args_t));
+    if (!args) {
+        snprintf(g_runner_error, sizeof(g_runner_error),
+                 "Failed to allocate runner args");
+        return -1;
+    }
+    args->wine64_path = wine64_path ? strdup(wine64_path) : NULL;
+    args->game_exe = game_exe ? strdup(game_exe) : NULL;
+    args->prefix_path = prefix_path ? strdup(prefix_path) : NULL;
 
     g_runner_error[0] = 0;
     g_runner_exit_code = 0;
@@ -197,14 +205,15 @@ int box64_runner_start(const char *wine64_path, const char *game_exe, const char
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-    int ret = pthread_create(&thread, &attr, wine_thread_func, &args);
+    int ret = pthread_create(&thread, &attr, wine_thread_func, args);
     pthread_attr_destroy(&attr);
 
     if (ret != 0) {
         snprintf(g_runner_error, sizeof(g_runner_error),
                  "Failed to create runner thread: %d", ret);
         g_runner_running = 0;
-        free(args.wine64_path); free(args.game_exe); free(args.prefix_path);
+        free(args->wine64_path); free(args->game_exe); free(args->prefix_path);
+        free(args);
         return -1;
     }
 

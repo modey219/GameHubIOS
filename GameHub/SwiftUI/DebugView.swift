@@ -262,7 +262,7 @@ struct DebugView: View {
             }
         }
 
-        let process = Process()
+        let process = NativeProcess()
         process.executableURL = URL(fileURLWithPath: box64Path)
         process.arguments = ["--version"]
 
@@ -335,7 +335,7 @@ struct DebugView: View {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let process = Process()
+            let process = NativeProcess()
             process.executableURL = URL(fileURLWithPath: box64Path)
             process.arguments = ["--version"]
 

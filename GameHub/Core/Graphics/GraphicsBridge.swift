@@ -36,11 +36,11 @@ class GraphicsBridge {
     }
 
     private func setupEnvironment() {
-        setenv("MVK_CONFIG_LOG_LEVEL", "0", 1)
-        setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "1", 1)
-        setenv("DXVK_LOG_LEVEL", "none", 1)
-        setenv("DXVK_HUD", "fps", 1)
-        setenv("VKD3D_CONFIG", "dxr", 1)
+        safeSetenv("MVK_CONFIG_LOG_LEVEL", "0", 1)
+        safeSetenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "1", 1)
+        safeSetenv("DXVK_LOG_LEVEL", "none", 1)
+        safeSetenv("DXVK_HUD", "fps", 1)
+        safeSetenv("VKD3D_CONFIG", "dxr", 1)
     }
 
     func getGPUInfo() -> [String: Any] {

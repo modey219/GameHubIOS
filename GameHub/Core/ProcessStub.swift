@@ -18,14 +18,14 @@ class iOSPipe {
     }
 }
 
-class Process {
+class NativeProcess {
     var executableURL: URL?
     var arguments: [String]?
     var environment: [String: String]?
     var standardOutput: Any?
     var standardError: Any?
     var terminationStatus: Int32 = 0
-    var terminationHandler: ((Process) -> Void)?
+    var terminationHandler: ((NativeProcess) -> Void)?
 
     private var pid: pid_t = 0
     private var _isRunning = false

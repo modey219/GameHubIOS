@@ -151,8 +151,8 @@ class JITManager: ObservableObject {
     }
 
     func enableJITlessMode() {
-        setenv("BOX64_DYNAREC", "0", 1)
-        setenv("BOX64_JITLESS", "1", 1)
+        safeSetenv("BOX64_DYNAREC", "0", 1)
+        safeSetenv("BOX64_JITLESS", "1", 1)
         DispatchQueue.main.async {
             self.jitStatus = .enabled
             self.isJITEnabled = true
@@ -190,7 +190,7 @@ class JITManager: ObservableObject {
                     self.isJITEnabled = true
                     self.jitStatus = .enabled
                     self.statusMessage = "JIT enabled (interpreter mode - no DYNAREC on iOS)."
-                    setenv("BOX64_DYNAREC", "0", 1)
+                    safeSetenv("BOX64_DYNAREC", "0", 1)
                 } else if dynarecVal == "1" {
                     self.isJITEnabled = true
                     self.jitStatus = .enabled

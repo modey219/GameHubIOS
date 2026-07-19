@@ -63,8 +63,10 @@ class ContainerManager: ObservableObject {
         setupContainerFiles(container: container)
         lock.lock()
         containers.append(container)
+        let snapshot = containers
         lock.unlock()
         saveContainers()
+        DispatchQueue.main.async { self.containers = snapshot }
         return container
     }
 
@@ -103,9 +105,14 @@ class ContainerManager: ObservableObject {
         try? fileManager.removeItem(atPath: containersPath + "/\(container.id.uuidString)")
         lock.lock()
         containers.removeAll { $0.id == container.id }
-        if selectedContainer?.id == container.id { selectedContainer = nil }
+        let deselected = selectedContainer?.id == container.id
+        let snapshot = containers
         lock.unlock()
         saveContainers()
+        DispatchQueue.main.async {
+            self.containers = snapshot
+            if deselected { self.selectedContainer = nil }
+        }
     }
 
     func launchGame(_ container: Container) {
@@ -116,8 +123,10 @@ class ContainerManager: ObservableObject {
         if let idx = containers.firstIndex(where: { $0.id == container.id }) {
             containers[idx] = updated
         }
+        let snapshot = containers
         lock.unlock()
         saveContainers()
+        DispatchQueue.main.async { self.containers = snapshot }
     }
 
     func installGameFiles(containerID: UUID, files: [(source: URL, destination: String)]) {
@@ -161,7 +170,10 @@ class ContainerManager: ObservableObject {
     }
 
     private func saveContainers() {
-        if let data = try? JSONEncoder().encode(containers) {
+        lock.lock()
+        let snapshot = containers
+        lock.unlock()
+        if let data = try? JSONEncoder().encode(snapshot) {
             UserDefaults.standard.set(data, forKey: containersKey)
         }
     }
@@ -169,6 +181,8 @@ class ContainerManager: ObservableObject {
     private func loadContainers() {
         guard let data = UserDefaults.standard.data(forKey: containersKey),
               let loaded = try? JSONDecoder().decode([Container].self, from: data) else { return }
+        lock.lock()
         containers = loaded
+        lock.unlock()
     }
 }

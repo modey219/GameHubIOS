@@ -22,8 +22,8 @@ class AudioBridge: ObservableObject {
 
     var audioBuffer = Data()
     private var _bufferLock = os_unfair_lock()
-    private func bufferLock() { os_unfair_lock_lock(&_bufferLock) }
-    private func bufferUnlock() { os_unfair_lock_unlock(&_bufferLock) }
+    fileprivate func bufferLock() { os_unfair_lock_lock(&_bufferLock) }
+    fileprivate func bufferUnlock() { os_unfair_lock_unlock(&_bufferLock) }
 
     init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first

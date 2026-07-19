@@ -82,8 +82,7 @@ struct GameHubApp: App {
     }
 
     private func performSetup() {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
                 DispatchQueue.main.async { self.isLoading = false }

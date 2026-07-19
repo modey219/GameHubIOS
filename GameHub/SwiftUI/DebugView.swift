@@ -394,7 +394,9 @@ struct DebugView: View {
         let allLogs = logs.joined(separator: "\n")
         UIPasteboard.general.string = allLogs
         showCopied = true
-        withAnimation { showCopied = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation { self.showCopied = false }
+        }
         log("Logs copied to clipboard")
     }
 

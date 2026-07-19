@@ -115,16 +115,24 @@ struct GameHubApp: App {
             }
 
             self.updateProgress("Initializing Box64...")
+            Box64Bridge.log("performSetup: before Box64 init")
             Box64Bridge.shared.initialize()
+            Box64Bridge.log("performSetup: after Box64 init")
 
             self.updateProgress("Initializing Wine...")
+            Box64Bridge.log("performSetup: before Wine init")
             WineBridge.shared.initialize()
+            Box64Bridge.log("performSetup: after Wine init")
 
             self.updateProgress("Setting up prefix...")
+            Box64Bridge.log("performSetup: before prefix init")
             WinePrefixManager.shared.initializePrefix()
+            Box64Bridge.log("performSetup: after prefix init")
 
             self.updateProgress("Applying settings...")
+            Box64Bridge.log("performSetup: before applySettings")
             settingsManager.applySettings()
+            Box64Bridge.log("performSetup: after applySettings - DONE")
 
             DispatchQueue.main.async {
                 withAnimation(.easeIn(duration: 0.3)) {

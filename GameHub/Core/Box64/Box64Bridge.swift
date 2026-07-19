@@ -117,18 +117,30 @@ class Box64Bridge {
 
         let box64Src = box64InstallPath + "/box64"
         let box64Tmp = tmp + "box64"
+        Self.log("copyBinariesToTemp: box64Src=\(box64Src) exists=\(fm.fileExists(atPath: box64Src))")
         if fm.fileExists(atPath: box64Src) && !fm.fileExists(atPath: box64Tmp) {
-            try? fm.copyItem(atPath: box64Src, toPath: box64Tmp)
-            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: box64Tmp)
-            print("[Box64] Copied box64 to \(box64Tmp)")
+            Self.log("copyBinariesToTemp: copying box64...")
+            do {
+                try fm.copyItem(atPath: box64Src, toPath: box64Tmp)
+                try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: box64Tmp)
+                Self.log("copyBinariesToTemp: box64 copied OK")
+            } catch {
+                Self.log("copyBinariesToTemp: box64 copy failed: \(error)")
+            }
         }
 
         let wine64Src = wineInstallPath + "/bin/wine64"
         let wine64Tmp = tmp + "wine64"
+        Self.log("copyBinariesToTemp: wine64Src=\(wine64Src) exists=\(fm.fileExists(atPath: wine64Src))")
         if fm.fileExists(atPath: wine64Src) && !fm.fileExists(atPath: wine64Tmp) {
-            try? fm.copyItem(atPath: wine64Src, toPath: wine64Tmp)
-            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wine64Tmp)
-            print("[Box64] Copied wine64 to \(wine64Tmp)")
+            Self.log("copyBinariesToTemp: copying wine64...")
+            do {
+                try fm.copyItem(atPath: wine64Src, toPath: wine64Tmp)
+                try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wine64Tmp)
+                Self.log("copyBinariesToTemp: wine64 copied OK")
+            } catch {
+                Self.log("copyBinariesToTemp: wine64 copy failed: \(error)")
+            }
         }
     }
 

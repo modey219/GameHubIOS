@@ -218,6 +218,10 @@ jobs:
                   echo "Recompiled deduplicated stubs"
               fi
               
+              # Add stubs to the static library so iOS app can link against them
+              $AR rcs "$OUTPUT_DIR/libbox64.a" objects/*.o auto_stubs.o
+              echo "Updated libbox64.a with stubs: $(ls -lh "$OUTPUT_DIR/libbox64.a")"
+              
               # Link as executable with stubs
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
                   objects/*.o auto_stubs.o \

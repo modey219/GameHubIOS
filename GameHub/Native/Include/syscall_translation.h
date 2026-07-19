@@ -61,6 +61,8 @@ typedef struct emulator_context {
 } emulator_context_t;
 
 void syscall_translation_init(void);
+void syscall_set_context(emulator_context_t *ctx);
+emulator_context_t *syscall_get_context(void);
 emulator_context_t *syscall_emulator_create(void);
 void syscall_emulator_destroy(emulator_context_t *ctx);
 int emulator_run(emulator_context_t *ctx, const char *executable, char **argv, char **envp);

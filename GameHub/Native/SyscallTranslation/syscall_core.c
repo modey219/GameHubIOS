@@ -43,6 +43,14 @@ extern char **environ;
 
 static emulator_context_t *g_ctx = NULL;
 
+void syscall_set_context(emulator_context_t *ctx) {
+    g_ctx = ctx;
+}
+
+emulator_context_t *syscall_get_context(void) {
+    return g_ctx;
+}
+
 void syscall_translation_init(void) {
     if (!g_ctx) g_ctx = syscall_emulator_create();
 }
@@ -155,6 +163,7 @@ static void fill_stat(struct linux_stat *ls, struct stat *hs) {
 }
 
 linux_addr_t emulator_mmap(emulator_context_t *ctx, linux_addr_t addr, size_t length, int prot, int flags, int fd, long offset) {
+    if (!ctx) ctx = g_ctx;
     int hp = 0;
     if (prot & 1) hp |= PROT_READ;
     if (prot & 2) hp |= PROT_WRITE;
@@ -200,7 +209,10 @@ int emulator_munmap(emulator_context_t *ctx, linux_addr_t addr, size_t length) {
 
 long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long a3, long a4, long a5, long a6) {
     if (!ctx) ctx = g_ctx;
-    if (!ctx) return -ENOSYS;
+    if (!ctx) {
+        fprintf(stderr, "[Syscall] No context! syscall=%ld\n", num);
+        return -ENOSYS;
+    }
 
     switch (num) {
         case 0: {

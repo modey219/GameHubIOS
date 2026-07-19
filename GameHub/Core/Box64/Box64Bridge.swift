@@ -167,6 +167,16 @@ class Box64Bridge {
         return String(cString: box64_get_status(ctx))
     }
 
+    func getRunnerLog() -> String {
+        guard let cPath = box64_runner_get_log_path() else { return "No log path available" }
+        let path = String(cString: cPath)
+        guard let data = FileManager.default.contents(atPath: path),
+              let content = String(data: data, encoding: .utf8) else {
+            return "Could not read log at \(path)"
+        }
+        return content
+    }
+
     func deinitialize() {
         if let ctx = ctx {
             box64_destroy(ctx)

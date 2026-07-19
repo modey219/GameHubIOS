@@ -22,6 +22,7 @@ struct GameContainerView: View {
     @State private var wineOutput: String = ""
     @State private var confirmExit = false
     @State private var showCopiedToast = false
+    @State private var logTimer: Timer?
 
     var body: some View {
         GeometryReader { geo in
@@ -96,6 +97,16 @@ struct GameContainerView: View {
                             .padding(.horizontal, 12).padding(.vertical, 6)
                             .background(Color.blue).cornerRadius(8)
                         }
+                        Button(action: { refreshRunnerLog() }) {
+                            HStack {
+                                Image(systemName: "arrow.clockwise")
+                                Text("Refresh")
+                            }
+                            .font(.caption).bold()
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Color.green).cornerRadius(8)
+                        }
                     }
                     .padding(.horizontal)
                     .padding(.top, 8)
@@ -109,6 +120,16 @@ struct GameContainerView: View {
                 }
                 .navigationTitle("Game Log")
                 .navigationBarTitleDisplayMode(.inline)
+                .onAppear {
+                    refreshRunnerLog()
+                    logTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+                        refreshRunnerLog()
+                    }
+                }
+                .onDisappear {
+                    logTimer?.invalidate()
+                    logTimer = nil
+                }
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") { showLog = false }
@@ -542,6 +563,11 @@ struct GameContainerView: View {
     private func formatTime(_ t: TimeInterval) -> String {
         let h = Int(t) / 3600, m = (Int(t) % 3600) / 60, s = Int(t) % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%02d:%02d", m, s)
+    }
+
+    private func refreshRunnerLog() {
+        let log = Box64Bridge.shared.getRunnerLog()
+        wineOutput = log
     }
 }
 

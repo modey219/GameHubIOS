@@ -55,5 +55,6 @@ int box64_runner_is_running(void);
 const char *box64_runner_get_error(void);
 const char *box64_runner_get_status(void);
 int box64_runner_get_exit_code(void);
+const char *box64_runner_get_log_path(void);
 
 #endif

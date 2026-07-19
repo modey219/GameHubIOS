@@ -72,9 +72,12 @@ static void setup_logging(const char *prefix_path) {
     const char *home = getenv("HOME");
     if (!home) home = "/tmp";
 
-    snprintf(g_log_path, sizeof(g_log_path), "%s/box64_runner.log", home);
-    mkdir("/tmp", 0755);
+    snprintf(g_log_path, sizeof(g_log_path), "%s/Documents/box64_runner.log", home);
     g_log_file = fopen(g_log_path, "w");
+    if (!g_log_file) {
+        snprintf(g_log_path, sizeof(g_log_path), "%s/box64_runner.log", home);
+        g_log_file = fopen(g_log_path, "w");
+    }
     if (!g_log_file) {
         snprintf(g_log_path, sizeof(g_log_path), "/tmp/box64_runner.log");
         g_log_file = fopen(g_log_path, "w");

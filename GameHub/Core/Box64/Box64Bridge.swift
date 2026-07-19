@@ -168,31 +168,33 @@ class Box64Bridge {
     }
 
     func getRunnerLog() -> String {
-        if let cPath = box64_runner_get_log_path() {
-            let path = String(cString: cPath)
-            if !path.isEmpty, let data = FileManager.default.contents(atPath: path),
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+
+        let candidates = [
+            docs.appendingPathComponent("box64_runner.log").path,
+            docs.appendingPathComponent("launch.log").path,
+        ]
+
+        var parts: [String] = []
+
+        for path in candidates {
+            if let data = FileManager.default.contents(atPath: path),
                let content = String(data: data, encoding: .utf8), !content.isEmpty {
-                return content
+                let label = (path as NSString).lastPathComponent
+                parts.append("=== \(label) ===\n\(content)")
             }
         }
-        let home = ProcessInfo.processInfo.environment["HOME"] ?? NSTemporaryDirectory()
-        let knownPath = home + "/box64_runner.log"
-        if let data = FileManager.default.contents(atPath: knownPath),
-           let content = String(data: data, encoding: .utf8), !content.isEmpty {
-            return content
+
+        if let cPath = box64_runner_get_log_path() {
+            let path = String(cString: cPath)
+            if !path.isEmpty, !candidates.contains(path),
+               let data = FileManager.default.contents(atPath: path),
+               let content = String(data: data, encoding: .utf8), !content.isEmpty {
+                parts.append("=== runner.log ===\n\(content)")
+            }
         }
-        let tmpPath = "/tmp/box64_runner.log"
-        if let data = FileManager.default.contents(atPath: tmpPath),
-           let content = String(data: data, encoding: .utf8), !content.isEmpty {
-            return content
-        }
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let docsPath = docs.appendingPathComponent("box64_runner.log").path
-        if let data = FileManager.default.contents(atPath: docsPath),
-           let content = String(data: data, encoding: .utf8), !content.isEmpty {
-            return content
-        }
-        return "No log found. Runner may not have started yet."
+
+        return parts.isEmpty ? "No logs found. Run a game first." : parts.joined(separator: "\n\n")
     }
 
     func deinitialize() {

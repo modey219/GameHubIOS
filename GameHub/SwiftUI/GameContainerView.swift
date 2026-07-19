@@ -592,21 +592,7 @@ struct GameContainerView: View {
     }
 
     private func refreshRunnerLog() {
-        var parts: [String] = []
-
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let launchLogPath = docs.appendingPathComponent("launch.log").path
-        if let data = FileManager.default.contents(atPath: launchLogPath),
-           let content = String(data: data, encoding: .utf8), !content.isEmpty {
-            parts.append("=== Launch Log ===\n\(content)")
-        }
-
-        let runnerLog = Box64Bridge.shared.getRunnerLog()
-        if !runnerLog.contains("No log found") {
-            parts.append("=== Box64 Runner Log ===\n\(runnerLog)")
-        }
-
-        wineOutput = parts.isEmpty ? "No logs yet.\n\nLaunch a game, then open this log." : parts.joined(separator: "\n\n")
+        wineOutput = Box64Bridge.shared.getRunnerLog()
     }
 }
 

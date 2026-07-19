@@ -5,7 +5,6 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <signal.h>
-#include <setjmp.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
@@ -13,8 +12,6 @@ extern char **environ;
 
 typedef struct elfheader_s elfheader_t;
 typedef struct x64emu_s x64emu_t;
-
-extern void box64_set_exit_jmp(volatile jmp_buf *buf);
 
 extern int initialize(int argc, const char **argv, char **env, x64emu_t **emulator, elfheader_t **elfheader, int exec);
 extern int emulate(x64emu_t *emu, elfheader_t *elf_header);
@@ -27,9 +24,6 @@ static char g_runner_error[1024] = {0};
 static char g_runner_status[256] = {0};
 static char g_log_path[512] = {0};
 static volatile int g_log_fd = -1;
-
-static jmp_buf g_exit_jmp;
-static volatile int g_exit_set = 0;
 
 static void raw_log(const char *msg) {
     if (g_log_fd >= 0) {
@@ -46,8 +40,11 @@ static void runner_log(const char *fmt, ...) {
     vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
     raw_log(buf);
-    fprintf(stderr, "%s\n", buf);
 }
+
+/* box64_exit_intercept is defined in ios_stubs.c (compiled into libbox64.a)
+   Box64 source files call exit() which the -Dexit macro redirects there.
+   That function just returns, so the iOS app stays alive. */
 
 static void signal_handler(int sig) {
     const char *name = "unknown";
@@ -62,9 +59,6 @@ static void signal_handler(int sig) {
     char buf[256];
     snprintf(buf, sizeof(buf), "[CRASH] Signal %d (%s)", sig, name);
     raw_log(buf);
-    if (g_exit_set) {
-        longjmp(g_exit_jmp, 128 + sig);
-    }
     _exit(128 + sig);
 }
 
@@ -117,36 +111,25 @@ static void *wine_thread_func(void *arg) {
     x64emu_t *emu = NULL;
     elfheader_t *elf_header = NULL;
 
-    runner_log("[Runner] Setting up exit jump point...");
-    int jump_val = setjmp(g_exit_jmp);
-    if (jump_val != 0) {
-        runner_log("[Runner] Caught exit/longjmp with code %d", jump_val);
-        g_runner_exit_code = jump_val;
-        g_runner_running = 0;
-        snprintf(g_runner_status, sizeof(g_runner_status), "exited-via-intercept (%d)", jump_val);
-        if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
-        return NULL;
-    }
-    g_exit_set = 1;
-    box64_set_exit_jmp(&g_exit_jmp);
-
     runner_log("[Runner] Calling initialize(%d)", argc);
     int ret = initialize(argc, argv, environ, &emu, &elf_header, 1);
+    runner_log("[Runner] initialize() returned %d", ret);
+    
     if (ret != 0) {
         snprintf(g_runner_error, sizeof(g_runner_error),
                  "Box64 initialize() failed (code %d)", ret);
         runner_log("[Runner] ERROR: %s", g_runner_error);
         g_runner_running = 0;
         g_runner_exit_code = -1;
+        snprintf(g_runner_status, sizeof(g_runner_status), "init-failed (%d)", ret);
         if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
         return NULL;
     }
 
     snprintf(g_runner_status, sizeof(g_runner_status), "emulating");
-    runner_log("[Runner] Initialize OK, calling emulate()");
+    runner_log("[Runner] Calling emulate()");
 
     ret = emulate(emu, elf_header);
-
     runner_log("[Runner] emulate() returned %d", ret);
     g_runner_exit_code = ret;
     g_runner_running = 0;
@@ -158,7 +141,6 @@ static void *wine_thread_func(void *arg) {
 
 int box64_runner_start(const char *wine64_path, const char *game_exe, const char *prefix_path) {
     if (g_runner_running) {
-        fprintf(stderr, "[Runner] Already running\n");
         return -1;
     }
 
@@ -171,7 +153,6 @@ int box64_runner_start(const char *wine64_path, const char *game_exe, const char
 
     g_runner_error[0] = 0;
     g_runner_exit_code = 0;
-    g_exit_set = 0;
     snprintf(g_runner_status, sizeof(g_runner_status), "starting");
 
     pthread_t thread;

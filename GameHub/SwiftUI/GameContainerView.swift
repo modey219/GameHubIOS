@@ -624,25 +624,17 @@ struct GameContainerView: View {
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
                 ?? URL(fileURLWithPath: NSTemporaryDirectory())
             let logFiles = [
-                "launch.log", "swift_box64.log", "bridge.log", "box64_runner.log"
+                "launch.log", "swift_box64.log", "box64_runner.log"
             ]
             for name in logFiles {
-                let path = docs.appendingPathComponent(name).path
-                if let data = FileManager.default.contents(atPath: path),
-                   let content = String(data: data, encoding: .utf8), !content.isEmpty {
-                    let lines = content.components(separatedBy: "\n")
-                    let trimmed = lines.count > 200 ? Array(lines.suffix(200)) : lines
-                    parts.append("=== \(name) ===\n\(trimmed.joined(separator: "\n"))")
-                }
-            }
-            if let cPath = box64_runner_get_log_path() {
-                let path = String(cString: cPath)
-                if !path.isEmpty, !parts.contains(where: { $0.contains(path) }),
-                   let data = FileManager.default.contents(atPath: path),
-                   let content = String(data: data, encoding: .utf8), !content.isEmpty {
-                    let lines = content.components(separatedBy: "\n")
-                    let trimmed = lines.count > 200 ? Array(lines.suffix(200)) : lines
-                    parts.append("=== runner ===\n\(trimmed.joined(separator: "\n"))")
+                autoreleasepool {
+                    let path = docs.appendingPathComponent(name).path
+                    if let data = FileManager.default.contents(atPath: path),
+                       let content = String(data: data, encoding: .utf8), !content.isEmpty {
+                        let lines = content.components(separatedBy: "\n")
+                        let trimmed = lines.count > 100 ? Array(lines.suffix(100)) : lines
+                        parts.append("=== \(name) ===\n\(trimmed.joined(separator: "\n"))")
+                    }
                 }
             }
             let output = parts.isEmpty ? "No logs found. Run a game first." : parts.joined(separator: "\n\n")

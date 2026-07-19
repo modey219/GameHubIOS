@@ -120,7 +120,7 @@ class AudioBridge: ObservableObject {
     }
 
     private func receiveAudioData() {
-        var buffer = [UInt8](repeating: 0, count: 65536)
+        var buffer = [UInt8](repeating: 0, count: 32768)
         while true {
             socketLock.lock()
             let running = isServerRunning
@@ -130,10 +130,10 @@ class AudioBridge: ObservableObject {
             let n = recv(cs, &buffer, buffer.count, 0)
             if n > 0 {
                 bufferLock()
-                if audioBuffer.count < 1024 * 1024 {
+                if audioBuffer.count < 512 * 1024 {
                     audioBuffer.append(contentsOf: buffer.prefix(n))
                 } else {
-                    let dropBytes = min(audioBuffer.count, 65536)
+                    let dropBytes = min(audioBuffer.count, 32768)
                     audioBuffer.removeFirst(dropBytes)
                     audioBuffer.append(contentsOf: buffer.prefix(n))
                 }
@@ -148,7 +148,7 @@ class AudioBridge: ObservableObject {
         let status = AudioQueueNewOutput(&fmt, audioQueueCallback, Unmanaged.passUnretained(self).toOpaque(), nil, nil, 0, &queue)
         guard status == noErr, let q = queue else { return }
         audioQueue = q
-        let bufSize = UInt32(1024) * fmt.mBytesPerFrame
+        let bufSize = UInt32(512) * fmt.mBytesPerFrame
         for _ in 0..<3 {
             var buf: AudioQueueBufferRef?
             AudioQueueAllocateBuffer(q, bufSize, &buf)

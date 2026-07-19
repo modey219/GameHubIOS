@@ -10,6 +10,35 @@ struct GameHubApp: App {
     @State private var setupError: String?
     @State private var setupProgress = "Initializing..."
 
+    private static let logFile: URL? = {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("setup_memory.log")
+    }()
+
+    private static func memMB() -> UInt64 {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let r = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        return r == KERN_SUCCESS ? UInt64(info.resident_size) / (1024 * 1024) : 0
+    }
+
+    private static func logMem(_ stage: String) {
+        let mb = memMB()
+        let line = "[MEM] \(stage): \(mb)MB\n"
+        guard let url = logFile else { return }
+        if let fh = FileHandle(forWritingAtPath: url.path) {
+            fh.seekToEndOfFile()
+            fh.write(line.data(using: .utf8) ?? Data())
+            fh.closeFile()
+        } else {
+            try? line.data(using: .utf8)?.write(to: url)
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             ZStack {
@@ -31,6 +60,7 @@ struct GameHubApp: App {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     performSetup()
                 }
+                startMemoryPressureMonitor()
             }
         }
     }
@@ -89,11 +119,13 @@ struct GameHubApp: App {
                 return
             }
 
+            Self.logMem("start")
             self.updateProgress("Creating directories...")
             let dirs = ["Box64", "Containers", "Graphics"]
             for dir in dirs {
                 try? fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
             }
+            Self.logMem("dirs created")
 
             let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
             let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
@@ -115,33 +147,34 @@ struct GameHubApp: App {
                     return
                 }
             }
+            Self.logMem("extraction done")
 
             autoreleasepool {
                 self.updateProgress("Initializing Box64...")
-                Box64Bridge.log("performSetup: before Box64 init")
+                Self.logMem("before Box64 init")
                 Box64Bridge.shared.initialize()
-                Box64Bridge.log("performSetup: after Box64 init, isInitialized=\(Box64Bridge.shared.isSetupComplete)")
+                Self.logMem("after Box64 init")
             }
 
             autoreleasepool {
                 self.updateProgress("Initializing Wine...")
-                Box64Bridge.log("performSetup: before Wine init")
+                Self.logMem("before Wine init")
                 WineBridge.shared.initialize()
-                Box64Bridge.log("performSetup: after Wine init")
+                Self.logMem("after Wine init")
             }
 
             autoreleasepool {
                 self.updateProgress("Setting up prefix...")
-                Box64Bridge.log("performSetup: before prefix init")
+                Self.logMem("before prefix init")
                 WinePrefixManager.shared.initializePrefix()
-                Box64Bridge.log("performSetup: after prefix init")
+                Self.logMem("after prefix init")
             }
 
             autoreleasepool {
                 self.updateProgress("Applying settings...")
-                Box64Bridge.log("performSetup: before applySettings")
+                Self.logMem("before applySettings")
                 settingsManager.applySettings()
-                Box64Bridge.log("performSetup: after applySettings - DONE")
+                Self.logMem("after applySettings - DONE")
             }
 
             DispatchQueue.main.async {
@@ -156,5 +189,22 @@ struct GameHubApp: App {
         DispatchQueue.main.async {
             self.setupProgress = text
         }
+    }
+
+    private func startMemoryPressureMonitor() {
+        let source = DispatchSource.makeMemoryPressureSource(
+            eventMask: [.warning, .critical],
+            queue: .global(qos: .utility)
+        )
+        source.setEventHandler {
+            let mb = Self.memMB()
+            Self.logMem("MEMORY_PRESSURE mem=\(mb)MB")
+            if mb > 1400 {
+                Self.logMem("CRITICAL: exceeding 1400MB, clearing caches")
+                URLCache.shared.removeAllCachedResponses()
+                NotificationCenter.default.post(name: .init("MemoryPressureCritical"), object: nil)
+            }
+        }
+        source.resume()
     }
 }

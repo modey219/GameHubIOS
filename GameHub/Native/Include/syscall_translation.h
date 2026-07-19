@@ -5,8 +5,8 @@
 #include <pthread.h>
 
 #define SYSCALL_TABLE_SIZE 450
-#define MAX_TRANSLATED_FDS 256
-#define MAX_MMAP_REGIONS 512
+#define MAX_TRANSLATED_FDS 128
+#define MAX_MMAP_REGIONS 128
 
 typedef struct {
     int linux_fd;
@@ -40,18 +40,18 @@ typedef struct {
     fd_mapping_t fds[MAX_TRANSLATED_FDS];
     mmap_region_t mmap_regions[MAX_MMAP_REGIONS];
     int mmap_count;
-    thread_info_t threads[256];
+    thread_info_t threads[64];
     int thread_count;
     int pid;
     int ppid;
     unsigned long brk;
     unsigned long start_brk;
     unsigned long mmap_base;
-    void *sig_handlers[64];
+    void *sig_handlers[32];
     unsigned long sig_mask;
-    char cwd[4096];
-    char root[4096];
-    struct linux_rlimit limits[16];
+    char cwd[256];
+    char root[256];
+    struct linux_rlimit limits[8];
 } linux_process_t;
 
 typedef struct emulator_context {

@@ -9,10 +9,10 @@ typedef struct emulator_context emulator_context_t;
 
 typedef struct {
     emulator_context_t *emulator;
-    char box64_path[512];
-    char wine_path[512];
-    char prefix_path[512];
-    char game_path[512];
+    char box64_path[256];
+    char wine_path[256];
+    char prefix_path[256];
+    char game_path[256];
     int initialized;
     int running;
     pid_t child_pid;

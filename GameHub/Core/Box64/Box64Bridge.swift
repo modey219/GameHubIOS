@@ -210,9 +210,9 @@ class Box64Bridge {
         box64_set_wine_path(ctx, wine64Path)
         box64_set_prefix(ctx, containerPath)
         box64_set_game(ctx, executablePath)
-        Self.log("calling box64_launch_wine()...")
-        let rc = box64_launch_wine(ctx, executablePath, nil)
-        Self.log("box64_launch_wine returned \(rc)")
+        Self.log("calling box64_launch_wine(), memory = \(Self.memoryUsageMB())MB...")
+        let rc: Int32 = autoreleasepool { box64_launch_wine(ctx, executablePath, nil) }
+        Self.log("box64_launch_wine returned \(rc), memory = \(Self.memoryUsageMB())MB")
         if rc != 0 {
             let cError = box64_get_wine_error()
             let errStr = cError.map { String(cString: $0) } ?? ""

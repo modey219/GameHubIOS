@@ -101,7 +101,7 @@ class SettingsManager: ObservableObject {
         self.keepScreenOn = gb("keepScreenOn", true)
         self.autoSaveState = gb("autoSaveState", false)
         self.showTouchButtons = gb("showTouchButtons", true)
-        self.memoryLimitMB = gi("memoryLimitMB", 512)
+        self.memoryLimitMB = gi("memoryLimitMB", 384)
 
         // Graphics
         self.gpuDriver = GraphicsBridge.GPUDriver(rawValue: gs2("gpuDriver", "moltenvk")) ?? .moltenVK
@@ -302,7 +302,7 @@ class SettingsManager: ObservableObject {
         for key in keys { UserDefaults.standard.removeObject(forKey: key) }
 
         darkMode = false; hapticFeedback = true; showFPS = true; resolutionScale = 1.0
-        keepScreenOn = true; autoSaveState = false; showTouchButtons = true; memoryLimitMB = 512
+        keepScreenOn = true; autoSaveState = false; showTouchButtons = true; memoryLimitMB = 384
         gpuDriver = .moltenVK; useDXVK = true; useVKD3D = true; vsync = true; maxFrameRate = 60
         msaaLevel = 0; anisotropicFiltering = 0; textureQuality = 2; shaderPrecision = "high"
         forceVulkan = false; dxvkAsync = true; dxvkHud = "fps"; mvkLogLevel = 0

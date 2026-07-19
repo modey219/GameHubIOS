@@ -19,7 +19,7 @@ class DisplayRenderer: NSObject, ObservableObject {
     private(set) var device: MTLDevice?
     private var commandQueue: MTLCommandQueue?
     private var texturePool: [MTLTexture] = []
-    private let maxTexturePoolSize = 4
+    private let maxTexturePoolSize = 2
     private var lastTextureWidth = 0
     private var lastTextureHeight = 0
 
@@ -32,10 +32,21 @@ class DisplayRenderer: NSObject, ObservableObject {
         super.init()
         device = MTLCreateSystemDefaultDevice()
         commandQueue = device?.makeCommandQueue()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleMemoryWarning),
+            name: .init("MemoryPressureCritical"), object: nil
+        )
+    }
+
+    @objc private func handleMemoryWarning() {
+        textureLock.lock()
+        texturePool.removeAll()
+        textureLock.unlock()
     }
 
     deinit {
         stopRendering()
+        NotificationCenter.default.removeObserver(self)
     }
 
     func startRendering() {

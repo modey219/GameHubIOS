@@ -21,9 +21,9 @@ extern int box64_quit;
 
 static volatile int g_runner_running = 0;
 static volatile int g_runner_exit_code = 0;
-static char g_runner_error[1024] = {0};
-static char g_runner_status[256] = {0};
-static char g_log_path[512] = {0};
+static char g_runner_error[256] = {0};
+static char g_runner_status[64] = {0};
+static char g_log_path[256] = {0};
 static volatile int g_log_fd = -1;
 static pthread_mutex_t g_runner_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -38,7 +38,7 @@ static void raw_log(const char *msg) {
 }
 
 static void runner_log(const char *fmt, ...) {
-    char buf[1024];
+    char buf[512];
     va_list args;
     va_start(args, fmt);
     vsnprintf(buf, sizeof(buf), fmt, args);
@@ -249,7 +249,7 @@ int box64_runner_is_running(void) {
 }
 
 const char *box64_runner_get_error(void) {
-    static char snap[1024];
+    static char snap[256];
     pthread_mutex_lock(&g_runner_lock);
     memcpy(snap, g_runner_error, sizeof(snap));
     pthread_mutex_unlock(&g_runner_lock);
@@ -257,7 +257,7 @@ const char *box64_runner_get_error(void) {
 }
 
 const char *box64_runner_get_status(void) {
-    static char snap[256];
+    static char snap[64];
     pthread_mutex_lock(&g_runner_lock);
     memcpy(snap, g_runner_status, sizeof(snap));
     pthread_mutex_unlock(&g_runner_lock);

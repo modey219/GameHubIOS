@@ -42,19 +42,19 @@ struct epoll_event {
 #define EPOLL_CTL_DEL 2
 #define EPOLL_CTL_MOD 3
 
-/* Simple epoll emulation: store up to 128 monitored fds in the "epfd" slot */
-#define EPOLL_MAX_FDS 128
+/* Simple epoll emulation: store up to 32 monitored fds in the "epfd" slot */
+#define EPOLL_MAX_FDS 32
 typedef struct {
     int fds[EPOLL_MAX_FDS];
     uint32_t events[EPOLL_MAX_FDS];
     int count;
 } epoll_ctx_t;
 
-static epoll_ctx_t g_epoll_ctxs[32] = {0};
+static epoll_ctx_t g_epoll_ctxs[8] = {0};
 
 static inline int epoll_create(int size) {
     (void)size;
-    for (int i = 0; i < 32; i++) {
+    for (int i = 0; i < 8; i++) {
         if (g_epoll_ctxs[i].count == 0) return 1000 + i; /* fake fd */
     }
     return -1;
@@ -67,7 +67,7 @@ static inline int epoll_create1(int flags) {
 
 static inline int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event) {
     int idx = epfd - 1000;
-    if (idx < 0 || idx >= 32) { errno = EINVAL; return -1; }
+    if (idx < 0 || idx >= 8) { errno = EINVAL; return -1; }
     epoll_ctx_t *ctx = &g_epoll_ctxs[idx];
 
     if (op == EPOLL_CTL_ADD) {
@@ -101,7 +101,7 @@ static inline int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 
 static inline int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout) {
     int idx = epfd - 1000;
-    if (idx < 0 || idx >= 32) { errno = EINVAL; return -1; }
+    if (idx < 0 || idx >= 8) { errno = EINVAL; return -1; }
     epoll_ctx_t *ctx = &g_epoll_ctxs[idx];
     if (ctx->count == 0) {
         /* No fds to poll — sleep briefly to avoid busy-spin */

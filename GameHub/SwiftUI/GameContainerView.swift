@@ -438,7 +438,6 @@ struct GameContainerView: View {
         displayRenderer.stopRendering()
         timer?.invalidate()
         Box64Bridge.shared.stopWine()
-        gameProcess = nil
         UnixSocketBridge.shared.stopServer()
         AudioBridge.shared.stopAudio()
     }

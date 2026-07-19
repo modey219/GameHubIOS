@@ -22,8 +22,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPAT_DIR="$SCRIPT_DIR/../GameHub/Native/Compat"
 
 CFLAGS="-arch arm64 -mios-version-min=16.0 -isysroot $SDK -O2 -fembed-bitcode-marker"
-CFLAGS="$CFLAGS -DARM64 -DDYNAREC -DNOGIT -D__IOS__=1 -DTARGET_IPHONE=1"
-CFLAGS="$CFLAGS -DBAD_SIGNAL=1 -D_MAP_JIT=1 -DBOX64_ENV=1"
+CFLAGS="$CFLAGS -DARM64 -DNOGIT -D__IOS__=1 -DTARGET_IPHONE=1"
+CFLAGS="$CFLAGS -DBAD_SIGNAL=1 -DBOX64_ENV=1"
 CFLAGS="$CFLAGS -I$COMPAT_DIR -I$BOX64_SRC/src/include -I$BOX64_SRC/src"
 CFLAGS="$CFLAGS -Wno-unused-variable -Wno-unused-function -Wno-incompatible-pointer-types"
 CFLAGS="$CFLAGS -Wno-int-conversion -Wno-pointer-sign -Wno-implicit-function-declaration"
@@ -34,7 +34,7 @@ mkdir -p "$OUTPUT_DIR/objects"
 # Find all C source files in Box64 core
 echo "[1/3] Finding Box64 source files..."
 SOURCES=""
-for dir in src src/emu src/custommem src/os src/tools src/libtools src/dynarec src/dynarec/arm64; do
+for dir in src src/emu src/custommem src/os src/tools src/libtools src/elfs src/librarian; do
     if [ -d "$BOX64_SRC/$dir" ]; then
         for f in "$BOX64_SRC/$dir"/*.c; do
             [ -f "$f" ] && SOURCES="$SOURCES $f"

@@ -52,8 +52,6 @@ if(IOS)
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/wrapped
         ${CMAKE_CURRENT_SOURCE_DIR}/src/wrapped/generated
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/dynarec
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/dynarec/arm64
         ${CMAKE_CURRENT_SOURCE_DIR}/src/custommem
         ${CMAKE_CURRENT_SOURCE_DIR}/src/emu
         ${CMAKE_CURRENT_SOURCE_DIR}/src/tools
@@ -61,7 +59,7 @@ if(IOS)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/os
     )
     target_compile_definitions(box64_ios PRIVATE
-        ARM64 DYNAREC NOGIT
+        ARM64 NOGIT
         _GNU_SOURCE
         __ILP32__=0
         BOX64_ENV=1
@@ -89,7 +87,6 @@ cmake "$BUILD_DIR/box64" \
     -DCMAKE_C_FLAGS="-arch arm64 -mios-version-min=16.0 -fembed-bitcode-marker -O2" \
     -DCMAKE_CXX_FLAGS="-arch arm64 -mios-version-min=16.0 -fembed-bitcode-marker -O2" \
     -DARM64=ON \
-    -DARM_DYNAREC=ON \
     -DBAD_SIGNAL=ON \
     -DNOGIT=ON \
     -DBUILD_TESTING=OFF \

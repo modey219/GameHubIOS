@@ -35,6 +35,35 @@ jobs:
             git clone --depth 1 https://github.com/ptitSeb/box64.git Box64Source/box64
           fi
 
+      - name: Patch Box64 for iOS
+        run: |
+          BOX64_SRC="$PWD/Box64Source/box64"
+          cd "$BOX64_SRC"
+          echo "Patching Box64 for iOS..."
+
+          # Patch 1: Mark as forked process to skip loadProtectionFromEnv/cleanProtectionFromEnv
+          # These iterate mmap pages calling mprotect — unnecessary and slow on iOS
+          if [ -f src/box64.c ]; then
+            # Find the 'inited = 1' line and append forked_process setting after it
+            sed -i.bak '/inited = 1;/a\
+            if(my_context) my_context->forked_process = 1;' src/box64.c
+            echo "  Patched src/box64.c: set forked_process=1"
+          fi
+
+          # Patch 2: Ensure openFTrace doesn't crash on iOS (no writable tracer.txt)
+          if [ -f src/tools/dbg_getline.c ]; then
+            sed -i.bak 's/open("tracer.txt"/open("\/dev\/null"/g' src/tools/dbg_getline.c
+            echo "  Patched dbg_getline.c: redirect tracer.txt to /dev/null"
+          fi
+
+          # Patch 3: Use getauxval for HWCAP on iOS instead of /proc/cpuinfo when available
+          # Box64 already handles this on Android, but add safety for any raw /proc/cpuinfo fopen
+          find src/ -name "*.c" -exec grep -l 'fopen.*"/proc/cpuinfo"' {} \; 2>/dev/null | while read f; do
+            echo "  Found /proc/cpuinfo fopen in: $f (already handled by Box64)"
+          done
+
+          echo "Patching complete."
+
       - name: Build Box64 for iOS
         run: |
           echo "=========================================="

@@ -273,7 +273,14 @@ struct DebugView: View {
 
         do {
             try process.run()
-            process.waitUntilExit()
+            let deadline = Date().addingTimeInterval(10)
+            while process.isRunning && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            if process.isRunning {
+                process.terminate()
+                return "TIMEOUT: process did not exit within 10s"
+            }
             let output = pipe?.readOutput(timeout: 2) ?? ""
             let errOutput = errPipe?.readOutput(timeout: 0.5) ?? ""
             let combined = output + (errOutput.isEmpty ? "" : "\n\(errOutput)")
@@ -339,7 +346,18 @@ struct DebugView: View {
 
             do {
                 try process.run()
-                process.waitUntilExit()
+                let deadline = Date().addingTimeInterval(10)
+                while process.isRunning && Date() < deadline {
+                    Thread.sleep(forTimeInterval: 0.1)
+                }
+                if process.isRunning {
+                    process.terminate()
+                    DispatchQueue.main.async {
+                        self.launchTestResult = "TIMEOUT: process did not exit within 10s"
+                        self.isRunning = false
+                    }
+                    return
+                }
                 let out = outPipe?.readOutput(timeout: 3) ?? ""
                 let err = errPipe?.readOutput(timeout: 1) ?? ""
                 let combined = (out + (err.isEmpty ? "" : "\n\(err)")).trimmingCharacters(in: .whitespacesAndNewlines)

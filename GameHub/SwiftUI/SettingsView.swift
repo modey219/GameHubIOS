@@ -57,6 +57,16 @@ struct SettingsView: View {
                     Text("100%").tag(1.0); Text("125%").tag(1.25)
                     Text("150%").tag(1.5); Text("200%").tag(2.0)
                 }
+                Picker("Memory Limit", selection: $settingsManager.memoryLimitMB) {
+                    Text("256 MB (Low)").tag(256)
+                    Text("384 MB (Safe)").tag(384)
+                    Text("512 MB (Normal)").tag(512)
+                    Text("768 MB (High)").tag(768)
+                    Text("1024 MB (Max)").tag(1024)
+                    Text("Unlimited").tag(0)
+                }
+                Text("Limits how much RAM Box64+Wine can use. Lower values are safer on devices with less memory.")
+                    .font(.caption2).foregroundColor(.secondary)
             }
             Section("Behavior") {
                 Toggle("Haptic Feedback", isOn: $settingsManager.hapticFeedback)

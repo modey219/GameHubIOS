@@ -45,7 +45,7 @@ class ContainerManager: ObservableObject {
     }
 
     var containersPath: String {
-        return fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return (fileManager.urls(for: .documentDirectory, in: .userDomainMask).first ?? fileManager.temporaryDirectory)
             .appendingPathComponent("Containers").path
     }
 

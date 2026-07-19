@@ -14,6 +14,7 @@ class AudioBridge: ObservableObject {
     private var format: AudioStreamBasicDescription?
     private var serverSocket: Int32 = -1
     private var clientSocket: Int32 = -1
+    private let socketLock = NSLock()
     private var audioThread: DispatchQueue?
     private var isServerRunning = false
     private var socketPath: String
@@ -22,7 +23,8 @@ class AudioBridge: ObservableObject {
     var bufferLock = NSLock()
 
     init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
         socketPath = docs.appendingPathComponent("Wine/audio.sock").path
         setupAudioSession()
         format = AudioStreamBasicDescription(
@@ -55,8 +57,14 @@ class AudioBridge: ObservableObject {
         isPlaying = false
         isServerRunning = false
         if let q = audioQueue { AudioQueueStop(q, true); AudioQueueDispose(q, true); audioQueue = nil }
-        if clientSocket >= 0 { close(clientSocket); clientSocket = -1 }
-        if serverSocket >= 0 { close(serverSocket); serverSocket = -1 }
+        socketLock.lock()
+        let cs = clientSocket
+        let ss = serverSocket
+        clientSocket = -1
+        serverSocket = -1
+        socketLock.unlock()
+        if cs >= 0 { close(cs) }
+        if ss >= 0 { close(ss) }
         try? FileManager.default.removeItem(atPath: socketPath)
     }
 

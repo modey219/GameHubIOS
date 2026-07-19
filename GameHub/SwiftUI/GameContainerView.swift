@@ -470,8 +470,6 @@ struct GameContainerView: View {
             let line = "[\(ts)] \(msg)"
             log.append(line)
             NSLog("%@", line)
-            let key = "launch_log_\(log.count)"
-            UserDefaults.standard.set(line, forKey: key)
         }
 
         func flushLog() {
@@ -568,16 +566,16 @@ struct GameContainerView: View {
         if launchResult.wineLaunched {
             logMsg("launchWine SUCCESS")
             isRunning = true
+            UnixSocketBridge.shared.startServer()
+            AudioBridge.shared.startAudioServer()
         } else {
             let detail = launchResult.error ?? "Unknown error"
             logMsg("launchWine FAILED: \(detail)")
             errorMessage = detail
             showError = true
+            isRunning = false
         }
         flushLog()
-
-        UnixSocketBridge.shared.startServer()
-        AudioBridge.shared.startAudioServer()
     }
 
     private func togglePause() {

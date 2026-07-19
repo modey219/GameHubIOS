@@ -8,6 +8,7 @@ class UnixSocketBridge: ObservableObject {
 
     private var serverSocket: Int32 = -1
     private var clientSocket: Int32 = -1
+    private let socketLock = NSLock()
     private var inputQueue = DispatchQueue(label: "com.gamehub.input", qos: .userInteractive)
     private var isServerRunning = false
     private var socketPath: String
@@ -23,8 +24,14 @@ class UnixSocketBridge: ObservableObject {
 
     func stopServer() {
         isServerRunning = false
-        if clientSocket >= 0 { close(clientSocket); clientSocket = -1 }
-        if serverSocket >= 0 { close(serverSocket); serverSocket = -1 }
+        socketLock.lock()
+        let cs = clientSocket
+        let ss = serverSocket
+        clientSocket = -1
+        serverSocket = -1
+        socketLock.unlock()
+        if cs >= 0 { close(cs) }
+        if ss >= 0 { close(ss) }
         try? FileManager.default.removeItem(atPath: socketPath)
         DispatchQueue.main.async { self.isConnected = false }
     }
@@ -116,9 +123,13 @@ class UnixSocketBridge: ObservableObject {
     func handleGamepadAxis(axis: String, value: Double, player: Int) { sendGamepadAxis(axis: axis, value: value, player: player) }
 
     private func sendJSON(_ dict: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: dict), clientSocket >= 0 else { return }
+        guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return }
+        socketLock.lock()
+        let fd = clientSocket
+        socketLock.unlock()
+        guard fd >= 0 else { return }
         data.withUnsafeBytes { buf in
-            if let base = buf.baseAddress { send(clientSocket, base, buf.count, 0) }
+            if let base = buf.baseAddress { send(fd, base, buf.count, 0) }
         }
     }
 }

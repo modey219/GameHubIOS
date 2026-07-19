@@ -5,7 +5,8 @@ class WinePrefixManager {
 
     private let fileManager = FileManager.default
     private var documentsPath: URL {
-        fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
     }
     private var winePrefix: String {
         documentsPath.appendingPathComponent("Wine").path

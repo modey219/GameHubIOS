@@ -35,7 +35,7 @@ struct ContainerListView: View {
     }
 
     private func deleteContainers(at offsets: IndexSet) {
-        for index in offsets {
+        for index in offsets.sorted().reversed() {
             containerManager.deleteContainer(containerManager.containers[index])
         }
     }

@@ -23,6 +23,10 @@ class DisplayRenderer: NSObject, ObservableObject {
         commandQueue = device?.makeCommandQueue()
     }
 
+    deinit {
+        stopRendering()
+    }
+
     func startRendering() {
         isRendering = true
         lastFPSTime = Date()

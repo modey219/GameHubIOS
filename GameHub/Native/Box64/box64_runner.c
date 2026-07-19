@@ -51,43 +51,31 @@ static void runner_log(const char *fmt, ...) {
    That function just returns, so the iOS app stays alive. */
 
 static void signal_handler(int sig) {
-    const char *name = "unknown";
-    switch(sig) {
-        case SIGSEGV: name = "SIGSEGV"; break;
-        case SIGBUS:  name = "SIGBUS"; break;
-        case SIGABRT: name = "SIGABRT"; break;
-        case SIGFPE:  name = "SIGFPE"; break;
-        case SIGILL:  name = "SIGILL"; break;
-        case SIGPIPE: name = "SIGPIPE"; break;
-    }
+    /* Everything here MUST be async-signal-safe. No snprintf, no strlen, no malloc. */
 
-    /* Async-signal-safe write directly to fd */
-    const char *prefix = "[CRASH] Signal ";
-    const char *paren_open = " (";
-    const char *paren_close = ")\n";
-    char sigbuf[16];
-    int siglen = 0;
-    int tmp = sig;
-    if (tmp == 0) { sigbuf[siglen++] = '0'; }
-    else {
-        char rev[16];
-        int rlen = 0;
-        while (tmp > 0) { rev[rlen++] = '0' + (tmp % 10); tmp /= 10; }
-        for (int i = rlen - 1; i >= 0; i--) sigbuf[siglen++] = rev[i];
-    }
     if (g_log_fd >= 0) {
+        /* Write crash marker using only write() */
+        const char *prefix = "[CRASH] Signal ";
         write(g_log_fd, prefix, 16);
+        /* Write signal number as decimal */
+        char sigbuf[16];
+        int siglen = 0;
+        int tmp = sig;
+        if (tmp == 0) { sigbuf[siglen++] = '0'; }
+        else {
+            char rev[16];
+            int rlen = 0;
+            while (tmp > 0) { rev[rlen++] = '0' + (tmp % 10); tmp /= 10; }
+            for (int i = rlen - 1; i >= 0; i--) sigbuf[siglen++] = rev[i];
+        }
         write(g_log_fd, sigbuf, siglen);
-        write(g_log_fd, paren_open, 2);
-        write(g_log_fd, name, strlen(name));
-        write(g_log_fd, paren_close, 3);
+        write(g_log_fd, "\n", 1);
         fsync(g_log_fd);
         close(g_log_fd);
         g_log_fd = -1;
     }
 
     g_runner_running = 0;
-    snprintf(g_runner_status, sizeof(g_runner_status), "crashed (%s)", name);
 
     /* Do NOT call _exit — that kills the entire iOS app.
        Use siglongjmp to return to the safe setjmp point in wine_thread_func.
@@ -100,9 +88,9 @@ static void signal_handler(int sig) {
 }
 
 typedef struct {
-    const char *wine64_path;
-    const char *game_exe;
-    const char *prefix_path;
+    char *wine64_path;   /* strdup'd — must free after use */
+    char *game_exe;      /* strdup'd — must free after use */
+    char *prefix_path;   /* strdup'd — must free after use */
 } wine_runner_args_t;
 
 static void setup_logging(const char *prefix_path) {
@@ -124,7 +112,6 @@ static void *wine_thread_func(void *arg) {
     g_runner_running = 1;
     g_runner_exit_code = 0;
     g_runner_error[0] = 0;
-    snprintf(g_runner_status, sizeof(g_runner_status), "initializing");
 
     signal(SIGSEGV, signal_handler);
     signal(SIGBUS, signal_handler);
@@ -158,6 +145,7 @@ static void *wine_thread_func(void *arg) {
         snprintf(g_runner_error, sizeof(g_runner_error),
                  "Box64 crashed with signal %d", crash_sig);
         g_runner_exit_code = -crash_sig;
+        free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
         if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
         return NULL;
     }
@@ -172,7 +160,7 @@ static void *wine_thread_func(void *arg) {
         runner_log("[Runner] ERROR: %s", g_runner_error);
         g_runner_running = 0;
         g_runner_exit_code = -1;
-        snprintf(g_runner_status, sizeof(g_runner_status), "init-failed (%d)", ret);
+        free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
         if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
         return NULL;
     }
@@ -184,8 +172,8 @@ static void *wine_thread_func(void *arg) {
     runner_log("[Runner] emulate() returned %d", ret);
     g_runner_exit_code = ret;
     g_runner_running = 0;
-    snprintf(g_runner_status, sizeof(g_runner_status), "exited (%d)", ret);
 
+    free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
     if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
     return NULL;
 }
@@ -198,9 +186,9 @@ int box64_runner_start(const char *wine64_path, const char *game_exe, const char
     setup_logging(prefix_path);
 
     static wine_runner_args_t args;
-    args.wine64_path = wine64_path;
-    args.game_exe = game_exe;
-    args.prefix_path = prefix_path;
+    args.wine64_path = wine64_path ? strdup(wine64_path) : NULL;
+    args.game_exe = game_exe ? strdup(game_exe) : NULL;
+    args.prefix_path = prefix_path ? strdup(prefix_path) : NULL;
 
     g_runner_error[0] = 0;
     g_runner_exit_code = 0;
@@ -218,6 +206,7 @@ int box64_runner_start(const char *wine64_path, const char *game_exe, const char
         snprintf(g_runner_error, sizeof(g_runner_error),
                  "Failed to create runner thread: %d", ret);
         g_runner_running = 0;
+        free(args.wine64_path); free(args.game_exe); free(args.prefix_path);
         return -1;
     }
 

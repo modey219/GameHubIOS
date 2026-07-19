@@ -19,7 +19,8 @@ class Box64Bridge {
         let line = "[\(ts)] \(msg)\n"
         logQueue.sync {
             if logFD < 0 {
-                let home = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].path
+                let home = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                    .map { $0.path } ?? "/tmp"
                 let path = "\(home)/swift_box64.log"
                 logFD = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
             }
@@ -106,7 +107,8 @@ class Box64Bridge {
     func initialize() {
         guard !isInitialized else { return }
         Self.log("initialize() called")
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
         box64InstallPath = documentsPath.appendingPathComponent("Box64").path
         wineInstallPath = documentsPath.appendingPathComponent("Wine").path
         graphicsInstallPath = documentsPath.appendingPathComponent("Graphics").path
@@ -135,7 +137,8 @@ class Box64Bridge {
         setenv("BOX64_SHOWSEGV", "1", 1)
         setenv("BOX64_SHOWEXIT", "1", 1)
         setenv("BOX64_NOSSE", "1", 1)
-        setenv("HOME", FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Wine").path, 1)
+        setenv("HOME", (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory).appendingPathComponent("Wine").path, 1)
     }
 
     func launchWine(wine64Path: String, executablePath: String, containerPath: String, environment: [String: String]) -> LaunchResult {
@@ -206,7 +209,8 @@ class Box64Bridge {
     }
 
     func getRunnerLog() -> String {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
         var parts: [String] = []
 
         if let savedLog = UserDefaults.standard.string(forKey: "last_launch_log"), !savedLog.isEmpty {

@@ -150,7 +150,7 @@ linux_addr_t emulator_mmap(emulator_context_t *ctx, linux_addr_t addr, size_t le
     if (prot & 4) hp |= PROT_EXEC;
 
     int hf = MAP_ANONYMOUS | MAP_PRIVATE;
-    if (flags & 0x01) hf = MAP_SHARED;
+    if (flags & 0x01) hf = (hf & ~MAP_PRIVATE) | MAP_SHARED;
     if (flags & 0x10) hf |= MAP_FIXED;
 #ifdef MAP_JIT
     if (prot & 4) hf |= MAP_JIT;
@@ -305,7 +305,9 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         case 32: {
             int ho = host_fd_for_linux(ctx, a1);
             if (ho < 0) return -EBADF;
-            int hn = dup2(ho, host_fd_for_linux(ctx, a2));
+            int dest_fd = host_fd_for_linux(ctx, a2);
+            if (dest_fd >= 0) close(dest_fd);
+            int hn = dup2(ho, dest_fd >= 0 ? dest_fd : ho);
             if (hn < 0) return -errno;
             register_host_fd(ctx, a2, hn, ctx->process.fds[a1].flags);
             return a2;
@@ -722,7 +724,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return 0;
         }
         case 99: {
-            // sysinfo - return minimal info
+            // sysinfo - return memory info based on configured limit
             struct {
                 long uptime;
                 unsigned long loads[3];
@@ -735,14 +737,27 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
                 unsigned short procs;
             } *info = (void *)(uintptr_t)a1;
             if (info) {
+                /* Read BOX64_MAXMEM or WINE_MAX_MEMORY_MB env var for limit */
+                unsigned long limit_mb = 512; /* default 512MB */
+                const char *env_mem = getenv("BOX64_MAXMEM");
+                if (!env_mem) env_mem = getenv("WINE_MAX_MEMORY_MB");
+                if (env_mem) {
+                    unsigned long val = 0;
+                    for (const char *p = env_mem; *p >= '0' && *p <= '9'; p++)
+                        val = val * 10 + (*p - '0');
+                    if (val > 0) limit_mb = val;
+                }
+                unsigned long total_bytes = limit_mb * 1024 * 1024;
+                unsigned long free_bytes = total_bytes * 3 / 4; /* assume 75% free at startup */
+
                 info->uptime = 0;
                 info->loads[0] = 1024; info->loads[1] = 512; info->loads[2] = 256;
-                info->totalram = 4ULL * 1024 * 1024 * 1024;
-                info->freeram = 3ULL * 1024 * 1024 * 1024;
+                info->totalram = total_bytes;
+                info->freeram = free_bytes;
                 info->sharedram = 256 * 1024 * 1024;
                 info->bufferram = 128 * 1024 * 1024;
-                info->totalswap = 1ULL * 1024 * 1024 * 1024;
-                info->freeswap = 1ULL * 1024 * 1024 * 1024;
+                info->totalswap = 256 * 1024 * 1024;
+                info->freeswap = 256 * 1024 * 1024;
                 info->procs = 64;
             }
             return 0;

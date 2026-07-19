@@ -11,6 +11,7 @@ class SettingsManager: ObservableObject {
     @Published var keepScreenOn: Bool { didSet { save() } }
     @Published var autoSaveState: Bool { didSet { save() } }
     @Published var showTouchButtons: Bool { didSet { save() } }
+    @Published var memoryLimitMB: Int { didSet { save() } }
 
     // MARK: - Graphics
     @Published var gpuDriver: GraphicsBridge.GPUDriver { didSet { save() } }
@@ -98,6 +99,7 @@ class SettingsManager: ObservableObject {
         self.keepScreenOn = gb("keepScreenOn", true)
         self.autoSaveState = gb("autoSaveState", false)
         self.showTouchButtons = gb("showTouchButtons", true)
+        self.memoryLimitMB = gi("memoryLimitMB", 512)
 
         // Graphics
         self.gpuDriver = GraphicsBridge.GPUDriver(rawValue: gs2("gpuDriver", "moltenvk")) ?? .moltenVK
@@ -177,7 +179,7 @@ class SettingsManager: ObservableObject {
         set("darkMode", darkMode); set("hapticFeedback", hapticFeedback)
         set("showFPS", showFPS); set("resolutionScale", resolutionScale)
         set("keepScreenOn", keepScreenOn); set("autoSaveState", autoSaveState)
-        set("showTouchButtons", showTouchButtons)
+        set("showTouchButtons", showTouchButtons); set("memoryLimitMB", memoryLimitMB)
 
         // Graphics
         set("gpuDriver", gpuDriver.rawValue); set("useDXVK", useDXVK)
@@ -230,6 +232,11 @@ class SettingsManager: ObservableObject {
         setenv("BOX64_LOG", "\(dynarecLogLevel)", 1)
         if box64StdMalloc { setenv("BOX64_STD_MALLOC", "1", 1) }
 
+        // Memory limit (MB) — inform Wine/Box64 via env vars
+        let memMB = memoryLimitMB
+        setenv("BOX64_MAXMEM", "\(memMB)", 1)
+        setenv("WINE_MAX_MEMORY_MB", "\(memMB)", 1)
+
         // Wine
         setenv("WINEESYNC", wineESync ? "1" : "0", 1)
         setenv("WINEFSYNC", wineFSync ? "1" : "0", 1)
@@ -267,15 +274,15 @@ class SettingsManager: ObservableObject {
 
         // Screen
         if keepScreenOn {
-            UIApplication.shared.isIdleTimerDisabled = true
+            DispatchQueue.main.async { UIApplication.shared.isIdleTimerDisabled = true }
         } else {
-            UIApplication.shared.isIdleTimerDisabled = false
+            DispatchQueue.main.async { UIApplication.shared.isIdleTimerDisabled = false }
         }
     }
 
     func resetToDefaults() {
         let keys = [
-            "darkMode","hapticFeedback","showFPS","resolutionScale","keepScreenOn","autoSaveState","showTouchButtons",
+            "darkMode","hapticFeedback","showFPS","resolutionScale","keepScreenOn","autoSaveState","showTouchButtons","memoryLimitMB",
             "gpuDriver","useDXVK","useVKD3D","vsync","maxFrameRate","msaaLevel","anisotropicFiltering",
             "textureQuality","shaderPrecision","forceVulkan","dxvkAsync","dxvkHud","mvkLogLevel",
             "audioDriver","volume","sampleRate","audioBufferSize","audioLatency","audioEnabled",
@@ -295,7 +302,7 @@ class SettingsManager: ObservableObject {
         var s: [String: Any] = [:]
         let d = UserDefaults.standard
         let keys = [
-            "darkMode","hapticFeedback","showFPS","resolutionScale","keepScreenOn","autoSaveState",
+            "darkMode","hapticFeedback","showFPS","resolutionScale","keepScreenOn","autoSaveState","showTouchButtons","memoryLimitMB",
             "gpuDriver","useDXVK","useVKD3D","vsync","maxFrameRate","msaaLevel","anisotropicFiltering",
             "textureQuality","shaderPrecision","forceVulkan","dxvkAsync","dxvkHud","mvkLogLevel",
             "audioDriver","volume","sampleRate","audioBufferSize","audioLatency","audioEnabled",

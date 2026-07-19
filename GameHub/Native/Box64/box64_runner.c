@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <setjmp.h>
 
 extern char **environ;
 
@@ -24,6 +25,9 @@ static char g_runner_error[1024] = {0};
 static char g_runner_status[256] = {0};
 static char g_log_path[512] = {0};
 static volatile int g_log_fd = -1;
+
+static sigjmp_buf g_jmp_buf;
+static volatile int g_jmp_ready = 0;
 
 static void raw_log(const char *msg) {
     if (g_log_fd >= 0) {
@@ -56,9 +60,42 @@ static void signal_handler(int sig) {
         case SIGILL:  name = "SIGILL"; break;
         case SIGPIPE: name = "SIGPIPE"; break;
     }
-    char buf[256];
-    snprintf(buf, sizeof(buf), "[CRASH] Signal %d (%s)", sig, name);
-    raw_log(buf);
+
+    /* Async-signal-safe write directly to fd */
+    const char *prefix = "[CRASH] Signal ";
+    const char *paren_open = " (";
+    const char *paren_close = ")\n";
+    char sigbuf[16];
+    int siglen = 0;
+    int tmp = sig;
+    if (tmp == 0) { sigbuf[siglen++] = '0'; }
+    else {
+        char rev[16];
+        int rlen = 0;
+        while (tmp > 0) { rev[rlen++] = '0' + (tmp % 10); tmp /= 10; }
+        for (int i = rlen - 1; i >= 0; i--) sigbuf[siglen++] = rev[i];
+    }
+    if (g_log_fd >= 0) {
+        write(g_log_fd, prefix, 16);
+        write(g_log_fd, sigbuf, siglen);
+        write(g_log_fd, paren_open, 2);
+        write(g_log_fd, name, strlen(name));
+        write(g_log_fd, paren_close, 3);
+        fsync(g_log_fd);
+        close(g_log_fd);
+        g_log_fd = -1;
+    }
+
+    g_runner_running = 0;
+    snprintf(g_runner_status, sizeof(g_runner_status), "crashed (%s)", name);
+
+    /* Do NOT call _exit — that kills the entire iOS app.
+       Use siglongjmp to return to the safe setjmp point in wine_thread_func.
+       This avoids infinite SIGSEGV loop from retrying the faulting instruction. */
+    if (g_jmp_ready) {
+        siglongjmp(g_jmp_buf, sig);
+    }
+    /* If setjmp wasn't set up yet, we must exit — can't safely continue */
     _exit(128 + sig);
 }
 
@@ -110,6 +147,20 @@ static void *wine_thread_func(void *arg) {
 
     x64emu_t *emu = NULL;
     elfheader_t *elf_header = NULL;
+
+    /* Set up sigsetjmp so signal_handler can longjmp back here
+       instead of calling _exit() which kills the entire iOS app. */
+    g_jmp_ready = 1;
+    int crash_sig = sigsetjmp(g_jmp_buf, 1);
+    if (crash_sig != 0) {
+        /* We got here via siglongjmp from the signal handler */
+        runner_log("[Runner] Recovered from signal %d — thread exiting safely", crash_sig);
+        snprintf(g_runner_error, sizeof(g_runner_error),
+                 "Box64 crashed with signal %d", crash_sig);
+        g_runner_exit_code = -crash_sig;
+        if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
+        return NULL;
+    }
 
     runner_log("[Runner] Calling initialize(%d)", argc);
     int ret = initialize(argc, argv, environ, &emu, &elf_header, 1);

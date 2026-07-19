@@ -1,4 +1,5 @@
 import Foundation
+import MachO
 
 class Box64Bridge {
     static let shared = Box64Bridge()
@@ -10,6 +11,27 @@ class Box64Bridge {
     private var ctx: UnsafeMutablePointer<box64_context_t>?
     private var launchThread: pthread_t?
     private var _isRunning = false
+
+    private static let logQueue = DispatchQueue(label: "com.box64.swiftlog")
+    private static var logFD: Int32 = -1
+
+    static func log(_ msg: String) {
+        let ts = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(ts)] \(msg)\n"
+        logQueue.sync {
+            if logFD < 0 {
+                let home = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].path
+                let path = "\(home)/swift_box64.log"
+                logFD = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+            }
+            if logFD >= 0 {
+                line.withCString { ptr in
+                    _ = write(logFD, ptr, strlen(ptr))
+                    fsync(logFD)
+                }
+            }
+        }
+    }
 
     struct LaunchResult {
         var process: Process?
@@ -84,18 +106,33 @@ class Box64Bridge {
 
     func initialize() {
         guard !isInitialized else { return }
+        Self.log("initialize() called")
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         box64InstallPath = documentsPath.appendingPathComponent("Box64").path
         wineInstallPath = documentsPath.appendingPathComponent("Wine").path
         graphicsInstallPath = documentsPath.appendingPathComponent("Graphics").path
+        Self.log("box64InstallPath = \(box64InstallPath)")
+        Self.log("wineInstallPath = \(wineInstallPath)")
         setupEnvironment()
 
+        let availMB = os_proc_available_memory() / (1024 * 1024)
+        Self.log("Available memory: \(availMB) MB")
+        if availMB < 80 {
+            Self.log("WARNING: Very low memory! Box64 may be killed by jetsam.")
+        }
+
+        Self.log("calling box64_create()...")
         ctx = box64_create()
         if let ctx = ctx {
+            Self.log("box64_create OK, calling box64_init...")
             box64_init(ctx, box64InstallPath)
+            Self.log("box64_init done")
+        } else {
+            Self.log("box64_create returned NULL!")
         }
 
         isInitialized = true
+        Self.log("initialize() complete")
     }
 
     private func setupEnvironment() {
@@ -109,9 +146,12 @@ class Box64Bridge {
     }
 
     func launchWine(wine64Path: String, executablePath: String, containerPath: String, environment: [String: String]) -> LaunchResult {
+        Self.log("launchWine() called: exe=\(executablePath)")
+        Self.log("wine64Path=\(wine64Path) container=\(containerPath)")
         var result = LaunchResult()
 
         guard isInitialized, let ctx = ctx else {
+            Self.log("ERROR: Box64 not initialized")
             result.error = "Box64 not initialized. Please restart the app."
             return result
         }
@@ -131,16 +171,19 @@ class Box64Bridge {
             setenv(key, value, 1)
         }
 
+        Self.log("calling box64_set_wine_path/set_prefix/set_game...")
         box64_set_wine_path(ctx, wine64Path)
         box64_set_prefix(ctx, containerPath)
         box64_set_game(ctx, executablePath)
-
+        Self.log("calling box64_launch_wine()...")
         let rc = box64_launch_wine(ctx, executablePath, nil)
+        Self.log("box64_launch_wine returned \(rc)")
         if rc != 0 {
             let cError = box64_get_wine_error()
             let errStr = cError != nil ? String(cString: cError!) : ""
+            Self.log("ERROR: box64_launch_wine failed: \(errStr)")
             result.error = "Failed to launch Box64+Wine (error \(rc)):\n\(errStr)\n\n"
-            result.error! += "Binary: \(wine64Path)/bin/wine64\n"
+            result.error! += "Binary: \(wine64Path)\n"
             result.error! += "Exe: \(executablePath)\n\n"
             result.error! += "iOS cannot execute unsigned binaries from the Documents folder.\n"
             result.error! += "Possible fixes:\n"
@@ -150,6 +193,7 @@ class Box64Bridge {
             return result
         }
 
+        Self.log("launchWine SUCCESS")
         _isRunning = true
         result.wineLaunched = true
         result.box64Output = "Wine launched via box64 bridge (thread-based)"
@@ -179,6 +223,8 @@ class Box64Bridge {
         let candidates = [
             docs.appendingPathComponent("launch.log").path,
             docs.appendingPathComponent("box64_runner.log").path,
+            docs.appendingPathComponent("bridge.log").path,
+            docs.appendingPathComponent("swift_box64.log").path,
         ]
 
         for path in candidates {

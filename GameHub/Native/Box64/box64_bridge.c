@@ -16,12 +16,28 @@ static int g_wine_exit_code = 0;
 static int g_wine_running = 0;
 static char g_wine_error[1024] = {0};
 
+static void bridge_log(const char *msg) {
+    const char *home = getenv("HOME");
+    if (!home) return;
+    char path[512];
+    snprintf(path, sizeof(path), "%s/Documents/bridge.log", home);
+    int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) {
+        write(fd, msg, strlen(msg));
+        write(fd, "\n", 1);
+        fsync(fd);
+        close(fd);
+    }
+}
+
 box64_context_t *box64_create(void) {
+    bridge_log("[Bridge] box64_create() called");
     box64_context_t *ctx = calloc(1, sizeof(box64_context_t));
-    if (!ctx) return NULL;
+    if (!ctx) { bridge_log("[Bridge] box64_create: calloc failed"); return NULL; }
     ctx->emulator = emulator_create();
     ctx->child_pid = -1;
     g_box64 = ctx;
+    bridge_log("[Bridge] box64_create: OK");
     return ctx;
 }
 
@@ -45,40 +61,57 @@ static long file_size(const char *path) {
 }
 
 int box64_init(box64_context_t *ctx, const char *bundle_path) {
-    if (!ctx || !bundle_path) return -1;
+    if (!ctx || !bundle_path) { bridge_log("[Bridge] box64_init: bad args"); return -1; }
+    char buf[1024];
+    snprintf(buf, sizeof(buf), "[Bridge] box64_init(bundle=%s)", bundle_path);
+    bridge_log(buf);
     snprintf(ctx->box64_path, sizeof(ctx->box64_path), "%s/box64", bundle_path);
     snprintf(ctx->wine_path, sizeof(ctx->wine_path), "%s/wine", bundle_path);
     snprintf(ctx->prefix_path, sizeof(ctx->prefix_path), "%s/wineprefix", bundle_path);
     snprintf(ctx->game_path, sizeof(ctx->game_path), "%s/games", bundle_path);
     mkdir(ctx->prefix_path, 0755);
     ctx->initialized = 1;
+    snprintf(buf, sizeof(buf), "[Bridge] box64_init: wine_path=%s", ctx->wine_path);
+    bridge_log(buf);
     return 0;
 }
 
 int box64_set_wine_path(box64_context_t *ctx, const char *wine_path) {
     if (!ctx) return -1;
+    char buf[1024];
+    snprintf(buf, sizeof(buf), "[Bridge] box64_set_wine_path(%s)", wine_path);
+    bridge_log(buf);
     strncpy(ctx->wine_path, wine_path, sizeof(ctx->wine_path) - 1);
     return 0;
 }
 
 int box64_set_prefix(box64_context_t *ctx, const char *prefix_path) {
     if (!ctx) return -1;
+    char buf[1024];
+    snprintf(buf, sizeof(buf), "[Bridge] box64_set_prefix(%s)", prefix_path);
+    bridge_log(buf);
     strncpy(ctx->prefix_path, prefix_path, sizeof(ctx->prefix_path) - 1);
     return 0;
 }
 
 int box64_set_game(box64_context_t *ctx, const char *game_exe) {
     if (!ctx) return -1;
+    char buf[1024];
+    snprintf(buf, sizeof(buf), "[Bridge] box64_set_game(%s)", game_exe);
+    bridge_log(buf);
     strncpy(ctx->game_path, game_exe, sizeof(ctx->game_path) - 1);
     return 0;
 }
 
 int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_envp) {
-    if (!ctx || !ctx->initialized) return -1;
+    if (!ctx || !ctx->initialized) { bridge_log("[Bridge] box64_launch_wine: not initialized"); return -1; }
     g_wine_error[0] = 0;
+    char buf[1024];
 
-    fprintf(stderr, "[Box64] Launching Wine in-process: %s\n", exe_path);
-    fprintf(stderr, "[Box64] Wine path: %s\n", ctx->wine_path);
+    snprintf(buf, sizeof(buf), "[Bridge] box64_launch_wine(exe=%s)", exe_path);
+    bridge_log(buf);
+    snprintf(buf, sizeof(buf), "[Bridge] wine_path=%s prefix=%s", ctx->wine_path, ctx->prefix_path);
+    bridge_log(buf);
 
     setenv("WINEPREFIX", ctx->prefix_path, 1);
     setenv("WINEDEBUG", "-all", 1);
@@ -99,31 +132,45 @@ int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_e
         }
     }
 
+    /* Determine wine binary path. ctx->wine_path may be either the binary
+       path (e.g. .../Wine/bin/wine64) or the wine directory (.../Wine). */
     char wine_bin[1024];
-    snprintf(wine_bin, sizeof(wine_bin), "%s/bin/wine64", ctx->wine_path);
-
-    if (!file_exists(wine_bin)) {
-        snprintf(g_wine_error, sizeof(g_wine_error), "Wine binary not found: %s", wine_bin);
-        fprintf(stderr, "[Box64] %s\n", g_wine_error);
-        return -1;
+    if (file_exists(ctx->wine_path)) {
+        /* wine_path IS the binary — use it directly */
+        snprintf(wine_bin, sizeof(wine_bin), "%s", ctx->wine_path);
+    } else {
+        /* Try appending /bin/wine64 (wine_path is the Wine directory) */
+        snprintf(wine_bin, sizeof(wine_bin), "%s/bin/wine64", ctx->wine_path);
+        if (!file_exists(wine_bin)) {
+            snprintf(g_wine_error, sizeof(g_wine_error),
+                     "Wine binary not found. Tried: '%s' and '%s'",
+                     ctx->wine_path, wine_bin);
+            fprintf(stderr, "[Box64] %s\n", g_wine_error);
+            return -1;
+        }
     }
 
     strncpy(ctx->game_path, exe_path, sizeof(ctx->game_path) - 1);
 
-    fprintf(stderr, "[Box64] Starting Wine in-process via box64_runner...\n");
+    snprintf(buf, sizeof(buf), "[Bridge] resolved wine_bin=%s", wine_bin);
+    bridge_log(buf);
+
     ctx->running = 1;
     g_wine_running = 1;
 
+    bridge_log("[Bridge] calling box64_runner_start()...");
     int rc = box64_runner_start(wine_bin, exe_path, ctx->prefix_path);
+    snprintf(buf, sizeof(buf), "[Bridge] box64_runner_start returned %d", rc);
+    bridge_log(buf);
     if (rc != 0) {
         snprintf(g_wine_error, sizeof(g_wine_error),
                  "box64_runner_start failed (code %d)", rc);
-        fprintf(stderr, "[Box64] %s\n", g_wine_error);
         ctx->running = 0;
         g_wine_running = 0;
         return -1;
     }
 
+    bridge_log("[Bridge] box64_launch_wine: SUCCESS");
     return 0;
 }
 

@@ -420,7 +420,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             waitpid(pid, &status, 0);
             return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
         }
-        case 60: { ctx->running = 0; _exit(a1); return 0; }
+        case 60: { ctx->running = 0; return a1; }
         case 63: {
             struct linux_utsname *n = (struct linux_utsname *)(uintptr_t)a1;
             memset(n, 0, sizeof(*n));
@@ -582,7 +582,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             lts->tv_sec = ts.tv_sec; lts->tv_nsec = ts.tv_nsec;
             return 0;
         }
-        case 231: { ctx->running = 0; exit(a1); return 0; }
+        case 231: { ctx->running = 0; return a1; }
         case 257: {
             int hf = to_host_flags(a3);
             int hfd = open((const char *)(uintptr_t)a2, hf, a4);

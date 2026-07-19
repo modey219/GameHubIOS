@@ -494,6 +494,7 @@ struct GameContainerView: View {
 
         logMsg("launchGame() called")
         logMsg("executablePath: \(container.executablePath)")
+        logMsg("Box64Bridge initialized: \(Box64Bridge.shared.isSetupComplete)")
         flushLog()
 
         settingsManager.applySettings()
@@ -609,7 +610,27 @@ struct GameContainerView: View {
     }
 
     private func refreshRunnerLog() {
-        wineOutput = Box64Bridge.shared.getRunnerLog()
+        var parts: [String] = []
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let logFiles = [
+            "launch.log", "swift_box64.log", "bridge.log", "box64_runner.log"
+        ]
+        for name in logFiles {
+            let path = docs.appendingPathComponent(name).path
+            if let data = FileManager.default.contents(atPath: path),
+               let content = String(data: data, encoding: .utf8), !content.isEmpty {
+                parts.append("=== \(name) ===\n\(content)")
+            }
+        }
+        if let cPath = box64_runner_get_log_path() {
+            let path = String(cString: cPath)
+            if !path.isEmpty, !parts.contains(where: { $0.contains(path) }),
+               let data = FileManager.default.contents(atPath: path),
+               let content = String(data: data, encoding: .utf8), !content.isEmpty {
+                parts.append("=== runner ===\n\(content)")
+            }
+        }
+        wineOutput = parts.isEmpty ? "No logs found. Run a game first." : parts.joined(separator: "\n\n")
     }
 }
 

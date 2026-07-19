@@ -44,30 +44,41 @@ extern char **environ;
 static emulator_context_t *g_ctx = NULL;
 
 void syscall_translation_init(void) {
-    if (!g_ctx) g_ctx = emulator_create();
+    if (!g_ctx) g_ctx = syscall_emulator_create();
 }
 
-emulator_context_t *emulator_create(void) {
-    emulator_context_t *ctx = calloc(1, sizeof(emulator_context_t));
-    if (!ctx) return NULL;
+emulator_context_t *syscall_emulator_create(void) {
+    size_t alloc_size = sizeof(emulator_context_t);
+    fprintf(stderr, "[SyscallCore] syscall_emulator_create: allocating %zu bytes\n", alloc_size);
+    emulator_context_t *ctx = calloc(1, alloc_size);
+    if (!ctx) {
+        fprintf(stderr, "[SyscallCore] syscall_emulator_create: calloc(%zu) returned NULL!\n", alloc_size);
+        return NULL;
+    }
+    fprintf(stderr, "[SyscallCore] syscall_emulator_create: ctx=%p, writing pid...\n", (void*)ctx);
     ctx->process.pid = getpid();
     ctx->process.ppid = getppid();
+    fprintf(stderr, "[SyscallCore] syscall_emulator_create: writing brk...\n");
     ctx->process.start_brk = (linux_addr_t)(uintptr_t)sbrk(0);
     ctx->process.brk = ctx->process.start_brk;
     ctx->process.mmap_base = 0x70000000ULL;
+    fprintf(stderr, "[SyscallCore] syscall_emulator_create: writing cwd/root...\n");
     strcpy(ctx->process.cwd, "/");
     strcpy(ctx->process.root, "/");
+    fprintf(stderr, "[SyscallCore] syscall_emulator_create: init fds...\n");
     for (int i = 0; i < MAX_TRANSLATED_FDS; i++) {
         ctx->process.fds[i].linux_fd = -1;
         ctx->process.fds[i].host_fd = -1;
     }
+    fprintf(stderr, "[SyscallCore] syscall_emulator_create: init limits...\n");
     ctx->process.limits[LINUX_RLIMIT_NOFILE].rlim_cur = 1024;
     ctx->process.limits[LINUX_RLIMIT_NOFILE].rlim_max = 4096;
     ctx->initialized = 1;
+    fprintf(stderr, "[SyscallCore] syscall_emulator_create: DONE ctx=%p\n", (void*)ctx);
     return ctx;
 }
 
-void emulator_destroy(emulator_context_t *ctx) {
+void syscall_emulator_destroy(emulator_context_t *ctx) {
     if (!ctx) return;
     for (int i = 0; i < MAX_TRANSLATED_FDS; i++) {
         if (ctx->process.fds[i].host_fd >= 0) close(ctx->process.fds[i].host_fd);

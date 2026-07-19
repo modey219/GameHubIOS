@@ -33,7 +33,7 @@ box64_context_t *box64_create(void) {
     bridge_log("[Bridge] box64_create() called");
     box64_context_t *ctx = calloc(1, sizeof(box64_context_t));
     if (!ctx) { bridge_log("[Bridge] box64_create: calloc failed"); return NULL; }
-    ctx->emulator = emulator_create();
+    ctx->emulator = syscall_emulator_create();
     ctx->child_pid = -1;
     g_box64 = ctx;
     bridge_log("[Bridge] box64_create: OK");
@@ -43,7 +43,7 @@ box64_context_t *box64_create(void) {
 void box64_destroy(box64_context_t *ctx) {
     if (!ctx) return;
     box64_stop(ctx);
-    emulator_destroy(ctx->emulator);
+    syscall_emulator_destroy(ctx->emulator);
     if (ctx == g_box64) g_box64 = NULL;
     free(ctx);
 }

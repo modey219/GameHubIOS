@@ -41,18 +41,26 @@
 
 extern char **environ;
 
-static emulator_context_t *g_ctx = NULL;
+static _Atomic emulator_context_t *g_ctx = NULL;
 
 void syscall_set_context(emulator_context_t *ctx) {
-    g_ctx = ctx;
+    atomic_store(&g_ctx, ctx);
 }
 
 emulator_context_t *syscall_get_context(void) {
-    return g_ctx;
+    return atomic_load(&g_ctx);
 }
 
 void syscall_translation_init(void) {
-    if (!g_ctx) g_ctx = syscall_emulator_create();
+    if (!atomic_load(&g_ctx)) {
+        emulator_context_t *new_ctx = syscall_emulator_create();
+        if (new_ctx) {
+            emulator_context_t *expected = NULL;
+            if (!atomic_compare_exchange_strong(&g_ctx, &expected, new_ctx)) {
+                syscall_emulator_destroy(new_ctx);
+            }
+        }
+    }
 }
 
 emulator_context_t *syscall_emulator_create(void) {
@@ -99,6 +107,8 @@ void syscall_emulator_destroy(emulator_context_t *ctx) {
 }
 
 int register_host_fd(emulator_context_t *ctx, int linux_fd, int host_fd, int flags) {
+    if (!ctx) ctx = syscall_get_context();
+    if (!ctx) return -1;
     if (linux_fd < 0 || linux_fd >= MAX_TRANSLATED_FDS) return -1;
     ctx->process.fds[linux_fd].linux_fd = linux_fd;
     ctx->process.fds[linux_fd].host_fd = host_fd;
@@ -109,11 +119,14 @@ int register_host_fd(emulator_context_t *ctx, int linux_fd, int host_fd, int fla
 }
 
 int host_fd_for_linux(emulator_context_t *ctx, int linux_fd) {
+    if (!ctx) ctx = syscall_get_context();
+    if (!ctx) return -1;
     if (linux_fd < 0 || linux_fd >= MAX_TRANSLATED_FDS) return -1;
     return ctx->process.fds[linux_fd].host_fd;
 }
 
 static int find_free_fd_slot(emulator_context_t *ctx) {
+    if (!ctx) return -1;
     for (int i = 3; i < MAX_TRANSLATED_FDS; i++) {
         if (ctx->process.fds[i].linux_fd == -1) return i;
     }
@@ -122,9 +135,9 @@ static int find_free_fd_slot(emulator_context_t *ctx) {
 
 static int to_host_flags(int lf) {
     int h = 0;
-    if (lf & 0x0000) h |= O_RDONLY;
-    if (lf & 0x0001) h |= O_WRONLY;
-    if (lf & 0x0002) h |= O_RDWR;
+    if ((lf & 0x3) == 0x0) h |= O_RDONLY;
+    else if ((lf & 0x3) == 0x1) h |= O_WRONLY;
+    else if ((lf & 0x3) == 0x2) h |= O_RDWR;
     if (lf & 0x0040) h |= O_CREAT;
     if (lf & 0x0200) h |= O_TRUNC;
     if (lf & 0x0400) h |= O_APPEND;
@@ -163,7 +176,7 @@ static void fill_stat(struct linux_stat *ls, struct stat *hs) {
 }
 
 linux_addr_t emulator_mmap(emulator_context_t *ctx, linux_addr_t addr, size_t length, int prot, int flags, int fd, long offset) {
-    if (!ctx) ctx = g_ctx;
+    if (!ctx) ctx = syscall_get_context();
     int hp = 0;
     if (prot & 1) hp |= PROT_READ;
     if (prot & 2) hp |= PROT_WRITE;
@@ -178,17 +191,20 @@ linux_addr_t emulator_mmap(emulator_context_t *ctx, linux_addr_t addr, size_t le
 
     int hfd = -1;
     if (!(flags & 0x20) && fd >= 0) hfd = host_fd_for_linux(ctx, fd);
-    void *r = mmap(NULL, length, hp, hf, hfd, offset);
+    void *req = (flags & 0x10) ? (void *)(uintptr_t)addr : NULL;
+    void *r = mmap(req, length, hp, hf, hfd, offset);
     if (r == MAP_FAILED) return (linux_addr_t)(long)(-errno);
     if (ctx->process.mmap_count < MAX_MMAP_REGIONS) {
         mmap_region_t *reg = &ctx->process.mmap_regions[ctx->process.mmap_count++];
-        reg->guest_addr = r; reg->host_addr = r; reg->size = length;
+        linux_addr_t guest = (flags & 0x10) ? addr : (linux_addr_t)(uintptr_t)r;
+        reg->guest_addr = (void *)(uintptr_t)guest; reg->host_addr = r; reg->size = length;
         reg->prot = prot; reg->flags = flags; reg->fd = fd; reg->offset = offset;
     }
     return (linux_addr_t)(uintptr_t)r;
 }
 
 int emulator_mprotect(emulator_context_t *ctx, linux_addr_t addr, size_t length, int prot) {
+    if (!ctx) ctx = syscall_get_context();
     int hp = 0;
     if (prot & 1) hp |= PROT_READ;
     if (prot & 2) hp |= PROT_WRITE;
@@ -197,18 +213,21 @@ int emulator_mprotect(emulator_context_t *ctx, linux_addr_t addr, size_t length,
 }
 
 int emulator_munmap(emulator_context_t *ctx, linux_addr_t addr, size_t length) {
+    if (!ctx) ctx = syscall_get_context();
     int r = munmap((void *)(uintptr_t)addr, length);
-    for (int i = 0; i < ctx->process.mmap_count; i++) {
+    if (ctx) {
+        for (int i = 0; i < ctx->process.mmap_count; i++) {
         if ((linux_addr_t)(uintptr_t)ctx->process.mmap_regions[i].host_addr == addr) {
             ctx->process.mmap_regions[i] = ctx->process.mmap_regions[--ctx->process.mmap_count];
             break;
         }
     }
+    }
     return r;
 }
 
 long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long a3, long a4, long a5, long a6) {
-    if (!ctx) ctx = g_ctx;
+    if (!ctx) ctx = syscall_get_context();
     if (!ctx) {
         fprintf(stderr, "[Syscall] No context! syscall=%ld\n", num);
         return -ENOSYS;

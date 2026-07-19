@@ -49,6 +49,7 @@ box64_context_t *box64_create(void) {
 void box64_destroy(box64_context_t *ctx) {
     if (!ctx) return;
     box64_stop(ctx);
+    syscall_set_context(NULL);
     syscall_emulator_destroy(ctx->emulator);
     if (ctx == g_box64) g_box64 = NULL;
     free(ctx);

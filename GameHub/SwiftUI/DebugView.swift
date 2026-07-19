@@ -26,6 +26,13 @@ struct DebugView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack {
+                        Button(action: loadLogFile) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down.doc")
+                                Text("Load Log")
+                            }
+                            .font(.caption)
+                        }
                         Button(action: copyLogs) {
                             HStack(spacing: 4) {
                                 Image(systemName: "doc.on.doc")
@@ -388,6 +395,20 @@ struct DebugView: View {
         showCopied = true
         withAnimation { showCopied = false }
         log("Logs copied to clipboard")
+    }
+
+    private func loadLogFile() {
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let logPath = docs.appendingPathComponent("swift_box64.log").path
+        guard let data = fm.contents(atPath: logPath),
+              let content = String(data: data, encoding: .utf8) else {
+            log("No swift_box64.log found")
+            return
+        }
+        let lines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
+        logs.append(contentsOf: lines.suffix(100))
+        log("Loaded \(lines.count) lines from swift_box64.log")
     }
 
     private static func fileSize(_ path: String) -> String {

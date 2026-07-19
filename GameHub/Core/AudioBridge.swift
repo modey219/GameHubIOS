@@ -119,7 +119,11 @@ class AudioBridge: ObservableObject {
             let n = recv(clientSocket, &buffer, buffer.count, 0)
             if n > 0 {
                 bufferLock.lock()
-                audioBuffer.append(contentsOf: buffer.prefix(n))
+                if audioBuffer.count < 1024 * 1024 {
+                    audioBuffer.append(contentsOf: buffer.prefix(n))
+                } else {
+                    audioBuffer.removeAll()
+                }
                 bufferLock.unlock()
             } else if n == 0 || (n < 0 && errno != EINTR) { break }
         }

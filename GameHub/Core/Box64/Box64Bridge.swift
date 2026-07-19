@@ -3,6 +3,7 @@ import Foundation
 class Box64Bridge {
     static let shared = Box64Bridge()
 
+    private let lock = NSLock()
     private var isInitialized = false
     private var box64InstallPath: String = ""
     private var wineInstallPath: String = ""
@@ -50,7 +51,11 @@ class Box64Bridge {
         return box64Exists && wineExists
     }
 
-    var isRunning: Bool { _isRunning }
+    var isRunning: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _isRunning
+    }
 
     private func findBundledResource(_ name: String, isDirectory: Bool) -> String? {
         if let path = Bundle.main.path(forResource: name, ofType: nil) { return path }
@@ -87,13 +92,13 @@ class Box64Bridge {
         Self.log("setupAllBundledBinaries: memory before extraction = \(Self.memoryUsageMB())MB")
 
         progressCallback?("Extracting Box64...")
-        autoreleasepool {
+        try autoreleasepool {
             try extractBox64()
         }
         Self.log("memory after Box64 extraction = \(Self.memoryUsageMB())MB")
 
         progressCallback?("Extracting Wine...")
-        autoreleasepool {
+        try autoreleasepool {
             try extractWine()
         }
         Self.log("memory after Wine extraction = \(Self.memoryUsageMB())MB")
@@ -112,7 +117,8 @@ class Box64Bridge {
     }
 
     func initialize() {
-        guard !isInitialized else { return }
+        lock.lock()
+        guard !isInitialized else { lock.unlock(); return }
         Self.log("initialize() called")
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
@@ -133,6 +139,7 @@ class Box64Bridge {
         } else {
             Self.log("box64_create returned NULL!")
         }
+        lock.unlock()
 
         Self.log("initialize() complete, isInitialized=\(isInitialized)")
     }

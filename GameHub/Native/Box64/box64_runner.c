@@ -25,6 +25,7 @@ static char g_runner_error[1024] = {0};
 static char g_runner_status[256] = {0};
 static char g_log_path[512] = {0};
 static volatile int g_log_fd = -1;
+static pthread_mutex_t g_runner_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static sigjmp_buf g_jmp_buf;
 static volatile int g_jmp_ready = 0;
@@ -140,8 +141,10 @@ static void *wine_thread_func(void *arg) {
     if (crash_sig != 0) {
         /* We got here via siglongjmp from the signal handler */
         runner_log("[Runner] Recovered from signal %d — thread exiting safely", crash_sig);
+        pthread_mutex_lock(&g_runner_lock);
         snprintf(g_runner_error, sizeof(g_runner_error),
                  "Box64 crashed with signal %d", crash_sig);
+        pthread_mutex_unlock(&g_runner_lock);
         g_runner_exit_code = -crash_sig;
         free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
         free(wargs);
@@ -154,8 +157,10 @@ static void *wine_thread_func(void *arg) {
     runner_log("[Runner] initialize() returned %d", ret);
     
     if (ret != 0) {
+        pthread_mutex_lock(&g_runner_lock);
         snprintf(g_runner_error, sizeof(g_runner_error),
                  "Box64 initialize() failed (code %d)", ret);
+        pthread_mutex_unlock(&g_runner_lock);
         runner_log("[Runner] ERROR: %s", g_runner_error);
         g_runner_running = 0;
         g_runner_exit_code = -1;
@@ -165,7 +170,9 @@ static void *wine_thread_func(void *arg) {
         return NULL;
     }
 
+    pthread_mutex_lock(&g_runner_lock);
     snprintf(g_runner_status, sizeof(g_runner_status), "emulating");
+    pthread_mutex_unlock(&g_runner_lock);
     runner_log("[Runner] Calling emulate()");
 
     ret = emulate(emu, elf_header);
@@ -188,17 +195,21 @@ int box64_runner_start(const char *wine64_path, const char *game_exe, const char
 
     wine_runner_args_t *args = malloc(sizeof(wine_runner_args_t));
     if (!args) {
+        pthread_mutex_lock(&g_runner_lock);
         snprintf(g_runner_error, sizeof(g_runner_error),
                  "Failed to allocate runner args");
+        pthread_mutex_unlock(&g_runner_lock);
         return -1;
     }
     args->wine64_path = wine64_path ? strdup(wine64_path) : NULL;
     args->game_exe = game_exe ? strdup(game_exe) : NULL;
     args->prefix_path = prefix_path ? strdup(prefix_path) : NULL;
 
+    pthread_mutex_lock(&g_runner_lock);
     g_runner_error[0] = 0;
-    g_runner_exit_code = 0;
     snprintf(g_runner_status, sizeof(g_runner_status), "starting");
+    pthread_mutex_unlock(&g_runner_lock);
+    g_runner_exit_code = 0;
 
     pthread_t thread;
     pthread_attr_t attr;
@@ -209,8 +220,10 @@ int box64_runner_start(const char *wine64_path, const char *game_exe, const char
     pthread_attr_destroy(&attr);
 
     if (ret != 0) {
+        pthread_mutex_lock(&g_runner_lock);
         snprintf(g_runner_error, sizeof(g_runner_error),
                  "Failed to create runner thread: %d", ret);
+        pthread_mutex_unlock(&g_runner_lock);
         g_runner_running = 0;
         free(args->wine64_path); free(args->game_exe); free(args->prefix_path);
         free(args);
@@ -225,7 +238,9 @@ int box64_runner_stop(void) {
     if (!g_runner_running) return 0;
     box64_quit = 1;
     g_runner_running = 0;
+    pthread_mutex_lock(&g_runner_lock);
     snprintf(g_runner_status, sizeof(g_runner_status), "stopping");
+    pthread_mutex_unlock(&g_runner_lock);
     return 0;
 }
 
@@ -234,11 +249,19 @@ int box64_runner_is_running(void) {
 }
 
 const char *box64_runner_get_error(void) {
-    return g_runner_error;
+    static char snap[1024];
+    pthread_mutex_lock(&g_runner_lock);
+    memcpy(snap, g_runner_error, sizeof(snap));
+    pthread_mutex_unlock(&g_runner_lock);
+    return snap;
 }
 
 const char *box64_runner_get_status(void) {
-    return g_runner_status;
+    static char snap[256];
+    pthread_mutex_lock(&g_runner_lock);
+    memcpy(snap, g_runner_status, sizeof(snap));
+    pthread_mutex_unlock(&g_runner_lock);
+    return snap;
 }
 
 int box64_runner_get_exit_code(void) {

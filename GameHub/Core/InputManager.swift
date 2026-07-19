@@ -201,8 +201,14 @@ class InputManager: ObservableObject {
         }
     }
 
+    private var lastInputWrite: Date = .distantPast
+
     private func sendInputToWine(_ input: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: input) else { return }
+
+        let now = Date()
+        guard now.timeIntervalSince(lastInputWrite) >= 0.1 else { return }
+        lastInputWrite = now
 
         let inputDir = (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory()))

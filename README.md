@@ -1,151 +1,177 @@
-# GameHub iOS
+# MN emulator - PC Game Emulator for iOS
 
-### تشغيل ألعاب الكمبيوتر على iPhone بدون إنترنت أو سحابة
+Run Windows PC games on your iPhone and iPad. No internet required after installation.
 
----
+**Created by @R_MOX** | Telegram: [@R_MOX](https://t.me/R_MOX)
 
-## كيف يعمل
-
-```
- juego.exe (PC)
-       ↓
-    Box64 (ترجمة x86_64 → ARM64)
-       ↓
-    Wine (واجهة Windows API)
-       ↓
-    MoltenVK (Vulkan → Metal)
-       ↓
-    Metal (رسومات iPhone)
-```
-
-**1. حمّل الـ IPA:**
-- من تبويب **Actions** → آخر build
-- في الأسفل ستجد **Artifacts** → **GameHub-iOS**
-- حمّل الملف
-
-**2. ثبّت على iPhone:**
-
-| الطريقة | الموقع | السهولة |
-|---------|--------|---------|
-| **AltStore** | [altstore.io](https://altstore.io) | سهل |
-| **Sideloadly** | [sideloadly.io](https://sideloadly.io) | سهل |
-| **Scarlet** | [scarletinstall.com](https://scarletinstall.com) | سهل |
-| **Xcode** (oppfinder USB) | مثبت على Mac | متوسط |
-
-**3. فعّل JIT:**
-- ثبّت **StikDebug** من App Store
-- افتح StikDebug → اضغط "Enable JIT"
-- اختر GameHub
-- عد إلى GameHub وابدأ اللعب
-
----
-
-## ربط اللعبة
-
-### إضافة لعبة
-
-1. افتح GameHub
-2. اضغط **+** في المكتبة
-3. حدد ملف `.exe` من Files App
-4. اضغط **Add Game**
-
-### نقل ملفات من الكمبيوتر
+## How It Works
 
 ```
-الطريقة 1 (USB):
-  - وصّل iPhone بالكمبيوتر
-  - افتح Finder → iPhone → File Sharing → GameHub
-  - اسحب ملفات اللعبة
-
-الطريقة 2 (WiFi - WebDAV):
-  - في GameHub اذهب للإعدادات
-  - فعّل WebDAV Server
-  - على الكمبيوتر افتح المتصفح
-  - اكتب: http://IPHONE_IP:8080
-  - ارفع ملفات اللعبة
-
-الطريقة 3 (Cloud):
-  - ارفع ملفات اللعبة على Google Drive / iCloud
-  - حمّلها على iPhone من Files App
-  - في GameHub اختر Import
+game.exe (Windows x86_64)
+    |
+    v
+Box64 (translates x86_64 instructions to ARM64)
+    |
+    v
+Wine (Windows API compatibility layer)
+    |
+    v
+MoltenVK (Vulkan -> Metal)
+    |
+    v
+Metal (iPhone GPU rendering)
 ```
 
----
+## Installation
 
-## إعدادات مهمة
+### 1. Download the IPA
+- Go to **Actions** tab on GitHub
+- Click the latest build
+- Download **MNEmulator.ipa** from Artifacts at the bottom
 
-### رسومات
-| الإعداد | القيمة | ملاحظة |
-|---------|--------|--------|
-| GPU Driver | MoltenVK | الأفضل لـ iOS |
-| DXVK | مفعّل | لألعاب DirectX 11 |
-| VKD3D | مفعّل | لألعاب DirectX 12 |
-| Max FPS | 60 | قلّل للألعاب الثقيلة |
-| VSync | مفعّل | يمنع الت撕裂 |
+### 2. Install on iPhone
 
-### Box64
-| الإعداد | القيمة | ملاحظة |
-|---------|--------|--------|
-| Dynarec | مفعّل | **يتطلب JIT** |
-| Big Block | مفعّل | تسريع |
-| Strong Memory | مفعّل | استقرار |
-| Safe Flags | مفعّل | أمان |
+| Method | Website | Difficulty |
+|--------|---------|------------|
+| **AltStore** | [altstore.io](https://altstore.io) | Easy |
+| **Sideloadly** | [sideloadly.io](https://sideloadly.io) | Easy |
+| **LiveContainer** | App Store | Easy |
+| **Scarlet** | [scarletinstall.com](https://scarletinstall.com) | Easy |
 
----
+### 3. Enable JIT
+- Install **StikDebug** from the App Store
+- Open StikDebug -> tap "Enable JIT"
+- Select MN emulator
+- Return to the app and start playing
 
-## حل المشاكل
+**Alternative JIT methods:**
+- **SideJIT**: Run `pip install sidejit` on computer, connect iPhone via USB, run `sidejit server`
+- **TrollStore**: If you have TrollStore, enable JIT permanently from TrollStore settings
 
-### "اللعبة بطيئة"
-- تأكد JIT مفعّل (StikDebug)
-- قلّل Max FPS
-- أ关闭 VSync
+## Adding Games
 
-### "لا يوجد صوت"
-- غيّر Audio Driver في الإعدادات
-- جرّب Core Audio بدل PulseAudio
+### Method 1: Direct Import
+1. Open MN emulator
+2. Tap **+** in the game library
+3. Select a `.exe` file from the Files app
+4. Tap **Add Game**
 
-### "اللعبة لا تعمل"
-- تأكد ملف `.exe` هو Win64 (وليس Win32)
-- جرّب تغيير Renderer
-- فعّل Debug logging
+### Method 2: File Sharing (USB)
+1. Connect iPhone to computer
+2. Open Finder -> iPhone -> File Sharing -> MN emulator
+3. Drag and drop game files
 
-### "JIT لا يعمل"
-- تأكد StikDebug مثبّت
-- أعد تشغيل StikDebug ثم GameHub
-- في Worst case: استخدم JIT-less mode (بطيء)
+### Method 3: WiFi Transfer
+1. In MN emulator, go to Settings
+2. Start the WebDAV server
+3. On computer, open browser and go to `http://YOUR_IP:8080`
+4. Upload game files
 
----
+### Method 4: Cloud Storage
+1. Upload game files to Google Drive / iCloud
+2. Download them on iPhone via Files app
+3. In MN emulator, use Import to add them
 
-## المواصفات المطلوبة
+## Recommended Settings
 
-- iPhone 12 أو أحدث
-- iOS 15.0+
-- مساحة حرة: 2GB+
-- لا يحتاج إنترنت بعد التثبيت
+### Graphics
+| Setting | Value | Notes |
+|---------|-------|-------|
+| GPU Driver | MoltenVK | Best for iOS |
+| DXVK | Enabled | For DirectX 11 games |
+| VKD3D | Enabled | For DirectX 12 games |
+| Max FPS | 60 | Lower for heavy games |
+| VSync | Enabled | Prevents tearing |
 
----
+### Box64 Dynarec
+| Setting | Value | Notes |
+|---------|-------|-------|
+| Enable Dynarec | Yes | **Requires JIT** |
+| Big Block | Enabled | Speed boost |
+| Strong Memory | Enabled | Stability |
+| Safe Flags | Enabled | Safety |
 
-## الملفات
+**Presets available:** Safe / Balanced / Fast / Max Performance
+
+### Wine
+| Setting | Value | Notes |
+|---------|-------|-------|
+| ESync | Enabled | Better multithreading |
+| FSync | Disabled | May not work on all games |
+| CSMT | Enabled | Command stream optimization |
+
+## Troubleshooting
+
+### "Game is slow"
+- Make sure JIT is enabled (StikDebug)
+- Lower Max FPS in Graphics settings
+- Use "Balanced" or "Safe" Box64 preset
+
+### "No audio"
+- Check Audio settings
+- Try "Core Audio" driver
+- Increase buffer size
+
+### "Game won't launch"
+- Make sure the .exe is Win64 (not Win32)
+- Check the exe path is correct in container settings
+- Enable debug logging and check the log
+- Some games need additional DLL files (place in container's drive_c)
+
+### "JIT not detected"
+- Install StikDebug from the App Store
+- Restart StikDebug, then restart MN emulator
+- Use JIT-less mode as fallback (much slower)
+
+### "posix_spawn failed / Operation not permitted"
+- iOS restricts executing binaries from the Documents folder
+- Enable JIT via StikDebug or TrollStore
+- On jailbroken devices this works natively
+
+## Requirements
+
+- iPhone 12 or newer (A14 Bionic+)
+- iOS 16.0+
+- 2GB+ free storage
+- No internet required after installation
+
+## Project Structure
 
 ```
 GameHubiOS/
-├── GameHub/                 # الكود الرئيسي
-│   ├── GameHubApp.swift     # نقطة البداية
-│   ├── SwiftUI/             # الواجهات
-│   └── Core/                # المحرك
-│       ├── Box64/           # ترجمة x86
-│       ├── Wine/            # Windows API
-│       ├── Graphics/        # MoltenVK
-│       ├── JIT/             # StikDebug
-│       ├── Input/           # يد تحكم
-│       └── Audio/           # صوت
-├── Scripts/                 # سكربتات البناء
-├── .github/workflows/       # بناء سحابي
-└── README.md                # هذا الملف
+├── GameHub/                 # Main source code
+│   ├── GameHubApp.swift     # Entry point
+│   ├── SwiftUI/             # UI views
+│   ├── Core/                # Engine
+│   │   ├── Box64/           # x86 emulation bridge
+│   │   ├── Wine/            # Windows API layer
+│   │   ├── Graphics/        # Metal rendering
+│   │   ├── JIT/             # JIT management
+│   │   ├── Input/           # Game controller support
+│   │   └── Audio/           # Audio output
+│   └── Native/              # C code
+│       ├── Box64/           # Box64 bridge (C)
+│       ├── SyscallTranslation/ # Linux syscall translation
+│       └── Include/         # Headers
+├── Scripts/                 # Build scripts
+├── .github/workflows/       # CI/CD (GitHub Actions)
+├── project.yml              # XcodeGen project spec
+└── README.md
 ```
+
+## Components
+
+| Component | Version | License |
+|-----------|---------|---------|
+| Box64 | 0.4.0 | MIT |
+| Wine | 9.21 | LGPL 2.1 |
+| MoltenVK | 1.4.1 | Apache 2.0 |
+| DXVK | 2.6.1 | zlib |
+
+## License
+
+MIT License - Open Source
 
 ---
 
-## الترخيص
-
-MIT License - مفتوح المصدر
+**Created by [@R_MOX](https://t.me/R_MOX)**

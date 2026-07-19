@@ -8,16 +8,24 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <pthread.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <dirent.h>
 
 extern char **environ;
 
 static box64_context_t *g_box64 = NULL;
+static int g_wine_exit_code = 0;
+static int g_wine_running = 0;
+static char g_wine_error[1024] = {0};
 
 box64_context_t *box64_create(void) {
     box64_context_t *ctx = calloc(1, sizeof(box64_context_t));
     if (!ctx) return NULL;
     ctx->emulator = emulator_create();
     ctx->child_pid = -1;
+    g_box64 = ctx;
     return ctx;
 }
 
@@ -25,6 +33,7 @@ void box64_destroy(box64_context_t *ctx) {
     if (!ctx) return;
     box64_stop(ctx);
     emulator_destroy(ctx->emulator);
+    if (ctx == g_box64) g_box64 = NULL;
     free(ctx);
 }
 
@@ -68,9 +77,84 @@ int box64_set_game(box64_context_t *ctx, const char *game_exe) {
     return 0;
 }
 
+static int copy_file(const char *src, const char *dst) {
+    FILE *fsrc = fopen(src, "rb");
+    if (!fsrc) return -1;
+    FILE *fdst = fopen(dst, "wb");
+    if (!fdst) { fclose(fsrc); return -1; }
+    char buf[8192];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), fsrc)) > 0) {
+        if (fwrite(buf, 1, n, fdst) != n) {
+            fclose(fsrc); fclose(fdst); return -1;
+        }
+    }
+    fclose(fsrc);
+    fclose(fdst);
+    chmod(dst, 0755);
+    return 0;
+}
+
+static int try_execute(const char *binary, char *args[], int wait) {
+    pid_t pid;
+    int r = posix_spawn(&pid, binary, NULL, NULL, args, environ);
+    if (r == 0) {
+        fprintf(stderr, "[Box64] Spawned PID %d: %s\n", pid, binary);
+        if (wait) {
+            int status;
+            waitpid(pid, &status, 0);
+            return (status & 0x7f) == 0 ? (status >> 8) & 0xff : -1;
+        }
+        return 0;
+    }
+    fprintf(stderr, "[Box64] posix_spawn(%s) failed: %d (%s)\n", binary, r, strerror(r));
+    return -r;
+}
+
+static void *wine_thread_func(void *arg) {
+    char *wine_bin = (char *)arg;
+    char *args[] = { wine_bin, NULL, NULL };
+    args[1] = g_box64 ? g_box64->game_path : NULL;
+
+    fprintf(stderr, "[Box64-Wine] Thread started: %s %s\n", wine_bin, args[1] ? args[1] : "");
+
+    g_wine_running = 1;
+    g_wine_exit_code = 0;
+    g_wine_error[0] = 0;
+
+    pid_t pid;
+    int r = posix_spawn(&pid, wine_bin, NULL, NULL, args, environ);
+    if (r != 0) {
+        snprintf(g_wine_error, sizeof(g_wine_error),
+                 "posix_spawn failed (%d): %s\nBinary: %s\n"
+                 "iOS cannot execute binaries from Documents folder (noexec).\n"
+                 "Try: copy binary to /tmp first, or use a jailbroken device.",
+                 r, strerror(r), wine_bin);
+        fprintf(stderr, "[Box64-Wine] %s\n", g_wine_error);
+        g_wine_exit_code = -1;
+        g_wine_running = 0;
+        return NULL;
+    }
+
+    if (g_box64) g_box64->child_pid = pid;
+    fprintf(stderr, "[Box64-Wine] Wine PID: %d\n", pid);
+
+    int status;
+    waitpid(pid, &status, 0);
+    g_wine_exit_code = (status & 0x7f) == 0 ? (status >> 8) & 0xff : -1;
+    g_wine_running = 0;
+    if (g_box64) g_box64->child_pid = -1;
+    fprintf(stderr, "[Box64-Wine] Wine exited with code %d\n", g_wine_exit_code);
+    return NULL;
+}
+
 int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_envp) {
     if (!ctx || !ctx->initialized) return -1;
+    g_wine_error[0] = 0;
+
     fprintf(stderr, "[Box64] Launching Wine: %s\n", exe_path);
+    fprintf(stderr, "[Box64] Box64: %s\n", ctx->box64_path);
+    fprintf(stderr, "[Box64] Wine path: %s\n", ctx->wine_path);
 
     setenv("WINEPREFIX", ctx->prefix_path, 1);
     setenv("WINEDEBUG", "-all", 1);
@@ -79,7 +163,6 @@ int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_e
     setenv("STAGING_SHARED_MEMORY", "1", 1);
     setenv("DXVK_ASYNC", "1", 1);
     setenv("DXVK_HUD", "fps", 1);
-    setenv("WINE_DLL Overrides", "dxgi,d3d11,d3d9=native,builtin", 1);
 
     if (extra_envp) {
         for (int i = 0; extra_envp[i]; i++) {
@@ -94,27 +177,33 @@ int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_e
 
     char wine_bin[1024];
     snprintf(wine_bin, sizeof(wine_bin), "%s/bin/wine64", ctx->wine_path);
+
     if (!file_exists(wine_bin)) {
-        fprintf(stderr, "[Box64] Wine not found: %s\n", wine_bin);
+        snprintf(g_wine_error, sizeof(g_wine_error), "Wine binary not found: %s", wine_bin);
+        fprintf(stderr, "[Box64] %s\n", g_wine_error);
         return -1;
     }
 
-    char *args[] = { wine_bin, (char *)exe_path, NULL };
+    strncpy(ctx->game_path, exe_path, sizeof(ctx->game_path) - 1);
+
+    fprintf(stderr, "[Box64] Starting Wine thread...\n");
     ctx->running = 1;
-    pid_t pid;
-    int r = posix_spawn(&pid, wine_bin, NULL, NULL, args, environ);
-    if (r != 0) {
-        fprintf(stderr, "[Box64] posix_spawn failed: %s\n", strerror(r));
+
+    pthread_t wine_thread;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+    if (pthread_create(&wine_thread, &attr, wine_thread_func, wine_bin) != 0) {
+        snprintf(g_wine_error, sizeof(g_wine_error), "Failed to create Wine thread: %s", strerror(errno));
+        fprintf(stderr, "[Box64] %s\n", g_wine_error);
         ctx->running = 0;
-        return -r;
+        pthread_attr_destroy(&attr);
+        return -1;
     }
-    ctx->child_pid = pid;
-    fprintf(stderr, "[Box64] Wine PID: %d\n", pid);
-    int status;
-    waitpid(pid, &status, 0);
-    ctx->running = 0;
-    ctx->child_pid = -1;
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    pthread_attr_destroy(&attr);
+
+    return 0;
 }
 
 int box64_launch_wine_prefix_init(box64_context_t *ctx) {
@@ -132,7 +221,7 @@ int box64_launch_wine_prefix_init(box64_context_t *ctx) {
     if (r != 0) return -r;
     int status;
     waitpid(pid, &status, 0);
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    return (status & 0x7f) == 0 ? (status >> 8) & 0xff : -1;
 }
 
 void box64_stop(box64_context_t *ctx) {
@@ -147,14 +236,20 @@ void box64_stop(box64_context_t *ctx) {
 }
 
 int box64_is_running(box64_context_t *ctx) {
-    return ctx ? ctx->running : 0;
+    return ctx ? (ctx->running && g_wine_running) : 0;
 }
 
 const char *box64_get_status(box64_context_t *ctx) {
     if (!ctx) return "not initialized";
-    if (ctx->running) return "running";
+    if (g_wine_error[0]) return g_wine_error;
+    if (ctx->running && g_wine_running) return "running";
+    if (ctx->running && !g_wine_running) return "wine exited";
     if (!ctx->initialized) return "not initialized";
     return "ready";
+}
+
+const char *box64_get_wine_error(void) {
+    return g_wine_error;
 }
 
 box64_status_t box64_get_status_detail(box64_context_t *ctx) {
@@ -170,6 +265,6 @@ box64_status_t box64_get_status_detail(box64_context_t *ctx) {
     status.box64_size = file_size(ctx->box64_path);
     status.wine_size = file_size(ctx->wine_path);
     strncpy(status.box64_version, "0.4.2", sizeof(status.box64_version));
-    strncpy(status.wine_version, "9.0", sizeof(status.wine_version));
+    strncpy(status.wine_version, "9.21", sizeof(status.wine_version));
     return status;
 }

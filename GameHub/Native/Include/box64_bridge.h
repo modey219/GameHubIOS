@@ -47,4 +47,6 @@ typedef struct {
 
 box64_status_t box64_get_status_detail(box64_context_t *ctx);
 
+const char *box64_get_wine_error(void);
+
 #endif

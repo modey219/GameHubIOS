@@ -15,13 +15,13 @@ struct GameContainerView: View {
     @State private var showKeyboard = false
     @State private var showSettings = false
     @State private var showLog = false
-    @State private var gameProcess: Process?
     @State private var elapsedTime: TimeInterval = 0
     @State private var timer: Timer?
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var wineOutput: String = ""
     @State private var confirmExit = false
+    @State private var showCopiedToast = false
 
     var body: some View {
         GeometryReader { geo in
@@ -80,6 +80,26 @@ struct GameContainerView: View {
         .sheet(isPresented: $showLog) {
             NavigationStack {
                 VStack(alignment: .leading) {
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            UIPasteboard.general.string = wineOutput
+                            showCopiedToast = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { showCopiedToast = false }
+                        }) {
+                            HStack {
+                                Image(systemName: "doc.on.doc")
+                                Text("Copy Log")
+                            }
+                            .font(.caption).bold()
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Color.blue).cornerRadius(8)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
                     ScrollView {
                         Text(wineOutput.isEmpty ? "No log output yet.\n\nLaunch a game to see Wine/Box64 output here." : wineOutput)
                             .font(.system(.caption, design: .monospaced))
@@ -93,12 +113,15 @@ struct GameContainerView: View {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") { showLog = false }
                     }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(action: {
-                            UIPasteboard.general.string = wineOutput
-                        }) {
-                            Image(systemName: "doc.on.doc")
-                        }
+                }
+                .overlay(alignment: .bottom) {
+                    if showCopiedToast {
+                        Text("Copied to clipboard!")
+                            .font(.caption).bold().foregroundColor(.white)
+                            .padding().background(Color.green.opacity(0.9)).cornerRadius(10)
+                            .padding(.bottom, 16)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .animation(.spring(), value: showCopiedToast)
                     }
                 }
             }
@@ -107,22 +130,29 @@ struct GameContainerView: View {
 
     private var topBar: some View {
         HStack {
-            Button(action: { dismiss() }) {
-                Image(systemName: "xmark").foregroundColor(.white)
-                    .padding(8).background(Color.black.opacity(0.6)).clipShape(Circle())
+            Button(action: { withAnimation { confirmExit = true } }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 3)
             }
             Spacer()
             if isRunning {
                 HStack(spacing: 8) {
                     Text("\(Int(displayRenderer.fps)) FPS").font(.caption).foregroundColor(.green)
                     Text(formatTime(elapsedTime)).font(.caption).foregroundColor(.yellow)
+                    if isPaused {
+                        Text("PAUSED").font(.caption2).bold().foregroundColor(.orange)
+                    }
                 }
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(Color.black.opacity(0.6)).cornerRadius(8)
             }
             Button(action: { showOverlay.toggle() }) {
-                Image(systemName: "ellipsis.circle").foregroundColor(.white)
-                    .padding(8).background(Color.black.opacity(0.6)).clipShape(Circle())
+                Image(systemName: "ellipsis.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 3)
             }
         }
         .padding()
@@ -170,52 +200,66 @@ struct GameContainerView: View {
     }
 
     private var mainOverlay: some View {
-        VStack {
+        VStack(spacing: 0) {
             HStack {
                 overlayBtn("xmark.circle.fill", "Close Menu") {
                     withAnimation { showOverlay = false }
                 }
                 Spacer()
+                if isRunning {
+                    overlayBtn("arrow.clockwise", "Restart") {
+                        withAnimation { showOverlay = false }
+                        stopGame()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { launchGame() }
+                    }
+                }
             }
             .padding(.top, 8)
 
             Spacer()
 
-            HStack(alignment: .bottom, spacing: 0) {
-                VStack(alignment: .leading, spacing: 12) {
-                    overlayBtn("gamecontroller", "Controller") {
-                        withAnimation { showController.toggle(); showKeyboard = false }
-                    }
-                    overlayBtn("keyboard", "Keyboard") {
-                        withAnimation { showKeyboard.toggle(); showController = false }
-                    }
-                    if isRunning {
+            if isRunning {
+                VStack(spacing: 12) {
+                    HStack(spacing: 16) {
+                        overlayBtn("gamecontroller.fill", "Controller") {
+                            withAnimation { showController.toggle(); showKeyboard = false }
+                        }
+                        overlayBtn("keyboard.fill", "Keyboard") {
+                            withAnimation { showKeyboard.toggle(); showController = false }
+                        }
                         overlayBtn(isPaused ? "play.fill" : "pause.fill", isPaused ? "Resume" : "Pause") {
                             togglePause()
                         }
                     }
+                    HStack(spacing: 16) {
+                        overlayBtn("doc.text", "Log") { showLog.toggle() }
+                        overlayBtn("photo.fill", "Screenshot") { takeScreenshot() }
+                        overlayBtn("gearshape.fill", "Settings") { showSettings.toggle() }
+                        overlayBtn("speaker.wave.2.fill", "Mute") {
+                            AudioBridge.shared.stopAudio()
+                        }
+                    }
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 12) {
-                    overlayBtn("doc.text", "Log") { showLog.toggle() }
-                    overlayBtn("photo", "Screenshot") { takeScreenshot() }
-                    overlayBtn("gear", "Settings") { showSettings.toggle() }
+            } else {
+                VStack(spacing: 12) {
+                    HStack(spacing: 16) {
+                        overlayBtn("doc.text", "Log") { showLog.toggle() }
+                        overlayBtn("gearshape.fill", "Settings") { showSettings.toggle() }
+                    }
                 }
             }
 
             Spacer()
 
-            HStack(spacing: 16) {
-                Button(action: {
-                    withAnimation { confirmExit = true }
-                }) {
-                    HStack {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                        Text("Exit to Menu").fontWeight(.semibold)
-                    }
-                    .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(Color.red.opacity(0.8)).foregroundColor(.white).cornerRadius(12)
+            Button(action: {
+                withAnimation { confirmExit = true }
+            }) {
+                HStack {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                    Text("Exit to Menu").fontWeight(.semibold)
                 }
+                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                .background(Color.red.opacity(0.8)).foregroundColor(.white).cornerRadius(12)
             }
             .padding(.horizontal)
             .padding(.bottom, 8)
@@ -225,9 +269,14 @@ struct GameContainerView: View {
 
     private func overlayBtn(_ icon: String, _ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack { Image(systemName: icon).frame(width: 24); Text(title).font(.caption) }
-                .foregroundColor(.white).padding(.horizontal, 16).padding(.vertical, 8)
-                .background(Color.white.opacity(0.2)).cornerRadius(8)
+            VStack(spacing: 2) {
+                Image(systemName: icon).font(.system(size: 18))
+                Text(title).font(.system(size: 9))
+            }
+            .foregroundColor(.white)
+            .frame(width: 60, height: 50)
+            .background(Color.white.opacity(0.15))
+            .cornerRadius(10)
         }
     }
 
@@ -388,9 +437,8 @@ struct GameContainerView: View {
         isRunning = false
         displayRenderer.stopRendering()
         timer?.invalidate()
-        gameProcess?.terminate()
+        Box64Bridge.shared.stopWine()
         gameProcess = nil
-        WineBridge.shared.killWine()
         UnixSocketBridge.shared.stopServer()
         AudioBridge.shared.stopAudio()
     }
@@ -455,20 +503,12 @@ struct GameContainerView: View {
             environment: container.environment
         )
 
-        if let process = launchResult.process {
-            gameProcess = process
-            process.terminationHandler = { proc in
-                DispatchQueue.main.async {
-                    self.isRunning = false
-                    if proc.terminationStatus != 0 {
-                        self.errorMessage = "Wine exited with code \(proc.terminationStatus)\n\nexe: \(finalExePath)\n\nCheck that the .exe path is correct and the game files are in the container."
-                        self.showError = true
-                    }
-                }
-            }
+        if launchResult.wineLaunched {
+            isRunning = true
+            wineOutput = "Wine launched successfully.\nExe: \(finalExePath)"
         } else {
             let detail = launchResult.error ?? "Unknown error"
-            errorMessage = "Failed to launch Box64+Wine:\n\n\(detail)\n\nBox64: \(box64Path)\nWine: \(wine64Path)"
+            errorMessage = detail
             showError = true
         }
 
@@ -477,12 +517,9 @@ struct GameContainerView: View {
     }
 
     private func togglePause() {
-        guard let process = gameProcess else { return }
         if isPaused {
-            kill(process.processIdentifier, SIGCONT)
             isPaused = false
         } else {
-            kill(process.processIdentifier, SIGSTOP)
             isPaused = true
         }
     }

@@ -464,13 +464,23 @@ struct GameContainerView: View {
     }
 
     private func launchGame() {
+        var log: [String] = []
+        func logMsg(_ msg: String) {
+            let ts = ISO8601DateFormatter().string(from: Date())
+            log.append("[\(ts)] \(msg)")
+        }
+
         guard !container.executablePath.isEmpty else {
             errorMessage = "No executable path set for this container.\nPlease edit the container and set the .exe path."
             showError = true
             return
         }
 
+        logMsg("launchGame() called")
+        logMsg("executablePath: \(container.executablePath)")
+
         settingsManager.applySettings()
+        logMsg("Settings applied")
 
         let fm = FileManager.default
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -478,6 +488,10 @@ struct GameContainerView: View {
 
         let box64Path = docs.appendingPathComponent("Box64/box64").path
         let wine64Path = docs.appendingPathComponent("Wine/bin/wine64").path
+
+        logMsg("box64Path: \(box64Path) exists=\(fm.fileExists(atPath: box64Path))")
+        logMsg("wine64Path: \(wine64Path) exists=\(fm.fileExists(atPath: wine64Path))")
+        logMsg("containerPath: \(containerPath)")
 
         guard fm.fileExists(atPath: box64Path) else {
             errorMessage = "Box64 binary not found at:\n\(box64Path)\n\nPlease restart the app to extract bundled binaries."
@@ -493,6 +507,7 @@ struct GameContainerView: View {
         WinePrefixManager.shared.setupDXVKForContainer(containerPath)
         WinePrefixManager.shared.setupVKD3DForContainer(containerPath)
         WinePrefixManager.shared.setupContainerRegistry(containerPath)
+        logMsg("Wine prefix setup done")
 
         let driveCPath = containerPath + "/drive_c"
         let gameDir = driveCPath + "/games/\(container.name)"
@@ -513,9 +528,12 @@ struct GameContainerView: View {
         } else {
             finalExePath = container.executablePath
         }
+        logMsg("finalExePath: \(finalExePath)")
 
         jitManager.enableJIT()
+        logMsg("JIT enabled: \(jitManager.isJITEnabled)")
 
+        logMsg("Calling Box64Bridge.shared.launchWine()...")
         let launchResult = Box64Bridge.shared.launchWine(
             wine64Path: wine64Path,
             executablePath: finalExePath,
@@ -524,13 +542,21 @@ struct GameContainerView: View {
         )
 
         if launchResult.wineLaunched {
+            logMsg("launchWine SUCCESS")
             isRunning = true
-            wineOutput = "Wine launched successfully.\nExe: \(finalExePath)"
+            wineOutput = log.joined(separator: "\n") + "\n\nWine launched successfully.\nExe: \(finalExePath)"
         } else {
             let detail = launchResult.error ?? "Unknown error"
+            logMsg("launchWine FAILED: \(detail)")
+            wineOutput = log.joined(separator: "\n")
             errorMessage = detail
             showError = true
         }
+
+        do {
+            let logPath = docs.appendingPathComponent("launch.log").path
+            try log.joined(separator: "\n").write(toFile: logPath, atomically: true, encoding: .utf8)
+        } catch {}
 
         UnixSocketBridge.shared.startServer()
         AudioBridge.shared.startAudioServer()
@@ -566,8 +592,21 @@ struct GameContainerView: View {
     }
 
     private func refreshRunnerLog() {
-        let log = Box64Bridge.shared.getRunnerLog()
-        wineOutput = log
+        var parts: [String] = []
+
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let launchLogPath = docs.appendingPathComponent("launch.log").path
+        if let data = FileManager.default.contents(atPath: launchLogPath),
+           let content = String(data: data, encoding: .utf8), !content.isEmpty {
+            parts.append("=== Launch Log ===\n\(content)")
+        }
+
+        let runnerLog = Box64Bridge.shared.getRunnerLog()
+        if !runnerLog.contains("No log found") {
+            parts.append("=== Box64 Runner Log ===\n\(runnerLog)")
+        }
+
+        wineOutput = parts.isEmpty ? "No logs yet.\n\nLaunch a game, then open this log." : parts.joined(separator: "\n\n")
     }
 }
 

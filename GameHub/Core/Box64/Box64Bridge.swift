@@ -168,13 +168,31 @@ class Box64Bridge {
     }
 
     func getRunnerLog() -> String {
-        guard let cPath = box64_runner_get_log_path() else { return "No log path available" }
-        let path = String(cString: cPath)
-        guard let data = FileManager.default.contents(atPath: path),
-              let content = String(data: data, encoding: .utf8) else {
-            return "Could not read log at \(path)"
+        if let cPath = box64_runner_get_log_path() {
+            let path = String(cString: cPath)
+            if !path.isEmpty, let data = FileManager.default.contents(atPath: path),
+               let content = String(data: data, encoding: .utf8), !content.isEmpty {
+                return content
+            }
         }
-        return content
+        let home = ProcessInfo.processInfo.environment["HOME"] ?? NSTemporaryDirectory()
+        let knownPath = home + "/box64_runner.log"
+        if let data = FileManager.default.contents(atPath: knownPath),
+           let content = String(data: data, encoding: .utf8), !content.isEmpty {
+            return content
+        }
+        let tmpPath = "/tmp/box64_runner.log"
+        if let data = FileManager.default.contents(atPath: tmpPath),
+           let content = String(data: data, encoding: .utf8), !content.isEmpty {
+            return content
+        }
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docsPath = docs.appendingPathComponent("box64_runner.log").path
+        if let data = FileManager.default.contents(atPath: docsPath),
+           let content = String(data: data, encoding: .utf8), !content.isEmpty {
+            return content
+        }
+        return "No log found. Runner may not have started yet."
     }
 
     func deinitialize() {

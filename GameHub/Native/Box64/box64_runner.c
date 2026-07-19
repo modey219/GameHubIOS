@@ -69,19 +69,17 @@ typedef struct {
 } wine_runner_args_t;
 
 static void setup_logging(const char *prefix_path) {
-    if (!prefix_path) {
-        const char *home = getenv("HOME");
-        if (!home) home = "/tmp";
-        snprintf(g_log_path, sizeof(g_log_path), "%s/box64_runner.log", home);
-    } else {
-        snprintf(g_log_path, sizeof(g_log_path), "%s/box64_runner.log", prefix_path);
-    }
+    const char *home = getenv("HOME");
+    if (!home) home = "/tmp";
+
+    snprintf(g_log_path, sizeof(g_log_path), "%s/box64_runner.log", home);
     mkdir("/tmp", 0755);
     g_log_file = fopen(g_log_path, "w");
     if (!g_log_file) {
         snprintf(g_log_path, sizeof(g_log_path), "/tmp/box64_runner.log");
         g_log_file = fopen(g_log_path, "w");
     }
+    runner_log("[Runner] Log file: %s", g_log_path);
 }
 
 static void *wine_thread_func(void *arg) {

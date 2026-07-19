@@ -625,7 +625,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             ts.tv_nsec = (timeout_ms % 1000) * 1000000;
             // Simple fallback: check if any fds are readable
             int count = 0;
-            for (int i = 0; i < ctx->process.mmap_count && count < a3; i++) {
+            for (int i = 0; i < MAX_TRANSLATED_FDS && count < a3; i++) {
                 if (ctx->process.fds[i].host_fd >= 0 && !ctx->process.fds[i].is_socket) {
                     struct pollfd pfd;
                     pfd.fd = ctx->process.fds[i].host_fd;

@@ -5,8 +5,8 @@
 #include <pthread.h>
 
 #define SYSCALL_TABLE_SIZE 450
-#define MAX_TRANSLATED_FDS 1024
-#define MAX_MMAP_REGIONS 4096
+#define MAX_TRANSLATED_FDS 256
+#define MAX_MMAP_REGIONS 512
 
 typedef struct {
     int linux_fd;
@@ -14,7 +14,7 @@ typedef struct {
     int flags;
     int is_socket;
     int is_epoll;
-    int epoll_fds[MAX_TRANSLATED_FDS];
+    int epoll_fds[64];
     int epoll_count;
 } fd_mapping_t;
 

@@ -95,9 +95,6 @@ struct GameHubApp: App {
                 try? fm.createDirectory(at: docs.appendingPathComponent(dir), withIntermediateDirectories: true)
             }
 
-            self.updateProgress("Initializing graphics...")
-            GraphicsBridge.shared.initialize()
-
             let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
             let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
 
@@ -116,6 +113,9 @@ struct GameHubApp: App {
                     return
                 }
             }
+
+            self.updateProgress("Initializing graphics...")
+            GraphicsBridge.shared.initialize()
 
             self.updateProgress("Initializing Box64...")
             Box64Bridge.shared.initialize()

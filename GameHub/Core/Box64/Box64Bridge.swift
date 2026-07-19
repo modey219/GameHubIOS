@@ -57,6 +57,17 @@ class Box64Bridge {
         return nil
     }
 
+    private static func memoryUsageMB() -> UInt64 {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        return result == KERN_SUCCESS ? UInt64(info.resident_size) / (1024 * 1024) : 0
+    }
+
     func setupAllBundledBinaries(progressCallback: ((String) -> Void)? = nil) throws {
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
@@ -69,17 +80,35 @@ class Box64Bridge {
 
         try fm.createDirectory(at: docs.appendingPathComponent("Graphics"), withIntermediateDirectories: true)
 
-        progressCallback?("Extracting Box64...")
-        try extractBox64()
-        progressCallback?("Extracting Wine...")
-        try extractWine()
-        progressCallback?("Extracting MoltenVK...")
-        try extractMoltenVK()
-        progressCallback?("Extracting DXVK...")
-        try extractDXVK()
+        Self.log("setupAllBundledBinaries: memory before extraction = \(Self.memoryUsageMB())MB")
 
-        progressCallback?("Copying binaries to temp (for execution)...")
+        progressCallback?("Extracting Box64...")
+        autoreleasepool {
+            do { try extractBox64() } catch { Self.log("extractBox64 failed: \(error)") }
+        }
+        Self.log("memory after Box64 extraction = \(Self.memoryUsageMB())MB")
+
+        progressCallback?("Extracting Wine...")
+        autoreleasepool {
+            do { try extractWine() } catch { Self.log("extractWine failed: \(error)") }
+        }
+        Self.log("memory after Wine extraction = \(Self.memoryUsageMB())MB")
+
+        progressCallback?("Extracting MoltenVK...")
+        autoreleasepool {
+            do { try extractMoltenVK() } catch { Self.log("extractMoltenVK failed: \(error)") }
+        }
+        Self.log("memory after MoltenVK extraction = \(Self.memoryUsageMB())MB")
+
+        progressCallback?("Extracting DXVK...")
+        autoreleasepool {
+            do { try extractDXVK() } catch { Self.log("extractDXVK failed: \(error)") }
+        }
+        Self.log("memory after DXVK extraction = \(Self.memoryUsageMB())MB")
+
+        progressCallback?("Copying binaries to temp...")
         copyBinariesToTemp()
+        Self.log("setupAllBundledBinaries: memory after all = \(Self.memoryUsageMB())MB")
     }
 
     private func copyBinariesToTemp() {

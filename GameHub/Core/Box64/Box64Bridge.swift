@@ -167,6 +167,11 @@ class Box64Bridge {
         safeSetenv("BOX64_NOSSE", "1", 1)
         safeSetenv("HOME", (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory).appendingPathComponent("Wine").path, 1)
+        safeSetenv("MVK_CONFIG_LOG_LEVEL", "0", 1)
+        safeSetenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "1", 1)
+        safeSetenv("DXVK_LOG_LEVEL", "none", 1)
+        safeSetenv("DXVK_HUD", "fps", 1)
+        safeSetenv("VKD3D_CONFIG", "dxr", 1)
     }
 
     func launchWine(wine64Path: String, executablePath: String, containerPath: String, environment: [String: String]) -> LaunchResult {

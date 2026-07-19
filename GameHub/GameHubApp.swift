@@ -114,9 +114,6 @@ struct GameHubApp: App {
                 }
             }
 
-            self.updateProgress("Initializing graphics...")
-            GraphicsBridge.shared.initialize()
-
             self.updateProgress("Initializing Box64...")
             Box64Bridge.shared.initialize()
 

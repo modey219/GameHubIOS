@@ -1,0 +1,8 @@
+*.xcworkspace/
+*.xcodeproj/
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+base.apk

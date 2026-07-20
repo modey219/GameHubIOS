@@ -714,7 +714,7 @@ class MetalGameCoordinator: NSObject, MTKViewDelegate {
     }
 
     func updateTexture(from renderer: DisplayRenderer) {
-        guard let newTex = renderer.currentTexture else { return }
+        guard let newTex = renderer.getCurrentTexture() else { return }
         lock.lock()
         texture = newTex
         lock.unlock()

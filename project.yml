@@ -50,7 +50,6 @@ targets:
         CODE_SIGNING_ALLOWED: "NO"
         HEADER_SEARCH_PATHS:
           - "$(SRCROOT)/GameHub/Native/Include"
-          - "$(SRCROOT)/GameHub/Native/Compat"
         LIBRARY_SEARCH_PATHS:
           - "$(SRCROOT)/GameHub/Native/Box64Lib"
           - "$(SRCROOT)/GameHub/Native/Box64Lib/objects"
@@ -58,6 +57,7 @@ targets:
           - "-lbox64"
         OTHER_CFLAGS:
           - "-I$(SRCROOT)/GameHub/Native/Include"
+          - "-I$(SRCROOT)/GameHub/Native/Compat"
           - "-Wno-unused-variable"
           - "-Wno-unused-function"
           - "-Wno-deprecated-declarations"

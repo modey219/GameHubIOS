@@ -486,29 +486,34 @@ jobs:
 
       - name: Create GitHub Release
         if: success()
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: build-${{ github.run_number }}
-          name: "MN Emulator Build #${{ github.run_number }}"
-          body: |
-            MN Emulator - PC Game Emulator for iPhone & iPad
-            
-            **Installation:**
-            1. Download MNEmulator.ipa below
-            2. Install via LiveContainer, SideStore, AltStore, or TrollStore
-            3. For best performance: Use StikDebug to enable JIT
-            
-            **All-in-one IPA (no downloads needed):**
-            - Box64 x86_64 to ARM64 translation (compiled from source)
-            - Wine 9.21 (x86_64 Linux, runs via Box64)
-            - MoltenVK 1.4.1 (Vulkan to Metal)
-            - DXVK 2.6.1 (DirectX 11 to Vulkan)
-            
-            Supports iPhone & iPad (iOS 16+)
-            
-            Created by: @R_MOX
-          files: build/MNEmulator.ipa
-          prerelease: true
+        run: |
+          TAG="build-${{ github.run_number }}"
+          BODY="MN Emulator - PC Game Emulator for iPhone & iPad
+
+          **Installation:**
+          1. Download MNEmulator.ipa below
+          2. Install via LiveContainer, SideStore, AltStore, or TrollStore
+          3. For best performance: Use StikDebug to enable JIT
+
+          **All-in-one IPA (no downloads needed):**
+          - Box64 x86_64 to ARM64 translation (compiled from source)
+          - Wine 9.21 (x86_64 Linux, runs via Box64)
+          - MoltenVK 1.4.1 (Vulkan to Metal)
+          - DXVK 2.6.1 (DirectX 11 to Vulkan)
+
+          Supports iPhone & iPad (iOS 16+)
+
+          Created by: @R_MOX"
+
+          # Delete existing release/tag if present (from a retry)
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          git push origin --delete "$TAG" 2>/dev/null || true
+
+          # Create fresh release
+          gh release create "$TAG" build/MNEmulator.ipa \
+            --title "MN Emulator Build #${{ github.run_number }}" \
+            --notes "$BODY" \
+            --prerelease
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

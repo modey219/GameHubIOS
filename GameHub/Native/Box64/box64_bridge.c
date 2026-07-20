@@ -31,18 +31,22 @@ static void bridge_log(const char *msg) {
 
 box64_context_t *box64_create(void) {
     bridge_log("[Bridge] box64_create() called");
+    bridge_log("[Bridge] sizeof(box64_context_t) = ?");
     box64_context_t *ctx = calloc(1, sizeof(box64_context_t));
     if (!ctx) { bridge_log("[Bridge] box64_create: calloc failed"); return NULL; }
+    bridge_log("[Bridge] box64_create: ctx allocated OK");
     ctx->emulator = syscall_emulator_create();
     if (!ctx->emulator) {
         bridge_log("[Bridge] box64_create: syscall_emulator_create returned NULL");
         free(ctx);
         return NULL;
     }
+    bridge_log("[Bridge] box64_create: emulator created OK");
     syscall_set_context(ctx->emulator);
+    bridge_log("[Bridge] box64_create: context set OK");
     ctx->child_pid = -1;
     g_box64 = ctx;
-    bridge_log("[Bridge] box64_create: OK");
+    bridge_log("[Bridge] box64_create: DONE");
     return ctx;
 }
 

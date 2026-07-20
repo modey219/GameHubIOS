@@ -56,7 +56,7 @@ static void signal_handler(int sig) {
     if (g_log_fd >= 0) {
         /* Write crash marker using only write() */
         const char *prefix = "[CRASH] Signal ";
-        write(g_log_fd, prefix, 15);
+        write(g_log_fd, prefix, sizeof("[CRASH] Signal ") - 1);
         /* Write signal number as decimal */
         char sigbuf[16];
         int siglen = 0;

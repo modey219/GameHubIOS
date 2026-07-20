@@ -8,7 +8,7 @@
 
 /* Box64 needs these Linux/glibc symbols that don't exist on iOS */
 
-int __isnanf(float x) { return isnan(x); }
+int __isnanf(float x) { return isnan((double)x); }
 int __isinf(double x) { return isinf(x); }
 int __isnan(double x) { return isnan(x); }
 

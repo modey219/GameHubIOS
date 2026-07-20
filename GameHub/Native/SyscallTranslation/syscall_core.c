@@ -172,9 +172,11 @@ static int to_host_flags(int lf) {
     else if ((lf & 0x3) == 0x1) h |= O_WRONLY;
     else if ((lf & 0x3) == 0x2) h |= O_RDWR;
     if (lf & 0x0040) h |= O_CREAT;
+    if (lf & 0x0080) h |= O_EXCL;
     if (lf & 0x0200) h |= O_TRUNC;
     if (lf & 0x0400) h |= O_APPEND;
     if (lf & 0x0800) h |= O_NONBLOCK;
+    if (lf & 0x10000) h |= O_DIRECTORY;
     if (lf & 0x80000) h |= O_CLOEXEC;
     return h;
 }
@@ -232,6 +234,8 @@ linux_addr_t emulator_mmap(emulator_context_t *ctx, linux_addr_t addr, size_t le
         linux_addr_t guest = (flags & 0x10) ? addr : (linux_addr_t)(uintptr_t)r;
         reg->guest_addr = (void *)(uintptr_t)guest; reg->host_addr = r; reg->size = length;
         reg->prot = prot; reg->flags = flags; reg->fd = fd; reg->offset = offset;
+    } else {
+        fprintf(stderr, "[Syscall] mmap tracking full (%d) — unmapped but not tracked\n", MAX_MMAP_REGIONS);
     }
     return (linux_addr_t)(uintptr_t)r;
 }
@@ -250,11 +254,11 @@ int emulator_munmap(emulator_context_t *ctx, linux_addr_t addr, size_t length) {
     int r = munmap((void *)(uintptr_t)addr, length);
     if (ctx) {
         for (int i = 0; i < ctx->process.mmap_count; i++) {
-        if ((linux_addr_t)(uintptr_t)ctx->process.mmap_regions[i].host_addr == addr) {
-            ctx->process.mmap_regions[i] = ctx->process.mmap_regions[--ctx->process.mmap_count];
-            break;
+            if ((linux_addr_t)(uintptr_t)ctx->process.mmap_regions[i].host_addr == addr) {
+                ctx->process.mmap_regions[i] = ctx->process.mmap_regions[--ctx->process.mmap_count];
+                break;
+            }
         }
-    }
     }
     return r;
 }
@@ -289,6 +293,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return s;
         }
         case 3: {
+            if (a1 < 0 || a1 >= MAX_TRANSLATED_FDS) return -EBADF;
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
             close(hfd);
@@ -359,9 +364,15 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             int hp[2];
             if (pipe(hp) < 0) return -errno;
             int s0 = find_free_fd_slot(ctx);
-            int s1 = find_free_fd_slot(ctx);
-            if (s0 < 0 || s1 < 0) { close(hp[0]); close(hp[1]); return -EMFILE; }
+            if (s0 < 0) { close(hp[0]); close(hp[1]); return -EMFILE; }
             register_host_fd(ctx, s0, hp[0], 0);
+            int s1 = find_free_fd_slot(ctx);
+            if (s1 < 0) {
+                close(hp[0]); close(hp[1]);
+                ctx->process.fds[s0].linux_fd = -1;
+                ctx->process.fds[s0].host_fd = -1;
+                return -EMFILE;
+            }
             register_host_fd(ctx, s1, hp[1], 0);
             int *fd = (int *)(uintptr_t)a1;
             fd[0] = s0; fd[1] = s1;
@@ -378,6 +389,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return r < 0 ? -errno : r;
         }
         case 32: {
+            if (a1 < 0 || a1 >= MAX_TRANSLATED_FDS) return -EBADF;
             int ho = host_fd_for_linux(ctx, a1);
             if (ho < 0) return -EBADF;
             int dest_fd = host_fd_for_linux(ctx, a2);
@@ -484,19 +496,9 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             const char *path = (const char *)(uintptr_t)a1;
             char **argv = (char **)(uintptr_t)a2;
             char **envp = (char **)(uintptr_t)a3;
-            if (envp) {
-                for (int i = 0; envp[i]; i++) {
-                    char *eq = strchr(envp[i], '=');
-                    if (eq) {
-                        char k[256] = {0};
-                        int kl = eq - envp[i];
-                        if (kl < 255) { strncpy(k, envp[i], kl); setenv(k, eq + 1, 1); }
-                    }
-                }
-            }
             fprintf(stderr, "[Emulator] execve: %s\n", path);
             pid_t pid;
-            int r = posix_spawn(&pid, path, NULL, NULL, argv, environ);
+            int r = posix_spawn(&pid, path, NULL, NULL, argv, envp ? envp : environ);
             if (r != 0) return -r;
             int status;
             waitpid(pid, &status, 0);
@@ -555,8 +557,11 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         case 82: { int r = rename((const char *)(uintptr_t)a1, (const char *)(uintptr_t)a2); return r < 0 ? -errno : 0; }
         case 83: { int r = mkdir((const char *)(uintptr_t)a1, a2); return r < 0 ? -errno : 0; }
         case 89: {
-            ssize_t r = readlink((const char *)(uintptr_t)a1, (char *)(uintptr_t)a2, a3);
-            return r < 0 ? -errno : r;
+            if (a3 <= 0) return -EINVAL;
+            ssize_t r = readlink((const char *)(uintptr_t)a1, (char *)(uintptr_t)a2, a3 - 1);
+            if (r < 0) return -errno;
+            ((char *)(uintptr_t)a2)[r] = '\0';
+            return r;
         }
         case 94: return geteuid();
         case 95: return getegid();
@@ -569,9 +574,18 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         case 107: {
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
-            struct sockaddr_storage ss; socklen_t sl = 128;
+            struct sockaddr_storage ss;
+            socklen_t sl = sizeof(ss);
             int r = getpeername(hfd, (struct sockaddr *)&ss, &sl);
-            return r < 0 ? -errno : 0;
+            if (r < 0) return -errno;
+            if (a2 && a3) {
+                socklen_t copylen = sl;
+                if (copylen > *(socklen_t *)(uintptr_t)a3)
+                    copylen = *(socklen_t *)(uintptr_t)a3;
+                memcpy((void *)(uintptr_t)a2, &ss, copylen);
+                *(socklen_t *)(uintptr_t)a3 = sl;
+            }
+            return 0;
         }
         case 110: return getppid();
         case 118: {
@@ -593,7 +607,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         case 140: {
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
-            off_t off = ((off_t)a2 << 32) | (unsigned int)a3;
+            off_t off = ((off_t)(unsigned int)a2 << 32) | (off_t)(unsigned int)a3;
             off_t r = lseek(hfd, off, a5);
             if (r < 0) return -errno;
             if (a4) *(long long *)(uintptr_t)a4 = r;
@@ -730,9 +744,15 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             int hp[2];
             if (pipe(hp) < 0) return -errno;
             int s0 = find_free_fd_slot(ctx);
-            int s1 = find_free_fd_slot(ctx);
-            if (s0 < 0 || s1 < 0) { close(hp[0]); close(hp[1]); return -EMFILE; }
+            if (s0 < 0) { close(hp[0]); close(hp[1]); return -EMFILE; }
             register_host_fd(ctx, s0, hp[0], 0);
+            int s1 = find_free_fd_slot(ctx);
+            if (s1 < 0) {
+                close(hp[0]); close(hp[1]);
+                ctx->process.fds[s0].linux_fd = -1;
+                ctx->process.fds[s0].host_fd = -1;
+                return -EMFILE;
+            }
             register_host_fd(ctx, s1, hp[1], 0);
             int *fd = (int *)(uintptr_t)a1;
             fd[0] = s0; fd[1] = s1;

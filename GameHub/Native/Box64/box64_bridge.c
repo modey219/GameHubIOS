@@ -92,6 +92,7 @@ int box64_set_wine_path(box64_context_t *ctx, const char *wine_path) {
     snprintf(buf, sizeof(buf), "[Bridge] box64_set_wine_path(%s)", wine_path);
     bridge_log(buf);
     strncpy(ctx->wine_path, wine_path, sizeof(ctx->wine_path) - 1);
+    ctx->wine_path[sizeof(ctx->wine_path) - 1] = '\0';
     return 0;
 }
 
@@ -101,6 +102,7 @@ int box64_set_prefix(box64_context_t *ctx, const char *prefix_path) {
     snprintf(buf, sizeof(buf), "[Bridge] box64_set_prefix(%s)", prefix_path);
     bridge_log(buf);
     strncpy(ctx->prefix_path, prefix_path, sizeof(ctx->prefix_path) - 1);
+    ctx->prefix_path[sizeof(ctx->prefix_path) - 1] = '\0';
     return 0;
 }
 
@@ -110,6 +112,7 @@ int box64_set_game(box64_context_t *ctx, const char *game_exe) {
     snprintf(buf, sizeof(buf), "[Bridge] box64_set_game(%s)", game_exe);
     bridge_log(buf);
     strncpy(ctx->game_path, game_exe, sizeof(ctx->game_path) - 1);
+    ctx->game_path[sizeof(ctx->game_path) - 1] = '\0';
     return 0;
 }
 
@@ -157,6 +160,7 @@ int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_e
     }
 
     strncpy(ctx->game_path, exe_path, sizeof(ctx->game_path) - 1);
+    ctx->game_path[sizeof(ctx->game_path) - 1] = '\0';
 
     snprintf(buf, sizeof(buf), "[Bridge] resolved wine_bin=%s", wine_bin);
     bridge_log(buf);

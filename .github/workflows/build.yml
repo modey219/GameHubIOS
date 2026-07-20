@@ -2,7 +2,7 @@ name: Build MN Emulator IPA
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:

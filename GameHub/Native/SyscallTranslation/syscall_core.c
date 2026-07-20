@@ -41,22 +41,23 @@
 
 extern char **environ;
 
-static _Atomic emulator_context_t *g_ctx = NULL;
+static emulator_context_t *g_ctx = NULL;
 
 void syscall_set_context(emulator_context_t *ctx) {
-    atomic_store(&g_ctx, ctx);
+    __atomic_store_n(&g_ctx, ctx, __ATOMIC_SEQ_CST);
 }
 
 emulator_context_t *syscall_get_context(void) {
-    return atomic_load(&g_ctx);
+    return __atomic_load_n(&g_ctx, __ATOMIC_SEQ_CST);
 }
 
 void syscall_translation_init(void) {
-    if (!atomic_load(&g_ctx)) {
+    if (!__atomic_load_n(&g_ctx, __ATOMIC_SEQ_CST)) {
         emulator_context_t *new_ctx = syscall_emulator_create();
         if (new_ctx) {
             emulator_context_t *expected = NULL;
-            if (!atomic_compare_exchange_strong(&g_ctx, &expected, new_ctx)) {
+            if (!__atomic_compare_exchange_n(&g_ctx, &expected, new_ctx,
+                                             0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
                 syscall_emulator_destroy(new_ctx);
             }
         }
@@ -514,7 +515,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         }
         case 80: {
             int r = chdir((const char *)(uintptr_t)a1);
-            if (r == 0) strncpy(ctx->process.cwd, (const char *)(uintptr_t)a1, LINUX_PATH_MAX - 1);
+            if (r == 0) strncpy(ctx->process.cwd, (const char *)(uintptr_t)a1, sizeof(ctx->process.cwd) - 1);
             return r < 0 ? -errno : 0;
         }
         case 82: { int r = rename((const char *)(uintptr_t)a1, (const char *)(uintptr_t)a2); return r < 0 ? -errno : 0; }

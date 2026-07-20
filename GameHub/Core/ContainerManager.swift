@@ -66,7 +66,10 @@ class ContainerManager: ObservableObject {
         let snapshot = containers
         lock.unlock()
         saveContainers()
-        DispatchQueue.main.async { self.containers = snapshot }
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.containers = snapshot
+        }
         return container
     }
 
@@ -109,7 +112,8 @@ class ContainerManager: ObservableObject {
         let snapshot = containers
         lock.unlock()
         saveContainers()
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             self.containers = snapshot
             if deselected { self.selectedContainer = nil }
         }
@@ -126,7 +130,10 @@ class ContainerManager: ObservableObject {
         let snapshot = containers
         lock.unlock()
         saveContainers()
-        DispatchQueue.main.async { self.containers = snapshot }
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.containers = snapshot
+        }
     }
 
     func installGameFiles(containerID: UUID, files: [(source: URL, destination: String)]) {

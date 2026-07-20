@@ -150,10 +150,15 @@ class Box64Bridge {
 
         if let localCtx = localCtx {
             Self.log("calling box64_init...")
-            box64_init(localCtx, box64InstallPath)
-            Self.log("box64_init done")
-            ctx = localCtx
-            isInitialized = true
+            let initResult = box64_init(localCtx, box64InstallPath)
+            Self.log("box64_init returned \(initResult)")
+            if initResult == 0 {
+                ctx = localCtx
+                isInitialized = true
+            } else {
+                Self.log("box64_init FAILED — destroying context")
+                box64_destroy(localCtx)
+            }
         } else {
             Self.log("box64_create returned NULL! Cannot initialize.")
         }
@@ -184,11 +189,8 @@ class Box64Bridge {
         var result = LaunchResult()
 
         lock.lock()
-        let initialized = isInitialized
-        let ctxPtr = ctx
-        lock.unlock()
-
-        guard initialized, let ctx = ctxPtr else {
+        guard isInitialized, let ctx = ctx else {
+            lock.unlock()
             Self.log("ERROR: Box64 not initialized")
             result.error = "Box64 not initialized. Please restart the app."
             return result
@@ -220,6 +222,7 @@ class Box64Bridge {
             let cError = box64_get_wine_error()
             let errStr = cError.map { String(cString: $0) } ?? ""
             Self.log("ERROR: box64_launch_wine failed: \(errStr)")
+            lock.unlock()
             result.error = "Failed to launch Box64+Wine (error \(rc)):\n\(errStr)\n\n" +
                 "Binary: \(wine64Path)\n" +
                 "Exe: \(executablePath)\n\n" +
@@ -232,7 +235,6 @@ class Box64Bridge {
         }
 
         Self.log("launchWine SUCCESS")
-        lock.lock()
         _isRunning = true
         lock.unlock()
         result.wineLaunched = true
@@ -243,22 +245,19 @@ class Box64Bridge {
 
     func stopWine() {
         lock.lock()
-        let localCtx = ctx
-        lock.unlock()
-        guard let ctx = localCtx else { return }
+        guard let ctx = ctx else { lock.unlock(); return }
         box64_stop(ctx)
-        lock.lock()
         _isRunning = false
         lock.unlock()
     }
 
     func getEmulatorStatus() -> String {
         lock.lock()
-        let localCtx = ctx
+        guard let ctx = ctx else { lock.unlock(); return "not initialized" }
+        guard let cStr = box64_get_status(ctx) else { lock.unlock(); return "unknown" }
+        let status = String(cString: cStr)
         lock.unlock()
-        guard let ctx = localCtx else { return "not initialized" }
-        guard let cStr = box64_get_status(ctx) else { return "unknown" }
-        return String(cString: cStr)
+        return status
     }
 
     func getRunnerLog() -> String {

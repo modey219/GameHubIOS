@@ -27,7 +27,8 @@ class WineBridge {
 
     func initialize() {
         lock.lock()
-        guard !isInitialized else { lock.unlock(); return }
+        defer { lock.unlock() }
+        guard !isInitialized else { return }
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         winePrefix = docs.appendingPathComponent("Wine").path

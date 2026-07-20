@@ -38,14 +38,17 @@ class GraphicsBridge {
     }
 
     func getGPUInfo() -> [String: Any] {
-        guard let device = device else { return ["error": "No Metal device"] }
-        return [
+        lock.lock()
+        guard let device = device else { lock.unlock(); return ["error": "No Metal device"] }
+        let info: [String: Any] = [
             "name": device.name,
             "maxBufferSize": device.maxBufferLength,
             "hasUnifiedMemory": device.hasUnifiedMemory,
             "supportsApple7": device.supportsFamily(.apple7),
             "supportsApple6": device.supportsFamily(.apple6),
         ]
+        lock.unlock()
+        return info
     }
 
     func setupDXVKEnvironment(containerPath: String) {

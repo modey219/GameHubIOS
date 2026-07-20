@@ -48,6 +48,9 @@ targets:
         CODE_SIGN_IDENTITY: ""
         CODE_SIGNING_REQUIRED: "NO"
         CODE_SIGNING_ALLOWED: "NO"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/GameHub/Native/Include"
+          - "$(SRCROOT)/GameHub/Native/Compat"
         LIBRARY_SEARCH_PATHS:
           - "$(SRCROOT)/GameHub/Native/Box64Lib"
           - "$(SRCROOT)/GameHub/Native/Box64Lib/objects"
@@ -57,10 +60,8 @@ targets:
           - "-I$(SRCROOT)/GameHub/Native/Include"
           - "-Wno-unused-variable"
           - "-Wno-unused-function"
-          - "-Wno-incompatible-pointer-types"
           - "-Wno-deprecated-declarations"
           - "-Wno-shorten-64-to-32"
-          - "-Wno-implicit-function-declaration"
         SWIFT_OBJC_BRIDGING_HEADER: "GameHub/GameHub-Bridging-Header.h"
         GCC_PREPROCESSOR_DEFINITIONS:
           - "__IOS__=1"

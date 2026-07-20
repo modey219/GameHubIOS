@@ -13,8 +13,15 @@ class DisplayRenderer: NSObject, ObservableObject {
     @Published var isRendering = false
     @Published var resolution: CGSize = .zero
 
-    private(set) var currentTexture: MTLTexture?
+    private var _currentTexture: MTLTexture?
     private var textureLock = NSLock()
+
+    func getCurrentTexture() -> MTLTexture? {
+        textureLock.lock()
+        let tex = _currentTexture
+        textureLock.unlock()
+        return tex
+    }
 
     private(set) var device: MTLDevice?
     private var commandQueue: MTLCommandQueue?
@@ -126,8 +133,8 @@ class DisplayRenderer: NSObject, ObservableObject {
         }
 
         textureLock.lock()
-        let oldTexture = currentTexture
-        currentTexture = newTexture
+        let oldTexture = _currentTexture
+        _currentTexture = newTexture
         if let old = oldTexture, old.width == width && old.height == height, texturePool.count < maxTexturePoolSize {
             texturePool.append(old)
         }

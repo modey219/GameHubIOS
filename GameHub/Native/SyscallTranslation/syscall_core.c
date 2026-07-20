@@ -13,7 +13,6 @@
 #include <sys/ioctl.h>
 #include <sys/time.h>
 #include <sys/resource.h>
-#include <sys/mman.h>
 #if __has_include(<sys/shm.h>)
 #include <sys/shm.h>
 #endif
@@ -267,18 +266,21 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
 
     switch (num) {
         case 0: {
+            if (!a2) return -EINVAL;
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
             ssize_t r = read(hfd, (void *)(uintptr_t)a2, a3);
             return r < 0 ? -errno : r;
         }
         case 1: {
+            if (!a2) return -EINVAL;
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
             ssize_t r = write(hfd, (const void *)(uintptr_t)a2, a3);
             return r < 0 ? -errno : r;
         }
         case 2: {
+            if (!a1) return -EINVAL;
             int hf = to_host_flags(a2);
             int hfd = open((const char *)(uintptr_t)a1, hf, a3);
             if (hfd < 0) return -errno;
@@ -299,8 +301,15 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         case 4: case 5: {
             struct stat hs;
             int r;
-            if (num == 4) r = stat((const char *)(uintptr_t)a1, &hs);
-            else r = fstat(host_fd_for_linux(ctx, a1), &hs);
+            if (num == 4) {
+                if (!a1 || !a2) return -EINVAL;
+                r = stat((const char *)(uintptr_t)a1, &hs);
+            } else {
+                if (!a2) return -EINVAL;
+                int hfd = host_fd_for_linux(ctx, a1);
+                if (hfd < 0) return -EBADF;
+                r = fstat(hfd, &hs);
+            }
             if (r < 0) return -errno;
             fill_stat((struct linux_stat *)(uintptr_t)a2, &hs);
             return 0;
@@ -313,6 +322,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return r;
         }
         case 8: {
+            if (!a1) return -EINVAL;
             int r = access((const char *)(uintptr_t)a1, a2);
             return r < 0 ? -errno : 0;
         }
@@ -335,6 +345,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
             if ((unsigned long)a2 == 0x5413) {
+                if (!a3) return -EINVAL;
                 struct winsize *ws = (struct winsize *)(uintptr_t)a3;
                 ws->ws_col = 80; ws->ws_row = 24;
                 return 0;
@@ -356,6 +367,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return r < 0 ? -errno : 0;
         }
         case 17: {
+            if (!a1) return -EINVAL;
             int hp[2];
             if (pipe(hp) < 0) return -errno;
             int s0 = find_free_fd_slot(ctx);
@@ -374,7 +386,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return 0;
         }
         case 20: return getpid();
-        case 21: { int r = unlink((const char *)(uintptr_t)a1); return r < 0 ? -errno : 0; }
+        case 21: { if (!a1) return -EINVAL; int r = unlink((const char *)(uintptr_t)a1); return r < 0 ? -errno : 0; }
         case 24: return getuid();
         case 25: return getgid();
         case 28: {
@@ -385,6 +397,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         }
         case 32: {
             if (a1 < 0 || a1 >= MAX_TRANSLATED_FDS) return -EBADF;
+            if (a2 < 0 || a2 >= MAX_TRANSLATED_FDS) return -EBADF;
             int ho = host_fd_for_linux(ctx, a1);
             if (ho < 0) return -EBADF;
             int dest_fd = host_fd_for_linux(ctx, a2);
@@ -401,6 +414,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         }
         case 33: return getppid();
         case 35: {
+            if (!a1) return -EINVAL;
             struct timespec hr;
             hr.tv_sec = ((struct linux_timespec *)(uintptr_t)a1)->tv_sec;
             hr.tv_nsec = ((struct linux_timespec *)(uintptr_t)a1)->tv_nsec;
@@ -424,6 +438,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return s;
         }
         case 42: {
+            if (!a2) return -EINVAL;
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
             struct linux_sockaddr_in *la = (struct linux_sockaddr_in *)(uintptr_t)a2;
@@ -439,6 +454,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return -EAFNOSUPPORT;
         }
         case 49: {
+            if (!a2) return -EINVAL;
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
             struct linux_sockaddr_in *la = (struct linux_sockaddr_in *)(uintptr_t)a2;
@@ -473,6 +489,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return s;
         }
         case 54: {
+            if (!a4) return -EINVAL;
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
             int hl = a2 == LINUX_SOL_SOCKET ? SOL_SOCKET : a2;
@@ -484,10 +501,10 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return getpid();
         }
         case 57: {
-            // fork - stub: return 0 (child) for Wine prefix init
-            return 0;
+            return -ENOSYS;
         }
         case 59: {
+            if (!a1) return -EINVAL;
             const char *path = (const char *)(uintptr_t)a1;
             char **argv = (char **)(uintptr_t)a2;
             char **envp = (char **)(uintptr_t)a3;
@@ -501,6 +518,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         }
         case 60: { ctx->running = 0; return a1; }
         case 63: {
+            if (!a1) return -EINVAL;
             struct linux_utsname *n = (struct linux_utsname *)(uintptr_t)a1;
             memset(n, 0, sizeof(*n));
             strcpy(n->sysname, "Linux");
@@ -521,6 +539,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return r < 0 ? -errno : r;
         }
         case 78: {
+            if (!a2 || !a3) return -EINVAL;
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
             DIR *dir = fdopendir(dup(hfd));
@@ -545,13 +564,18 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return off;
         }
         case 80: {
+            if (!a1) return -EINVAL;
             int r = chdir((const char *)(uintptr_t)a1);
-            if (r == 0) strncpy(ctx->process.cwd, (const char *)(uintptr_t)a1, sizeof(ctx->process.cwd) - 1);
+            if (r == 0) {
+                strncpy(ctx->process.cwd, (const char *)(uintptr_t)a1, sizeof(ctx->process.cwd) - 1);
+                ctx->process.cwd[sizeof(ctx->process.cwd) - 1] = '\0';
+            }
             return r < 0 ? -errno : 0;
         }
-        case 82: { int r = rename((const char *)(uintptr_t)a1, (const char *)(uintptr_t)a2); return r < 0 ? -errno : 0; }
-        case 83: { int r = mkdir((const char *)(uintptr_t)a1, a2); return r < 0 ? -errno : 0; }
+        case 82: { if (!a1 || !a2) return -EINVAL; int r = rename((const char *)(uintptr_t)a1, (const char *)(uintptr_t)a2); return r < 0 ? -errno : 0; }
+        case 83: { if (!a1) return -EINVAL; int r = mkdir((const char *)(uintptr_t)a1, a2); return r < 0 ? -errno : 0; }
         case 89: {
+            if (!a1 || !a2) return -EINVAL;
             if (a3 <= 0) return -EINVAL;
             ssize_t r = readlink((const char *)(uintptr_t)a1, (char *)(uintptr_t)a2, a3 - 1);
             if (r < 0) return -errno;
@@ -618,6 +642,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return 0;
         }
         case 168: {
+            if (!a1) return -EINVAL;
             struct pollfd *pfd = (struct pollfd *)(uintptr_t)a1;
             if (a2 > 1024) a2 = 1024;
             if (a2 <= 0) return -EINVAL;
@@ -649,7 +674,8 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             int *uaddr = (int *)(uintptr_t)a1;
             if (futex_op == 0) {
                 // FUTEX_WAIT: wait if *uaddr == val
-                if (uaddr && *uaddr == (int)a3) {
+                if (!uaddr) return -EINVAL;
+                if (*uaddr == (int)a3) {
                     struct timespec ts;
                     if (a4) {
                         ts.tv_sec = ((struct linux_timespec *)(uintptr_t)a4)->tv_sec;
@@ -670,6 +696,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         case 214: return getpgid(a1);
         case 218: return (long)pthread_self();
         case 228: {
+            if (!a2) return -EINVAL;
             clockid_t c = a1 == 1 ? CLOCK_MONOTONIC : CLOCK_REALTIME;
             struct timespec ts;
             int r = clock_gettime(c, &ts);
@@ -680,6 +707,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         }
         case 231: { ctx->running = 0; return a1; }
         case 257: {
+            if (!a2) return -EINVAL;
             int hf = to_host_flags(a3);
             int hfd = open((const char *)(uintptr_t)a2, hf, a4);
             if (hfd < 0) return -errno;
@@ -689,6 +717,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return s;
         }
         case 262: {
+            if (!a2 || !a3) return -EINVAL;
             struct stat hs;
             int r = stat((const char *)(uintptr_t)a2, &hs);
             if (r < 0) return -errno;
@@ -709,9 +738,6 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             struct linux_epoll_event *levents = (struct linux_epoll_event *)(uintptr_t)a2;
             if (!levents) return -EINVAL;
             int timeout_ms = a4;
-            struct timespec ts;
-            ts.tv_sec = timeout_ms / 1000;
-            ts.tv_nsec = (timeout_ms % 1000) * 1000000;
             // Simple fallback: check if any fds are readable
             int count = 0;
             for (int i = 0; i < MAX_TRANSLATED_FDS && count < a3; i++) {
@@ -736,6 +762,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return 0;
         }
         case 293: {
+            if (!a1) return -EINVAL;
             int hp[2];
             if (pipe(hp) < 0) return -errno;
             int s0 = find_free_fd_slot(ctx);
@@ -762,6 +789,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         }
         case 308: {
             // getdents64 - similar to getdents but with linux_dirent64
+            if (!a2 || !a3) return -EINVAL;
             int hfd = host_fd_for_linux(ctx, a1);
             if (hfd < 0) return -EBADF;
             DIR *dir = fdopendir(dup(hfd));
@@ -794,6 +822,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return 0;
         }
         case 318: {
+            if (!a1 || !a2) return -EINVAL;
             int fd = open("/dev/urandom", O_RDONLY);
             if (fd < 0) return -errno;
             ssize_t r = read(fd, (void *)(uintptr_t)a1, a2);
@@ -829,6 +858,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
         }
         case 99: {
             // sysinfo - return memory info based on configured limit
+            if (!a1) return -EINVAL;
             struct {
                 long uptime;
                 unsigned long loads[3];
@@ -873,6 +903,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
 }
 
 int emulator_run(emulator_context_t *ctx, const char *executable, char **argv, char **envp) {
+    if (!ctx || !executable) return -EINVAL;
     ctx->running = 1;
     fprintf(stderr, "[Emulator] Starting: %s\n", executable);
     if (envp) {

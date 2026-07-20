@@ -249,16 +249,16 @@ int box64_runner_is_running(void) {
 }
 
 const char *box64_runner_get_error(void) {
-    static char snap[256];
     pthread_mutex_lock(&g_runner_lock);
+    static char snap[256];
     memcpy(snap, g_runner_error, sizeof(snap));
     pthread_mutex_unlock(&g_runner_lock);
     return snap;
 }
 
 const char *box64_runner_get_status(void) {
-    static char snap[64];
     pthread_mutex_lock(&g_runner_lock);
+    static char snap[64];
     memcpy(snap, g_runner_status, sizeof(snap));
     pthread_mutex_unlock(&g_runner_lock);
     return snap;

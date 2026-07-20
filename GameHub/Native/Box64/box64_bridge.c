@@ -88,7 +88,7 @@ int box64_init(box64_context_t *ctx, const char *bundle_path) {
 }
 
 int box64_set_wine_path(box64_context_t *ctx, const char *wine_path) {
-    if (!ctx) return -1;
+    if (!ctx || !wine_path) return -1;
     char buf[1024];
     snprintf(buf, sizeof(buf), "[Bridge] box64_set_wine_path(%s)", wine_path);
     bridge_log(buf);
@@ -98,7 +98,7 @@ int box64_set_wine_path(box64_context_t *ctx, const char *wine_path) {
 }
 
 int box64_set_prefix(box64_context_t *ctx, const char *prefix_path) {
-    if (!ctx) return -1;
+    if (!ctx || !prefix_path) return -1;
     char buf[1024];
     snprintf(buf, sizeof(buf), "[Bridge] box64_set_prefix(%s)", prefix_path);
     bridge_log(buf);
@@ -108,7 +108,7 @@ int box64_set_prefix(box64_context_t *ctx, const char *prefix_path) {
 }
 
 int box64_set_game(box64_context_t *ctx, const char *game_exe) {
-    if (!ctx) return -1;
+    if (!ctx || !game_exe) return -1;
     char buf[1024];
     snprintf(buf, sizeof(buf), "[Bridge] box64_set_game(%s)", game_exe);
     bridge_log(buf);

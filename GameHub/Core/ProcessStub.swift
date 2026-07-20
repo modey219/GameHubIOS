@@ -30,6 +30,8 @@ class NativeProcess {
     private var _terminationStatus: Int32 = 0
     private var _pid: pid_t = 0
     private var _isRunning = false
+    private var _finished = false
+    private var _finishedCond = NSCondition()
 
     var terminationStatus: Int32 {
         lock.lock(); defer { lock.unlock() }
@@ -79,7 +81,13 @@ class NativeProcess {
         cEnv.append(nil)
 
         var fileActions: posix_spawn_file_actions_t?
-        posix_spawn_file_actions_init(&fileActions)
+        let initResult = posix_spawn_file_actions_init(&fileActions)
+        guard initResult == 0, fileActions != nil else {
+            for arg in cArgs { if let a = arg { free(a) } }
+            for e in cEnv { if let v = e { free(v) } }
+            throw NSError(domain: "Process", code: Int(initResult),
+                          userInfo: [NSLocalizedDescriptionKey: "posix_spawn_file_actions_init failed (\(initResult))"])
+        }
 
         var outFd: Int32 = -1
         var errFd: Int32 = -1
@@ -125,24 +133,20 @@ class NativeProcess {
             }
             self._isRunning = false
             self.lock.unlock()
+            self._finishedCond.lock()
+            self._finished = true
+            self._finishedCond.signal()
+            self._finishedCond.unlock()
             DispatchQueue.main.async { self.terminationHandler?(self) }
         }
     }
 
     func waitUntilExit() {
-        let p: pid_t = { lock.lock(); defer { lock.unlock() }; return _pid }()
-        if p > 0 {
-            var status: Int32 = 0
-            waitpid(p, &status, 0)
-            lock.lock()
-            if (status & 0x7f) == 0 {
-                _terminationStatus = (status >> 8) & 0xff
-            } else {
-                _terminationStatus = -1
-            }
-            _isRunning = false
-            lock.unlock()
+        _finishedCond.lock()
+        while !_finished {
+            _finishedCond.wait()
         }
+        _finishedCond.unlock()
     }
 
     func terminate() {

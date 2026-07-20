@@ -57,7 +57,6 @@ targets:
           - "-lbox64"
         OTHER_CFLAGS:
           - "-I$(SRCROOT)/GameHub/Native/Include"
-          - "-I$(SRCROOT)/GameHub/Native/Compat"
           - "-Wno-unused-variable"
           - "-Wno-unused-function"
           - "-Wno-deprecated-declarations"

@@ -9,7 +9,6 @@ class Box64Bridge {
     private var wineInstallPath: String = ""
     private var graphicsInstallPath: String = ""
     private var ctx: UnsafeMutablePointer<box64_context_t>?
-    private var launchThread: pthread_t?
     private var _isRunning = false
 
     private static let logQueue = DispatchQueue(label: "com.box64.swiftlog")
@@ -45,9 +44,13 @@ class Box64Bridge {
     }
 
     var isSetupComplete: Bool {
+        lock.lock()
+        let box64Path = box64InstallPath
+        let winePath = wineInstallPath
+        lock.unlock()
         let fm = FileManager.default
-        let box64Exists = fm.fileExists(atPath: box64InstallPath + "/box64")
-        let wineExists = fm.fileExists(atPath: wineInstallPath + "/bin/wine64")
+        let box64Exists = fm.fileExists(atPath: box64Path + "/box64")
+        let wineExists = fm.fileExists(atPath: winePath + "/bin/wine64")
         return box64Exists && wineExists
     }
 
@@ -127,7 +130,6 @@ class Box64Bridge {
     func initialize() {
         lock.lock()
         guard !isInitialized else { lock.unlock(); return }
-        lock.unlock()
 
         Self.log("initialize() called, memory = \(Self.memoryUsageMB())MB")
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -150,14 +152,13 @@ class Box64Bridge {
             Self.log("calling box64_init...")
             box64_init(localCtx, box64InstallPath)
             Self.log("box64_init done")
-            lock.lock()
             ctx = localCtx
             isInitialized = true
-            lock.unlock()
         } else {
             Self.log("box64_create returned NULL! Cannot initialize.")
         }
 
+        lock.unlock()
         Self.log("initialize() complete, isInitialized=\(isInitialized), memory = \(Self.memoryUsageMB())MB")
     }
 
@@ -312,7 +313,9 @@ class Box64Bridge {
         isInitialized = false
         _isRunning = false
         lock.unlock()
-        if Self.logFD >= 0 { close(Self.logFD); Self.logFD = -1 }
+        Self.logQueue.sync {
+            if Self.logFD >= 0 { close(Self.logFD); Self.logFD = -1 }
+        }
     }
 
     enum SetupError: LocalizedError {

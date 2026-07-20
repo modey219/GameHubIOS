@@ -48,12 +48,17 @@ class WineBridge {
     }
 
     func launchGame(executablePath: String, arguments: [String] = [], containerPath: String? = nil) -> Box64Bridge.LaunchResult {
-        let targetPrefix = containerPath ?? winePrefix
+        lock.lock()
+        let currentPrefix = winePrefix
+        let currentBinaryPath = wineBinaryPath
+        lock.unlock()
+
+        let targetPrefix = containerPath ?? currentPrefix
         let wine64Path = (containerPath != nil)
             ? (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
                 ?? URL(fileURLWithPath: NSTemporaryDirectory()))
                 .appendingPathComponent("Wine/bin/wine64").path
-            : wineBinaryPath
+            : currentBinaryPath
 
         return Box64Bridge.shared.launchWine(
             wine64Path: wine64Path,
@@ -78,6 +83,6 @@ class WineBridge {
         }
     }
 
-    func getWinePrefixPath() -> String { winePrefix }
-    func getDriveCPath() -> String { winePrefix + "/drive_c" }
+    func getWinePrefixPath() -> String { lock.lock(); defer { lock.unlock() }; return winePrefix }
+    func getDriveCPath() -> String { lock.lock(); defer { lock.unlock() }; return winePrefix + "/drive_c" }
 }

@@ -96,7 +96,9 @@ struct GameHubApp: App {
                         .cornerRadius(8)
                         .padding(.horizontal, 24)
                         .onChange(of: setupLog.count) { _ in
-                            withAnimation { proxy.scrollTo(setupLog.count - 1, anchor: .bottom) }
+                            if setupLog.count > 0 {
+                                withAnimation { proxy.scrollTo(setupLog.count - 1, anchor: .bottom) }
+                            }
                         }
                     }
                 }

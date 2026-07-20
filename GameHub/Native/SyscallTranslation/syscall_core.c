@@ -501,14 +501,16 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             while (off < (int)a3) {
                 e = readdir(dir);
                 if (!e) break;
+                size_t nl = strlen(e->d_name) + 1;
+                size_t reclen = sizeof(struct linux_dirent) + nl;
+                if (off + (int)reclen > (int)a3) break;
                 struct linux_dirent *ld = (struct linux_dirent *)((char *)(uintptr_t)a2 + off);
                 ld->d_ino = e->d_ino;
-                size_t nl = strlen(e->d_name) + 1;
-                ld->d_reclen = sizeof(struct linux_dirent) + nl;
+                ld->d_reclen = reclen;
                 ld->d_type = e->d_type == DT_DIR ? 4 : (e->d_type == DT_REG ? 8 : 0);
-                ld->d_off = off + ld->d_reclen;
+                ld->d_off = off + reclen;
                 memcpy(ld->d_name, e->d_name, nl);
-                off += ld->d_reclen;
+                off += reclen;
             }
             closedir(dir);
             return off;
@@ -705,7 +707,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             return 0;
         }
         case 302: case 307: {
-            if (a2 >= 0 && a2 < 16) {
+            if (a2 >= 0 && a2 < 8) {
                 if (a4) memcpy((void *)(uintptr_t)a4, &ctx->process.limits[a2], sizeof(struct linux_rlimit));
                 if (a3) memcpy(&ctx->process.limits[a2], (const void *)(uintptr_t)a3, sizeof(struct linux_rlimit));
             }
@@ -722,21 +724,23 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             while (off < (int)a3) {
                 e = readdir(dir);
                 if (!e) break;
+                size_t nl = strlen(e->d_name) + 1;
+                size_t reclen = sizeof(struct linux_dirent) + nl;
+                if (off + (int)reclen > (int)a3) break;
                 struct linux_dirent *ld = (struct linux_dirent *)((char *)(uintptr_t)a2 + off);
                 ld->d_ino = e->d_ino;
-                size_t nl = strlen(e->d_name) + 1;
-                ld->d_reclen = sizeof(struct linux_dirent) + nl;
+                ld->d_reclen = reclen;
                 ld->d_type = e->d_type == DT_DIR ? 4 : (e->d_type == DT_REG ? 8 : 0);
-                ld->d_off = off + ld->d_reclen;
+                ld->d_off = off + reclen;
                 memcpy(ld->d_name, e->d_name, nl);
-                off += ld->d_reclen;
+                off += reclen;
             }
             closedir(dir);
             return off;
         }
         case 261: {
             // prlimit64 - get/set resource limits
-            if (a3 >= 0 && a3 < 16) {
+            if (a3 >= 0 && a3 < 8) {
                 if (a4) memcpy((void *)(uintptr_t)a4, &ctx->process.limits[a3], sizeof(struct linux_rlimit));
                 if (a2) memcpy(&ctx->process.limits[a3], (const void *)(uintptr_t)a2, sizeof(struct linux_rlimit));
             }
@@ -756,6 +760,7 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             if (fd < 0) return -errno;
             shm_unlink(p);
             int s = find_free_fd_slot(ctx);
+            if (s < 0) { close(fd); return -EMFILE; }
             register_host_fd(ctx, s, fd, 0);
             return s;
         }

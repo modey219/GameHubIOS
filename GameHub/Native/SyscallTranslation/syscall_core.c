@@ -75,55 +75,50 @@ emulator_context_t *syscall_emulator_create(void) {
         snprintf(logpath, sizeof(logpath), "%s/Documents/bridge.log", home);
         logfd = open(logpath, O_WRONLY | O_CREAT | O_APPEND, 0644);
     }
-    #define SLOG(msg) do { \
-        fprintf(stderr, "%s\n", msg); \
-        if (logfd >= 0) { write(logfd, msg, strlen(msg)); write(logfd, "\n", 1); } \
-    } while(0)
 
     char buf[256];
-    snprintf(buf, sizeof(buf), "[SyscallCore] create: allocating %zu bytes", alloc_size);
-    SLOG(buf);
+    snprintf(buf, sizeof(buf), "[SyscallCore] create: allocating %zu bytes\n", alloc_size);
+    if (logfd >= 0) { write(logfd, buf, strlen(buf)); }
 
-    emulator_context_t *ctx = calloc(1, alloc_size);
-    if (!ctx) {
-        snprintf(buf, sizeof(buf), "[SyscallCore] create: calloc(%zu) FAILED", alloc_size);
-        SLOG(buf);
-        if (logfd >= 0) close(logfd);
+    emulator_context_t *ctx = (emulator_context_t *)calloc(1, alloc_size);
+    /* volatile prevents compiler from optimizing away the NULL check */
+    volatile emulator_context_t *vctx = ctx;
+    if (!vctx) {
+        const char *msg = "[SyscallCore] create: calloc FAILED — out of memory\n";
+        if (logfd >= 0) { write(logfd, msg, strlen(msg)); close(logfd); }
+        fprintf(stderr, "%s", msg);
         return NULL;
     }
-    snprintf(buf, sizeof(buf), "[SyscallCore] create: ctx=%p", (void*)ctx);
-    SLOG(buf);
+
+    /* Verify the allocation is writable — detect broken allocator */
+    memset((void *)vctx, 0, alloc_size);
+
+    snprintf(buf, sizeof(buf), "[SyscallCore] create: ctx=%p size=%zu OK\n", (void*)ctx, alloc_size);
+    if (logfd >= 0) write(logfd, buf, strlen(buf));
 
     ctx->process.pid = getpid();
     ctx->process.ppid = getppid();
-    SLOG("[SyscallCore] create: pid/ppid set");
 
-    ctx->process.start_brk = (linux_addr_t)(uintptr_t)sbrk(0);
+    ctx->process.start_brk = 0x70000000ULL;
     ctx->process.brk = ctx->process.start_brk;
     ctx->process.mmap_base = 0x70000000ULL;
-    SLOG("[SyscallCore] create: brk/mmap set");
 
     strcpy(ctx->process.cwd, "/");
     strcpy(ctx->process.root, "/");
-    SLOG("[SyscallCore] create: cwd/root set");
 
     for (int i = 0; i < MAX_TRANSLATED_FDS; i++) {
         ctx->process.fds[i].linux_fd = -1;
         ctx->process.fds[i].host_fd = -1;
     }
-    snprintf(buf, sizeof(buf), "[SyscallCore] create: fds inited (MAX=%d)", MAX_TRANSLATED_FDS);
-    SLOG(buf);
 
     ctx->process.limits[LINUX_RLIMIT_NOFILE].rlim_cur = 1024;
     ctx->process.limits[LINUX_RLIMIT_NOFILE].rlim_max = 4096;
-    SLOG("[SyscallCore] create: limits set");
 
     ctx->initialized = 1;
-    snprintf(buf, sizeof(buf), "[SyscallCore] create: DONE ctx=%p", (void*)ctx);
-    SLOG(buf);
+    snprintf(buf, sizeof(buf), "[SyscallCore] create: DONE ctx=%p pid=%d\n", (void*)ctx, ctx->process.pid);
+    if (logfd >= 0) { write(logfd, buf, strlen(buf)); close(logfd); }
+    fprintf(stderr, "%s", buf);
 
-    #undef SLOG
-    if (logfd >= 0) close(logfd);
     return ctx;
 }
 

@@ -98,25 +98,41 @@ static void bridge_log(const char *msg) {
     }
 }
 
+static void c_diag(const char *s) {
+    int fd = open("/tmp/c_diag.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) {
+        write(fd, s, strlen(s));
+        write(fd, "\n", 1);
+        close(fd);
+    }
+}
+
 box64_context_t *box64_create(void) {
+    c_diag("box64_create called");
     bridge_log("[Bridge] box64_create() called");
     box64_context_t *ctx = calloc(1, sizeof(box64_context_t));
+    c_diag("box64_create: calloc done");
     bridge_log("[Bridge] box64_create: calloc done");
     volatile box64_context_t *vctx = ctx;
-    if (!vctx) { bridge_log("[Bridge] box64_create: calloc failed"); return NULL; }
+    if (!vctx) { c_diag("box64_create: calloc failed"); bridge_log("[Bridge] box64_create: calloc failed"); return NULL; }
     memset((void *)vctx, 0, sizeof(box64_context_t));
+    c_diag("box64_create: ctx allocated OK");
     bridge_log("[Bridge] box64_create: ctx allocated OK");
     ctx->emulator = syscall_emulator_create();
     if (!ctx->emulator) {
+        c_diag("box64_create: syscall_emulator_create returned NULL");
         bridge_log("[Bridge] box64_create: syscall_emulator_create returned NULL");
         free(ctx);
         return NULL;
     }
+    c_diag("box64_create: emulator created OK");
     bridge_log("[Bridge] box64_create: emulator created OK");
     syscall_set_context(ctx->emulator);
+    c_diag("box64_create: context set OK");
     bridge_log("[Bridge] box64_create: context set OK");
     ctx->child_pid = -1;
     g_box64 = ctx;
+    c_diag("box64_create: DONE");
     bridge_log("[Bridge] box64_create: DONE");
     return ctx;
 }
@@ -142,7 +158,8 @@ static long file_size(const char *path) {
 }
 
 int box64_init(box64_context_t *ctx, const char *bundle_path) {
-    if (!ctx || !bundle_path) { bridge_log("[Bridge] box64_init: bad args"); return -1; }
+    c_diag("box64_init called");
+    if (!ctx || !bundle_path) { c_diag("box64_init: bad args"); bridge_log("[Bridge] box64_init: bad args"); return -1; }
     char buf[1024];
     snprintf(buf, sizeof(buf), "[Bridge] box64_init(bundle=%s)", bundle_path);
     bridge_log(buf);
@@ -150,8 +167,11 @@ int box64_init(box64_context_t *ctx, const char *bundle_path) {
     snprintf(ctx->wine_path, sizeof(ctx->wine_path), "%s/wine", bundle_path);
     snprintf(ctx->prefix_path, sizeof(ctx->prefix_path), "%s/wineprefix", bundle_path);
     snprintf(ctx->game_path, sizeof(ctx->game_path), "%s/games", bundle_path);
+    c_diag("box64_init: about to mkdir");
     mkdir(ctx->prefix_path, 0755);
+    c_diag("box64_init: mkdir done");
     ctx->initialized = 1;
+    c_diag("box64_init: DONE");
     snprintf(buf, sizeof(buf), "[Bridge] box64_init: wine_path=%s", ctx->wine_path);
     bridge_log(buf);
     return 0;

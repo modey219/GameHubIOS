@@ -36,6 +36,13 @@ class Box64Bridge {
         }
     }
 
+    private static func writeDiag(_ s: String) {
+        if let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
+            let line = "[\(Date().timeIntervalSince1970)] \(s)\n"
+            try? line.write(toFile: p + "/diag.log", atomically: true, encoding: .utf8)
+        }
+    }
+
     struct LaunchResult {
         var process: NativeProcess?
         var error: String?
@@ -143,9 +150,11 @@ class Box64Bridge {
 
         Self.log("calling box64_create(), memory = \(Self.memoryUsageMB())MB...")
         var localCtx: UnsafeMutablePointer<box64_context_t>?
+        Self.writeDiag("before_box64_create")
         autoreleasepool {
             localCtx = box64_create()
         }
+        Self.writeDiag("after_box64_create")
         Self.log("box64_create returned \(localCtx != nil ? "OK" : "NULL"), memory = \(Self.memoryUsageMB())MB")
 
         if let localCtx = localCtx {

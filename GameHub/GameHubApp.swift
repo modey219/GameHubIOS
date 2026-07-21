@@ -139,14 +139,22 @@ struct GameHubApp: App {
         }
     }
 
+    private func writeDiag(_ s: String) {
+        if let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
+            try? "[\(Date().timeIntervalSince1970)] \(s)\n".write(toFile: p + "/diag.log", atomically: true, encoding: .utf8)
+        }
+    }
+
     private func performSetup() {
         DispatchQueue.global(qos: .userInitiated).async {
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                writeDiag("FAIL: no docs dir")
                 DispatchQueue.main.async { self.isLoading = false }
                 return
             }
 
+            writeDiag("step=clean")
             logStep(1, "Cleaning stale 0-byte files...")
             for stalePath in ["Box64/box64", "Wine/bin/wine64", "Wine/bin/wine", "Wine/bin/wineserver", "Wine/bin/wineboot"] {
                 let fullPath = docs.appendingPathComponent(stalePath).path
@@ -159,12 +167,14 @@ struct GameHubApp: App {
                 }
             }
 
+            writeDiag("step=check")
             logStep(1, "Checking existing files...")
             let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
             let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
             logStep(1, "Box64 exists: \(box64Exists), Wine exists: \(wineExists)")
 
             if !box64Exists || !wineExists {
+                writeDiag("step=extract")
                 var stepCounter = 2
                 do {
                     try Box64Bridge.shared.setupAllBundledBinaries { detail in
@@ -172,6 +182,7 @@ struct GameHubApp: App {
                         self.logStep(stepCounter, detail)
                     }
                 } catch {
+                    writeDiag("extraction_failed=\(error)")
                     logStep(-1, "EXTRACTION FAILED: \(error)")
                     DispatchQueue.main.async {
                         self.setupError = "Extraction error: \(error.localizedDescription)"
@@ -181,26 +192,35 @@ struct GameHubApp: App {
                 }
             }
 
+            writeDiag("step=isloading_false")
             DispatchQueue.main.async {
                 withAnimation(.easeIn(duration: 0.3)) {
                     self.isLoading = false
                 }
             }
 
+            writeDiag("step=box64_init")
             logStep(20, "Initializing Box64...")
             Box64Bridge.shared.initialize()
+            writeDiag("step=box64_init_done")
             logStep(20, "Box64 init complete")
 
+            writeDiag("step=wine_init")
             logStep(21, "Initializing Wine...")
             WineBridge.shared.initialize()
+            writeDiag("step=wine_init_done")
             logStep(21, "Wine init complete")
 
+            writeDiag("step=prefix")
             logStep(22, "Setting up prefix...")
             WinePrefixManager.shared.initializePrefix()
+            writeDiag("step=prefix_done")
             logStep(22, "Prefix init complete")
 
+            writeDiag("step=settings")
             logStep(23, "Applying settings...")
             settingsManager.applySettings()
+            writeDiag("step=settings_done")
             logStep(23, "ALL DONE!")
         }
     }

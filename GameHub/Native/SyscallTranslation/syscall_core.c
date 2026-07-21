@@ -65,83 +65,72 @@ void syscall_translation_init(void) {
 }
 
 emulator_context_t *syscall_emulator_create(void) {
-    size_t alloc_size = sizeof(emulator_context_t);
-    c_diag("syscall_emulator_create: entered");
+    emulator_context_t *ctx = syscall_emulator_create_alloc();
+    if (!ctx) return NULL;
+    syscall_emulator_create_init(ctx);
+    return ctx;
+}
 
-    /* Log to file so iOS console can capture it */
-    const char *home = getenv("HOME");
-    char logpath[512];
-    int logfd = -1;
-    if (home) {
-        snprintf(logpath, sizeof(logpath), "%s/Documents/bridge.log", home);
-        logfd = open(logpath, O_WRONLY | O_CREAT | O_APPEND, 0644);
-    }
+emulator_context_t *syscall_emulator_create_alloc(void) {
+    size_t alloc_size = sizeof(emulator_context_t);
+    c_diag("syscall_alloc: entered");
 
     char buf[256];
-    c_diag("syscall_emulator_create: start");
+    c_diag("syscall_alloc: start");
     snprintf(buf, sizeof(buf), "[SyscallCore] create: allocating %zu bytes\n", alloc_size);
-    if (logfd >= 0) { write(logfd, buf, strlen(buf)); }
     fprintf(stderr, "%s", buf);
 
     emulator_context_t *ctx = (emulator_context_t *)calloc(1, alloc_size);
-    c_diag("syscall_emulator_create: after calloc");
+    c_diag("syscall_alloc: after calloc");
     fprintf(stderr, "[SyscallCore] create: calloc returned %p\n", (void*)ctx);
-    /* volatile prevents compiler from optimizing away the NULL check */
     volatile emulator_context_t *vctx = ctx;
     if (!vctx) {
-        c_diag("syscall_emulator_create: calloc FAILED");
-        const char *msg = "[SyscallCore] create: calloc FAILED — out of memory\n";
-        if (logfd >= 0) { write(logfd, msg, strlen(msg)); close(logfd); }
-        fprintf(stderr, "%s", msg);
+        c_diag("syscall_alloc: calloc FAILED");
+        fprintf(stderr, "[SyscallCore] create: calloc FAILED\n");
         return NULL;
     }
 
-    /* Verify the allocation is writable — detect broken allocator */
+    c_diag("syscall_alloc: memset");
     memset((void *)vctx, 0, alloc_size);
-    c_diag("syscall_emulator_create: after memset");
+    c_diag("syscall_alloc: memset done");
     fprintf(stderr, "[SyscallCore] create: memset OK\n");
 
-    snprintf(buf, sizeof(buf), "[SyscallCore] create: ctx=%p size=%zu OK\n", (void*)ctx, alloc_size);
-    if (logfd >= 0) write(logfd, buf, strlen(buf));
+    return ctx;
+}
 
-    c_diag("syscall_emulator_create: setting pid/brk");
+int syscall_emulator_create_init(emulator_context_t *ctx) {
+    if (!ctx) return -1;
+    c_diag("syscall_init: entered");
+
     ctx->process.pid = getpid();
     ctx->process.ppid = getppid();
+    c_diag("syscall_init: pid done");
 
     ctx->process.start_brk = 0x70000000ULL;
     ctx->process.brk = ctx->process.start_brk;
     ctx->process.mmap_base = 0x70000000ULL;
-    c_diag("syscall_emulator_create: pid/brk done");
-    fprintf(stderr, "[SyscallCore] create: brk/mmap set\n");
+    c_diag("syscall_init: brk done");
 
-    c_diag("syscall_emulator_create: strcpy cwd");
     strcpy(ctx->process.cwd, "/");
     strcpy(ctx->process.root, "/");
-    c_diag("syscall_emulator_create: strcpy done");
-    fprintf(stderr, "[SyscallCore] create: cwd/root set\n");
+    c_diag("syscall_init: cwd done");
 
-    c_diag("syscall_emulator_create: init fds");
     for (int i = 0; i < MAX_TRANSLATED_FDS; i++) {
         ctx->process.fds[i].linux_fd = -1;
         ctx->process.fds[i].host_fd = -1;
     }
-    c_diag("syscall_emulator_create: fds done");
-    fprintf(stderr, "[SyscallCore] create: fds init done\n");
+    c_diag("syscall_init: fds done");
 
-    c_diag("syscall_emulator_create: limits");
     ctx->process.limits[LINUX_RLIMIT_NOFILE].rlim_cur = 1024;
     ctx->process.limits[LINUX_RLIMIT_NOFILE].rlim_max = 4096;
-    c_diag("syscall_emulator_create: limits done");
-    fprintf(stderr, "[SyscallCore] create: limits set\n");
+    c_diag("syscall_init: limits done");
 
-    c_diag("syscall_emulator_create: initialized=1");
     ctx->initialized = 1;
+    char buf[256];
     snprintf(buf, sizeof(buf), "[SyscallCore] create: DONE ctx=%p pid=%d\n", (void*)ctx, ctx->process.pid);
-    if (logfd >= 0) { write(logfd, buf, strlen(buf)); close(logfd); }
     fprintf(stderr, "%s", buf);
-
-    c_diag("syscall_emulator_create: DONE");
-    return ctx;
+    c_diag("syscall_init: DONE");
+    return 0;
 }
 
 void syscall_emulator_destroy(emulator_context_t *ctx) {

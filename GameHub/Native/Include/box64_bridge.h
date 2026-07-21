@@ -21,7 +21,8 @@ typedef struct {
 
 box64_context_t *box64_create(void);
 box64_context_t *box64_create_step1(void);
-int box64_create_step2(box64_context_t *ctx);
+int box64_create_step2a(box64_context_t *ctx);
+int box64_create_step2b(box64_context_t *ctx);
 void box64_create_step3(box64_context_t *ctx);
 void box64_destroy(box64_context_t *ctx);
 

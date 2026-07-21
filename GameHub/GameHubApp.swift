@@ -10,6 +10,11 @@ func setupCrashHandler() {
             try? crash.write(toFile: log, atomically: true, encoding: .utf8)
         }
     }
+    if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
+        let crashLogPath = path + "/crash.log"
+        crashLogPath.withCString { install_crash_handler($0) }
+        safeSetenv("CRASH_LOG_PATH", crashLogPath)
+    }
 }
 
 @main
@@ -140,6 +145,18 @@ struct GameHubApp: App {
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
                 DispatchQueue.main.async { self.isLoading = false }
                 return
+            }
+
+            logStep(1, "Cleaning stale 0-byte files...")
+            for stalePath in ["Box64/box64", "Wine/bin/wine64", "Wine/bin/wine", "Wine/bin/wineserver", "Wine/bin/wineboot"] {
+                let fullPath = docs.appendingPathComponent(stalePath).path
+                if fm.fileExists(atPath: fullPath),
+                   let attrs = try? fm.attributesOfItem(atPath: fullPath),
+                   let size = attrs[.size] as? NSNumber,
+                   size.intValue == 0 {
+                    try? fm.removeItem(atPath: fullPath)
+                    logStep(1, "Removed stale 0-byte file: \(stalePath)")
+                }
             }
 
             logStep(1, "Checking existing files...")

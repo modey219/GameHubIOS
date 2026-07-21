@@ -77,24 +77,32 @@ emulator_context_t *syscall_emulator_create_alloc(void) {
 
     char buf[256];
     c_diag("syscall_alloc: start");
-    snprintf(buf, sizeof(buf), "[SyscallCore] create: allocating %zu bytes\n", alloc_size);
+    snprintf(buf, sizeof(buf), "[SyscallCore] alloc: size=%zu bytes\n", alloc_size);
     fprintf(stderr, "%s", buf);
 
-    emulator_context_t *ctx = (emulator_context_t *)calloc(1, alloc_size);
-    c_diag("syscall_alloc: after calloc");
-    fprintf(stderr, "[SyscallCore] create: calloc returned %p\n", (void*)ctx);
-    volatile emulator_context_t *vctx = ctx;
-    if (!vctx) {
-        c_diag("syscall_alloc: calloc FAILED");
-        fprintf(stderr, "[SyscallCore] create: calloc FAILED\n");
-        return NULL;
+    void *mem = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (mem == MAP_FAILED) {
+        c_diag("syscall_alloc: mmap FAILED, trying calloc");
+        fprintf(stderr, "[SyscallCore] alloc: mmap FAILED, trying calloc\n");
+        emulator_context_t *ctx = (emulator_context_t *)calloc(1, alloc_size);
+        if (!ctx) {
+            c_diag("syscall_alloc: calloc also FAILED");
+            fprintf(stderr, "[SyscallCore] alloc: calloc FAILED\n");
+            return NULL;
+        }
+        memset(ctx, 0, alloc_size);
+        c_diag("syscall_alloc: calloc OK");
+        fprintf(stderr, "[SyscallCore] alloc: calloc OK ctx=%p\n", (void*)ctx);
+        return ctx;
     }
 
-    c_diag("syscall_alloc: memset");
-    memset((void *)vctx, 0, alloc_size);
+    c_diag("syscall_alloc: mmap OK");
+    fprintf(stderr, "[SyscallCore] alloc: mmap OK ptr=%p\n", mem);
+    memset(mem, 0, alloc_size);
     c_diag("syscall_alloc: memset done");
-    fprintf(stderr, "[SyscallCore] create: memset OK\n");
 
+    emulator_context_t *ctx = (emulator_context_t *)mem;
+    ctx->allocated_with_mmap = 1;
     return ctx;
 }
 
@@ -142,7 +150,11 @@ void syscall_emulator_destroy(emulator_context_t *ctx) {
         if (ctx->process.mmap_regions[i].host_addr)
             munmap(ctx->process.mmap_regions[i].host_addr, ctx->process.mmap_regions[i].size);
     }
-    free(ctx);
+    if (ctx->allocated_with_mmap) {
+        munmap(ctx, sizeof(emulator_context_t));
+    } else {
+        free(ctx);
+    }
 }
 
 int register_host_fd(emulator_context_t *ctx, int linux_fd, int host_fd, int flags) {

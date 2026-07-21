@@ -58,6 +58,7 @@ typedef struct emulator_context {
     linux_process_t process;
     int initialized;
     int running;
+    int allocated_with_mmap;
 } emulator_context_t;
 
 void syscall_translation_init(void);

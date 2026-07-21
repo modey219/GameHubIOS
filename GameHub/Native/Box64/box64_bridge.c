@@ -81,19 +81,6 @@ void install_crash_handler(const char *log_path) {
 }
 
 static const char *get_docs_dir(void) {
-    const char *crash_log = getenv("CRASH_LOG_PATH");
-    if (crash_log && crash_log[0]) {
-        size_t cl_len = strlen(crash_log);
-        if (cl_len > 10) {
-            size_t copy_len = cl_len - 10;
-            static char docs[1024];
-            if (copy_len < sizeof(docs) - 1) {
-                memcpy(docs, crash_log, copy_len);
-                docs[copy_len] = '\0';
-                return docs;
-            }
-        }
-    }
     if (g_docs_path[0]) return g_docs_path;
     return NULL;
 }
@@ -130,15 +117,7 @@ static void append_to_log(const char *base_path, const char *filename, const cha
 
 void c_diag(const char *s) {
     const char *docs = get_docs_dir();
-    if (!docs) {
-        const char *home = getenv("HOME");
-        if (!home) return;
-        char buf[1032];
-        snprintf(buf, sizeof(buf), "%s/Documents", home);
-        append_to_log(buf, "c_diag.log", s);
-        append_to_log(buf, "diag.log", s);
-        return;
-    }
+    if (!docs) return;
     append_to_log(docs, "c_diag.log", s);
     append_to_log(docs, "diag.log", s);
 }

@@ -35,7 +35,6 @@ class WineBridge {
         wineBinaryPath = docs.appendingPathComponent("Wine/bin/wine64").path
         setupEnvironment()
         isInitialized = true
-        lock.unlock()
     }
 
     private func setupEnvironment() {

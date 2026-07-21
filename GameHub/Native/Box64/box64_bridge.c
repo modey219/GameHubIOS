@@ -32,6 +32,7 @@ static void bridge_log(const char *msg) {
 box64_context_t *box64_create(void) {
     bridge_log("[Bridge] box64_create() called");
     box64_context_t *ctx = calloc(1, sizeof(box64_context_t));
+    bridge_log("[Bridge] box64_create: calloc done");
     volatile box64_context_t *vctx = ctx;
     if (!vctx) { bridge_log("[Bridge] box64_create: calloc failed"); return NULL; }
     memset((void *)vctx, 0, sizeof(box64_context_t));

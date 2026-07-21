@@ -78,8 +78,10 @@ emulator_context_t *syscall_emulator_create(void) {
     char buf[256];
     snprintf(buf, sizeof(buf), "[SyscallCore] create: allocating %zu bytes\n", alloc_size);
     if (logfd >= 0) { write(logfd, buf, strlen(buf)); }
+    fprintf(stderr, "%s", buf);
 
     emulator_context_t *ctx = (emulator_context_t *)calloc(1, alloc_size);
+    fprintf(stderr, "[SyscallCore] create: calloc returned %p\n", (void*)ctx);
     /* volatile prevents compiler from optimizing away the NULL check */
     volatile emulator_context_t *vctx = ctx;
     if (!vctx) {
@@ -91,6 +93,7 @@ emulator_context_t *syscall_emulator_create(void) {
 
     /* Verify the allocation is writable — detect broken allocator */
     memset((void *)vctx, 0, alloc_size);
+    fprintf(stderr, "[SyscallCore] create: memset OK\n");
 
     snprintf(buf, sizeof(buf), "[SyscallCore] create: ctx=%p size=%zu OK\n", (void*)ctx, alloc_size);
     if (logfd >= 0) write(logfd, buf, strlen(buf));
@@ -101,17 +104,21 @@ emulator_context_t *syscall_emulator_create(void) {
     ctx->process.start_brk = 0x70000000ULL;
     ctx->process.brk = ctx->process.start_brk;
     ctx->process.mmap_base = 0x70000000ULL;
+    fprintf(stderr, "[SyscallCore] create: brk/mmap set\n");
 
     strcpy(ctx->process.cwd, "/");
     strcpy(ctx->process.root, "/");
+    fprintf(stderr, "[SyscallCore] create: cwd/root set\n");
 
     for (int i = 0; i < MAX_TRANSLATED_FDS; i++) {
         ctx->process.fds[i].linux_fd = -1;
         ctx->process.fds[i].host_fd = -1;
     }
+    fprintf(stderr, "[SyscallCore] create: fds init done\n");
 
     ctx->process.limits[LINUX_RLIMIT_NOFILE].rlim_cur = 1024;
     ctx->process.limits[LINUX_RLIMIT_NOFILE].rlim_max = 4096;
+    fprintf(stderr, "[SyscallCore] create: limits set\n");
 
     ctx->initialized = 1;
     snprintf(buf, sizeof(buf), "[SyscallCore] create: DONE ctx=%p pid=%d\n", (void*)ctx, ctx->process.pid);

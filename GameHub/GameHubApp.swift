@@ -1,7 +1,20 @@
 import SwiftUI
+import UIKit
+
+func setupCrashHandler() {
+    NSSetUncaughtExceptionHandler { exception in
+        let crash = "[Crash] ObjC exception: \(exception.name) reason=\(exception.reason ?? "nil") callStack=\(exception.callStackSymbols.joined(separator: "\n"))"
+        NSLog("%@", crash)
+        if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
+            let log = path + "/crash.log"
+            try? crash.write(toFile: log, atomically: true, encoding: .utf8)
+        }
+    }
+}
 
 @main
 struct GameHubApp: App {
+    init() { setupCrashHandler() }
     @StateObject private var containerManager = ContainerManager()
     @StateObject private var jitManager = JITManager()
     @StateObject private var settingsManager = SettingsManager()
@@ -151,6 +164,12 @@ struct GameHubApp: App {
                 }
             }
 
+            DispatchQueue.main.async {
+                withAnimation(.easeIn(duration: 0.3)) {
+                    self.isLoading = false
+                }
+            }
+
             logStep(20, "Initializing Box64...")
             Box64Bridge.shared.initialize()
             logStep(20, "Box64 init complete")
@@ -166,12 +185,6 @@ struct GameHubApp: App {
             logStep(23, "Applying settings...")
             settingsManager.applySettings()
             logStep(23, "ALL DONE!")
-
-            DispatchQueue.main.async {
-                withAnimation(.easeIn(duration: 0.3)) {
-                    self.isLoading = false
-                }
-            }
         }
     }
 }

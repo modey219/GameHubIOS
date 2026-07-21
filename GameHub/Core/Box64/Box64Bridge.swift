@@ -129,7 +129,7 @@ class Box64Bridge {
 
     func initialize() {
         lock.lock()
-        guard !isInitialized else { lock.unlock(); return }
+        if isInitialized { lock.unlock(); return }
 
         Self.log("initialize() called, memory = \(Self.memoryUsageMB())MB")
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first

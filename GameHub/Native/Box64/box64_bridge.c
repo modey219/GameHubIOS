@@ -144,33 +144,28 @@ void c_diag(const char *s) {
 }
 
 box64_context_t *box64_create(void) {
-    c_diag("box64_create called");
-    bridge_log("[Bridge] box64_create() called");
+    return box64_create_step1();
+}
+
+box64_context_t *box64_create_step1(void) {
     box64_context_t *ctx = calloc(1, sizeof(box64_context_t));
-    c_diag("box64_create: calloc done");
-    bridge_log("[Bridge] box64_create: calloc done");
-    volatile box64_context_t *vctx = ctx;
-    if (!vctx) { c_diag("box64_create: calloc failed"); bridge_log("[Bridge] box64_create: calloc failed"); return NULL; }
-    memset((void *)vctx, 0, sizeof(box64_context_t));
-    c_diag("box64_create: ctx allocated OK");
-    bridge_log("[Bridge] box64_create: ctx allocated OK");
+    if (!ctx) return NULL;
+    memset(ctx, 0, sizeof(box64_context_t));
+    return ctx;
+}
+
+int box64_create_step2(box64_context_t *ctx) {
+    if (!ctx) return -1;
     ctx->emulator = syscall_emulator_create();
-    if (!ctx->emulator) {
-        c_diag("box64_create: syscall_emulator_create returned NULL");
-        bridge_log("[Bridge] box64_create: syscall_emulator_create returned NULL");
-        free(ctx);
-        return NULL;
-    }
-    c_diag("box64_create: emulator created OK");
-    bridge_log("[Bridge] box64_create: emulator created OK");
+    if (!ctx->emulator) return -2;
+    return 0;
+}
+
+void box64_create_step3(box64_context_t *ctx) {
+    if (!ctx || !ctx->emulator) return;
     syscall_set_context(ctx->emulator);
-    c_diag("box64_create: context set OK");
-    bridge_log("[Bridge] box64_create: context set OK");
     ctx->child_pid = -1;
     g_box64 = ctx;
-    c_diag("box64_create: DONE");
-    bridge_log("[Bridge] box64_create: DONE");
-    return ctx;
 }
 
 void box64_destroy(box64_context_t *ctx) {

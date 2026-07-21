@@ -30,6 +30,8 @@ struct GameHubApp: App {
     @State private var setupLog: [String] = []
     @State private var currentStep = 0
     @State private var cDiagLog: String = ""
+    @State private var showShareSheet = false
+    @State private var shareText: String = ""
 
     var body: some Scene {
         WindowGroup {
@@ -61,6 +63,9 @@ struct GameHubApp: App {
                         performSetup()
                     }
                 }
+            }
+            .sheet(isPresented: $showShareSheet) {
+                ShareSheet(activityItems: [shareText])
             }
         }
     }
@@ -205,11 +210,9 @@ struct GameHubApp: App {
         text += "=== c_diag.log ===\n" + ((try? String(contentsOfFile: cdiagPath)) ?? "N/A") + "\n"
         text += "=== bridge.log ===\n" + ((try? String(contentsOfFile: p + "/bridge.log")) ?? "N/A") + "\n"
         text += "=== crash.log ===\n" + ((try? String(contentsOfFile: p + "/crash.log")) ?? "N/A") + "\n"
-        let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let root = scene.windows.first?.rootViewController {
-            root.present(av, animated: true)
-        }
+        UIPasteboard.general.string = text
+        shareText = text
+        showShareSheet = true
     }
 
     private func performSetup() {
@@ -295,4 +298,12 @@ struct GameHubApp: App {
             logStep(23, "ALL DONE!")
         }
     }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }

@@ -39,7 +39,14 @@ class Box64Bridge {
     private static func writeDiag(_ s: String) {
         if let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
             let line = "[\(Date().timeIntervalSince1970)] \(s)\n"
-            try? line.write(toFile: p + "/diag.log", atomically: true, encoding: .utf8)
+            let path = p + "/diag.log"
+            if let fh = FileHandle(forWritingAtPath: path) {
+                fh.seekToEndOfFile()
+                fh.write(line.data(using: .utf8)!)
+                fh.closeFile()
+            } else {
+                try? line.write(toFile: path, atomically: true, encoding: .utf8)
+            }
         }
     }
 
@@ -148,38 +155,55 @@ class Box64Bridge {
         Self.log("wineInstallPath = \(wineInstallPath)")
         setupEnvironment()
 
-        Self.log("calling box64_create(), memory = \(Self.memoryUsageMB())MB...")
-        var localCtx: UnsafeMutablePointer<box64_context_t>?
-        Self.writeDiag("before_box64_create START")
         let docsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? "/tmp"
+        Self.writeDiag("init_start")
         Self.writeDiag("docsPath=\(docsPath)")
         Self.writeDiag("box64InstallPath=\(box64InstallPath)")
         Self.writeDiag("wineInstallPath=\(wineInstallPath)")
         Self.writeDiag("HOME=\(getenv("HOME").flatMap { String(cString: $0) } ?? "nil")")
         Self.writeDiag("CRASH_LOG_PATH=\(getenv("CRASH_LOG_PATH").flatMap { String(cString: $0) } ?? "nil")")
-        Self.writeDiag("calling box64_create() NOW")
-        autoreleasepool {
-            localCtx = box64_create()
-        }
-        Self.writeDiag("after_box64_create result=\(localCtx != nil ? "OK" : "NULL")")
-        Self.log("box64_create returned \(localCtx != nil ? "OK" : "NULL"), memory = \(Self.memoryUsageMB())MB")
 
-        if let localCtx = localCtx {
-            Self.log("calling box64_init...")
-            let initResult = box64_init(localCtx, box64InstallPath)
-            Self.log("box64_init returned \(initResult)")
-            if initResult == 0 {
-                ctx = localCtx
-                isInitialized = true
-            } else {
-                Self.log("box64_init FAILED — destroying context")
-                box64_destroy(localCtx)
-            }
+        Self.writeDiag("step1: calloc")
+        let localCtx = autoreleasepool { () -> UnsafeMutablePointer<box64_context_t>? in
+            box64_create_step1()
+        }
+        Self.writeDiag("step1: result=\(localCtx != nil ? "OK" : "NULL")")
+        guard let localCtx = localCtx else {
+            Self.log("box64_create_step1 returned NULL!")
+            lock.unlock()
+            return
+        }
+
+        Self.writeDiag("step2: syscall_emulator_create")
+        let step2Result = autoreleasepool { () -> Int32 in
+            box64_create_step2(localCtx)
+        }
+        Self.writeDiag("step2: result=\(step2Result)")
+        if step2Result != 0 {
+            Self.log("box64_create_step2 FAILED: \(step2Result)")
+            box64_destroy(localCtx)
+            lock.unlock()
+            return
+        }
+
+        Self.writeDiag("step3: set_context + g_box64")
+        box64_create_step3(localCtx)
+        Self.writeDiag("step3: DONE")
+
+        Self.writeDiag("calling box64_init...")
+        let initResult = box64_init(localCtx, box64InstallPath)
+        Self.writeDiag("box64_init result=\(initResult)")
+        Self.log("box64_init returned \(initResult)")
+        if initResult == 0 {
+            ctx = localCtx
+            isInitialized = true
         } else {
-            Self.log("box64_create returned NULL! Cannot initialize.")
+            Self.log("box64_init FAILED — destroying context")
+            box64_destroy(localCtx)
         }
 
         lock.unlock()
+        Self.writeDiag("initialize_done isInitialized=\(isInitialized)")
         Self.log("initialize() complete, isInitialized=\(isInitialized), memory = \(Self.memoryUsageMB())MB")
     }
 
@@ -405,7 +429,6 @@ class Box64Bridge {
             return false
         }
         try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dst)
-        Self.log("streamCopy: copied \(src) -> \(dst) (\(totalWritten) bytes)")
         return true
     }
 

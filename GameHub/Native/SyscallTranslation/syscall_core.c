@@ -69,26 +69,12 @@ emulator_context_t *syscall_emulator_create(void) {
     c_diag("syscall_emulator_create: entered");
 
     /* Log to file so iOS console can capture it */
-    char logpath[1024];
+    const char *home = getenv("HOME");
+    char logpath[512];
     int logfd = -1;
-    /* Try getting docs path from environment (set by install_crash_handler) */
-    const char *crash_log = getenv("CRASH_LOG_PATH");
-    if (crash_log && crash_log[0]) {
-        size_t cl_len = strlen(crash_log);
-        size_t copy_len = cl_len > 10 ? cl_len - 10 : 0; /* strip "/crash.log" */
-        if (copy_len > 0 && copy_len < sizeof(logpath) - 20) {
-            memcpy(logpath, crash_log, copy_len);
-            logpath[copy_len] = '\0';
-            strcat(logpath, "/bridge.log");
-            logfd = open(logpath, O_WRONLY | O_CREAT | O_APPEND, 0644);
-        }
-    }
-    if (logfd < 0) {
-        const char *home = getenv("HOME");
-        if (home) {
-            snprintf(logpath, sizeof(logpath), "%s/Documents/bridge.log", home);
-            logfd = open(logpath, O_WRONLY | O_CREAT | O_APPEND, 0644);
-        }
+    if (home) {
+        snprintf(logpath, sizeof(logpath), "%s/Documents/bridge.log", home);
+        logfd = open(logpath, O_WRONLY | O_CREAT | O_APPEND, 0644);
     }
 
     char buf[256];
@@ -148,11 +134,13 @@ emulator_context_t *syscall_emulator_create(void) {
     c_diag("syscall_emulator_create: limits done");
     fprintf(stderr, "[SyscallCore] create: limits set\n");
 
+    c_diag("syscall_emulator_create: initialized=1");
     ctx->initialized = 1;
     snprintf(buf, sizeof(buf), "[SyscallCore] create: DONE ctx=%p pid=%d\n", (void*)ctx, ctx->process.pid);
     if (logfd >= 0) { write(logfd, buf, strlen(buf)); close(logfd); }
     fprintf(stderr, "%s", buf);
 
+    c_diag("syscall_emulator_create: DONE");
     return ctx;
 }
 

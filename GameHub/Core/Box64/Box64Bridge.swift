@@ -155,8 +155,8 @@ class Box64Bridge {
         Self.writeDiag("docsPath=\(docsPath)")
         Self.writeDiag("box64InstallPath=\(box64InstallPath)")
         Self.writeDiag("wineInstallPath=\(wineInstallPath)")
-        Self.writeDiag("HOME=\(getenv("HOME") ?? "nil")")
-        Self.writeDiag("CRASH_LOG_PATH=\(getenv("CRASH_LOG_PATH") ?? "nil")")
+        Self.writeDiag("HOME=\(getenv("HOME").flatMap { String(cString: $0) } ?? "nil")")
+        Self.writeDiag("CRASH_LOG_PATH=\(getenv("CRASH_LOG_PATH").flatMap { String(cString: $0) } ?? "nil")")
         Self.writeDiag("calling box64_create() NOW")
         autoreleasepool {
             localCtx = box64_create()

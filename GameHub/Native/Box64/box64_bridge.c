@@ -98,8 +98,16 @@ static void bridge_log(const char *msg) {
     }
 }
 
-static void c_diag(const char *s) {
-    int fd = open("/tmp/c_diag.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+void c_diag(const char *s) {
+    char diag_path[1024];
+    if (g_docs_path[0]) {
+        snprintf(diag_path, sizeof(diag_path), "%s/c_diag.log", g_docs_path);
+    } else {
+        const char *home = getenv("HOME");
+        if (!home) return;
+        snprintf(diag_path, sizeof(diag_path), "%s/Documents/c_diag.log", home);
+    }
+    int fd = open(diag_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd >= 0) {
         write(fd, s, strlen(s));
         write(fd, "\n", 1);

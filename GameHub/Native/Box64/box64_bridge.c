@@ -70,7 +70,7 @@ void install_crash_handler(const char *log_path) {
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sigfillset(&sa.sa_mask);
-    sa.sa_handler = crash_signal_handler;
+    sa.__sigaction_u.__sa_handler = crash_signal_handler;
     sa.sa_flags = SA_RESETHAND;
 
     sigaction(SIGSEGV, &sa, NULL);

@@ -342,51 +342,102 @@ class Box64Bridge {
         }
     }
 
-    private func streamCopy(src: String, dst: String, fm: FileManager) {
+    @discardableResult
+    private func streamCopy(src: String, dst: String, fm: FileManager) -> Bool {
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: src, isDirectory: &isDir), !isDir.boolValue else {
+            Self.log("streamCopy: source missing or is directory: \(src)")
+            return false
+        }
+        guard let attrs = try? fm.attributesOfItem(atPath: src),
+              let size = attrs[.size] as? NSNumber, size.intValue > 0 else {
+            Self.log("streamCopy: source has 0 size: \(src)")
+            return false
+        }
+        if (try? fm.copyItem(atPath: src, toPath: dst)) != nil {
+            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dst)
+            return true
+        }
+        Self.log("streamCopy: copyItem failed for \(src), falling back to stream copy")
         let bufSize = 64 * 1024
         guard let inStream = InputStream(fileAtPath: src),
-              let outStream = OutputStream(toFileAtPath: dst, append: false) else { return }
+              let outStream = OutputStream(toFileAtPath: dst, append: false) else {
+            Self.log("streamCopy: failed to open streams for \(src)")
+            return false
+        }
         inStream.open()
         outStream.open()
         let buf = malloc(bufSize)
         defer { free(buf) }
         guard let bufPtr = buf?.bindMemory(to: UInt8.self, capacity: bufSize) else {
-            inStream.close(); outStream.close(); return
+            inStream.close(); outStream.close()
+            try? fm.removeItem(atPath: dst)
+            return false
         }
+        var totalWritten = 0
         while inStream.hasBytesAvailable {
             let bytesRead = inStream.read(bufPtr, maxLength: bufSize)
             if bytesRead <= 0 { break }
-            outStream.write(bufPtr, maxLength: bytesRead)
+            let written = outStream.write(bufPtr, maxLength: bytesRead)
+            if written > 0 { totalWritten += written }
         }
         inStream.close()
         outStream.close()
+        guard totalWritten > 0 else {
+            try? fm.removeItem(atPath: dst)
+            Self.log("streamCopy: wrote 0 bytes to \(dst)")
+            return false
+        }
         try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dst)
+        Self.log("streamCopy: copied \(src) -> \(dst) (\(totalWritten) bytes)")
+        return true
+    }
+
+    private func isNonEmptyFile(_ path: String) -> Bool {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let size = attrs[.size] as? NSNumber else { return false }
+        return size.intValue > 0
     }
 
     private func extractBox64() throws {
         let fm = FileManager.default
         let destination = (box64InstallPath as NSString).appendingPathComponent("box64")
-        if fm.fileExists(atPath: destination) { return }
+        if isNonEmptyFile(destination) { return }
+        if fm.fileExists(atPath: destination) {
+            try? fm.removeItem(atPath: destination)
+            Self.log("extractBox64: removed stale 0-byte file")
+        }
 
         guard let bundledPath = findBundledResource("box64", isDirectory: false) else {
             throw SetupError.box64Missing
         }
-        streamCopy(src: bundledPath, dst: destination, fm: fm)
+        Self.log("extractBox64: source=\(bundledPath) dest=\(destination)")
+        guard streamCopy(src: bundledPath, dst: destination, fm: fm) else {
+            throw SetupError.copyFailed("streamCopy returned false for \(bundledPath) -> \(destination)")
+        }
+        guard let attrs = try? fm.attributesOfItem(atPath: destination),
+              let size = attrs[.size] as? NSNumber, size.intValue > 0 else {
+            try? fm.removeItem(atPath: destination)
+            throw SetupError.copyFailed("extracted box64 is empty")
+        }
+        Self.log("extractBox64: OK (\(size.intValue) bytes)")
     }
 
     private func copyDirRecursive(src: String, dst: String, fm: FileManager) throws {
         try fm.createDirectory(atPath: dst, withIntermediateDirectories: true)
-        let contents = try fm.contentsOfDirectory(atPath: src)
+        let contents = try fm.contentsOfDirectory(atPath: src).filter { $0 != ".gitkeep" }
         for item in contents {
-            autoreleasepool {
+            try autoreleasepool {
                 let srcPath = (src as NSString).appendingPathComponent(item)
                 let dstPath = (dst as NSString).appendingPathComponent(item)
                 var isDir: ObjCBool = false
                 fm.fileExists(atPath: srcPath, isDirectory: &isDir)
                 if isDir.boolValue {
-                    try? copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
+                    try copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
                 } else {
-                    streamCopy(src: srcPath, dst: dstPath, fm: fm)
+                    guard streamCopy(src: srcPath, dst: dstPath, fm: fm) else {
+                        throw SetupError.copyFailed("failed to copy \(item)")
+                    }
                 }
             }
         }
@@ -395,27 +446,30 @@ class Box64Bridge {
     private func extractWine() throws {
         let fm = FileManager.default
         let wine64Dest = (wineInstallPath as NSString).appendingPathComponent("bin/wine64")
-        if fm.fileExists(atPath: wine64Dest) { return }
+        if isNonEmptyFile(wine64Dest) { return }
+        if fm.fileExists(atPath: wineInstallPath) {
+            try? fm.removeItem(atPath: wineInstallPath)
+            Self.log("extractWine: removed stale Wine directory (wine64 missing or 0 bytes)")
+        }
 
         guard let bundledWineDir = findBundledResource("Wine", isDirectory: true) else {
             throw SetupError.wineMissing
         }
-        if fm.fileExists(atPath: wineInstallPath) {
-            try? fm.removeItem(atPath: wineInstallPath)
-        }
 
         try fm.createDirectory(atPath: wineInstallPath, withIntermediateDirectories: true)
-        let contents = try fm.contentsOfDirectory(atPath: bundledWineDir)
+        let contents = try fm.contentsOfDirectory(atPath: bundledWineDir).filter { $0 != ".gitkeep" }
         for item in contents {
-            autoreleasepool {
+            try autoreleasepool {
                 let srcPath = (bundledWineDir as NSString).appendingPathComponent(item)
                 let dstPath = (wineInstallPath as NSString).appendingPathComponent(item)
                 var isDir: ObjCBool = false
                 fm.fileExists(atPath: srcPath, isDirectory: &isDir)
                 if isDir.boolValue {
-                    try? copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
+                    try copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
                 } else {
-                    streamCopy(src: srcPath, dst: dstPath, fm: fm)
+                    guard streamCopy(src: srcPath, dst: dstPath, fm: fm) else {
+                        throw SetupError.copyFailed("failed to copy \(item) from Wine")
+                    }
                 }
             }
         }
@@ -438,17 +492,19 @@ class Box64Bridge {
         guard let bundledMVK = findBundledResource("MoltenVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: mvkDir) { try? fm.removeItem(atPath: mvkDir) }
         try fm.createDirectory(atPath: mvkDir, withIntermediateDirectories: true)
-        let contents = try fm.contentsOfDirectory(atPath: bundledMVK)
+        let contents = try fm.contentsOfDirectory(atPath: bundledMVK).filter { $0 != ".gitkeep" }
         for item in contents {
-            autoreleasepool {
+            try autoreleasepool {
                 let srcPath = (bundledMVK as NSString).appendingPathComponent(item)
                 let dstPath = (mvkDir as NSString).appendingPathComponent(item)
                 var isDir: ObjCBool = false
                 fm.fileExists(atPath: srcPath, isDirectory: &isDir)
                 if isDir.boolValue {
-                    try? copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
+                    try copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
                 } else {
-                    streamCopy(src: srcPath, dst: dstPath, fm: fm)
+                    guard streamCopy(src: srcPath, dst: dstPath, fm: fm) else {
+                        throw SetupError.copyFailed("failed to copy \(item) from MoltenVK")
+                    }
                 }
             }
         }
@@ -462,17 +518,19 @@ class Box64Bridge {
         guard let bundledDXVK = findBundledResource("DXVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: dxvkDir) { try? fm.removeItem(atPath: dxvkDir) }
         try fm.createDirectory(atPath: dxvkDir, withIntermediateDirectories: true)
-        let contents = try fm.contentsOfDirectory(atPath: bundledDXVK)
+        let contents = try fm.contentsOfDirectory(atPath: bundledDXVK).filter { $0 != ".gitkeep" }
         for item in contents {
-            autoreleasepool {
+            try autoreleasepool {
                 let srcPath = (bundledDXVK as NSString).appendingPathComponent(item)
                 let dstPath = (dxvkDir as NSString).appendingPathComponent(item)
                 var isDir: ObjCBool = false
                 fm.fileExists(atPath: srcPath, isDirectory: &isDir)
                 if isDir.boolValue {
-                    try? copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
+                    try copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
                 } else {
-                    streamCopy(src: srcPath, dst: dstPath, fm: fm)
+                    guard streamCopy(src: srcPath, dst: dstPath, fm: fm) else {
+                        throw SetupError.copyFailed("failed to copy \(item) from DXVK")
+                    }
                 }
             }
         }

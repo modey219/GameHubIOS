@@ -403,16 +403,26 @@ struct DebugView: View {
     private func loadLogFile() {
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-        let logPath = docs.appendingPathComponent("swift_box64.log").path
-        guard let data = fm.contents(atPath: logPath),
-              let content = String(data: data, encoding: .utf8) else {
-            log("No swift_box64.log found")
-            return
+        let candidates = [
+            ("crash.log",           "crash.log"),
+            ("swift_box64.log",     "swift_box64.log"),
+            ("bridge.log",          "bridge.log"),
+            ("box64_runner.log",    "box64_runner.log"),
+        ]
+        var totalLines = 0
+        for (name, file) in candidates {
+            let path = docs.appendingPathComponent(file).path
+            guard let data = fm.contents(atPath: path),
+                  let content = String(data: data, encoding: .utf8),
+                  !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            let lines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
+            logs.append("--- \(name) (\(lines.count) lines) ---")
+            logs.append(contentsOf: lines.suffix(100))
+            totalLines += lines.count
         }
-        let lines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
-        logs.append(contentsOf: lines.suffix(100))
+        if totalLines == 0 { log("No log files found in Documents") }
+        else { log("Loaded \(totalLines) total lines from \(candidates.count) files") }
         if logs.count > 500 { logs.removeFirst(logs.count - 500) }
-        log("Loaded \(min(lines.count, 100)) lines from swift_box64.log")
     }
 
     private static func fileSize(_ path: String) -> String {

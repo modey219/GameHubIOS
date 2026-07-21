@@ -67,12 +67,26 @@ emulator_context_t *syscall_emulator_create(void) {
     size_t alloc_size = sizeof(emulator_context_t);
 
     /* Log to file so iOS console can capture it */
-    const char *home = getenv("HOME");
-    char logpath[512];
+    char logpath[1024];
     int logfd = -1;
-    if (home) {
-        snprintf(logpath, sizeof(logpath), "%s/Documents/bridge.log", home);
-        logfd = open(logpath, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    /* Try getting docs path from environment (set by install_crash_handler) */
+    const char *crash_log = getenv("CRASH_LOG_PATH");
+    if (crash_log && crash_log[0]) {
+        size_t cl_len = strlen(crash_log);
+        size_t copy_len = cl_len > 10 ? cl_len - 10 : 0; /* strip "/crash.log" */
+        if (copy_len > 0 && copy_len < sizeof(logpath) - 20) {
+            memcpy(logpath, crash_log, copy_len);
+            logpath[copy_len] = '\0';
+            strcat(logpath, "/bridge.log");
+            logfd = open(logpath, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        }
+    }
+    if (logfd < 0) {
+        const char *home = getenv("HOME");
+        if (home) {
+            snprintf(logpath, sizeof(logpath), "%s/Documents/bridge.log", home);
+            logfd = open(logpath, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        }
     }
 
     char buf[256];

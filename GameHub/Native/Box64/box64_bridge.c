@@ -16,11 +16,80 @@ static int g_wine_exit_code = 0;
 static int g_wine_running = 0;
 static char g_wine_error[1024] = {0};
 
+static char g_crash_log_path[1024] = {0};
+static char g_docs_path[1024] = {0};
+
+static const char *g_signal_names[32] = {
+    NULL, "SIGHUP", "SIGINT", "SIGQUIT", "SIGILL", "SIGTRAP",
+    "SIGABRT", "SIGEMT", "SIGFPE", "SIGKILL", "SIGBUS",
+    "SIGSEGV", "SIGSYS", "SIGPIPE", "SIGALRM", "SIGTERM",
+    "SIGURG", "SIGSTOP", "SIGTSTP", "SIGCONT", "SIGCHLD",
+    "SIGTTIN", "SIGTTOU", "SIGIO", "SIGXCPU", "SIGXFSZ",
+    "SIGVTALRM", "SIGPROF", "SIGWINCH", "SIGINFO", "SIGUSR1", "SIGUSR2"
+};
+
+static void crash_signal_handler(int sig) {
+    int fd = open(g_crash_log_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) {
+        const char *prefix = "[CRASH] Signal ";
+        write(fd, prefix, 15);
+        if (sig > 0 && sig < 32 && g_signal_names[sig]) {
+            write(fd, g_signal_names[sig], strlen(g_signal_names[sig]));
+        } else {
+            char nbuf[16];
+            int len = 0;
+            int tmp = sig;
+            if (tmp == 0) { nbuf[len++] = '0'; }
+            else {
+                char rev[16];
+                int rlen = 0;
+                while (tmp > 0) { rev[rlen++] = '0' + (tmp % 10); tmp /= 10; }
+                for (int i = rlen - 1; i >= 0; i--) nbuf[len++] = rev[i];
+            }
+            write(fd, nbuf, len);
+        }
+        write(fd, "\n", 1);
+        close(fd);
+    }
+    _exit(128 + sig);
+}
+
+void install_crash_handler(const char *log_path) {
+    if (!log_path || !log_path[0]) return;
+    strncpy(g_crash_log_path, log_path, sizeof(g_crash_log_path) - 1);
+    g_crash_log_path[sizeof(g_crash_log_path) - 1] = '\0';
+    // Also store the Documents directory by stripping "/crash.log"
+    size_t lp_len = strlen(log_path);
+    if (lp_len > 10) {
+        size_t copy_len = lp_len - 10; // len of "/crash.log"
+        if (copy_len > sizeof(g_docs_path) - 1) copy_len = sizeof(g_docs_path) - 1;
+        memcpy(g_docs_path, log_path, copy_len);
+        g_docs_path[copy_len] = '\0';
+    }
+
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sigfillset(&sa.sa_mask);
+    sa.sa_handler = crash_signal_handler;
+    sa.sa_flags = SA_RESETHAND;
+
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
+    sigaction(SIGABRT, &sa, NULL);
+    sigaction(SIGILL, &sa, NULL);
+    sigaction(SIGFPE, &sa, NULL);
+    sigaction(SIGTRAP, &sa, NULL);
+}
+
 static void bridge_log(const char *msg) {
-    const char *home = getenv("HOME");
-    if (!home) return;
-    char path[512];
-    snprintf(path, sizeof(path), "%s/Documents/bridge.log", home);
+    char path[1024];
+    if (g_docs_path[0]) {
+        snprintf(path, sizeof(path), "%s/bridge.log", g_docs_path);
+    } else {
+        const char *home = getenv("HOME");
+        if (!home) return;
+        snprintf(path, sizeof(path), "%s/Documents/bridge.log", home);
+    }
     int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd >= 0) {
         write(fd, msg, strlen(msg));

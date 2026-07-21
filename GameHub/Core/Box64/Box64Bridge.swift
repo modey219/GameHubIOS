@@ -156,6 +156,7 @@ class Box64Bridge {
         setupEnvironment()
 
         let docsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? "/tmp"
+        docsPath.withCString { set_c_diag_docs_path($0) }
         Self.writeDiag("init_start")
         Self.writeDiag("docsPath=\(docsPath)")
         Self.writeDiag("box64InstallPath=\(box64InstallPath)")

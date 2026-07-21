@@ -122,6 +122,13 @@ void c_diag(const char *s) {
     append_to_log(docs, "diag.log", s);
 }
 
+void set_c_diag_docs_path(const char *path) {
+    if (!path || !path[0]) return;
+    strncpy(g_docs_path, path, sizeof(g_docs_path) - 1);
+    g_docs_path[sizeof(g_docs_path) - 1] = '\0';
+    c_diag("set_c_diag_docs_path: OK");
+}
+
 box64_context_t *box64_create(void) {
     return box64_create_step1();
 }

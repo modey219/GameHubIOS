@@ -55,6 +55,7 @@ const char *box64_get_wine_error(void);
 
 void c_diag(const char *s);
 void install_crash_handler(const char *log_path);
+void set_c_diag_docs_path(const char *path);
 
 int box64_runner_start(const char *wine64_path, const char *game_exe, const char *prefix_path);
 int box64_runner_stop(void);

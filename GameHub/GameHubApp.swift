@@ -30,6 +30,8 @@ struct GameHubApp: App {
     @State private var setupLog: [String] = []
     @State private var currentStep = 0
     @State private var cDiagLog: String = ""
+    @State private var showShareSheet = false
+    @State private var shareText: String = ""
 
     var body: some Scene {
         WindowGroup {
@@ -173,14 +175,28 @@ struct GameHubApp: App {
 
     private func writeDiag(_ s: String) {
         if let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
-            try? "[\(Date().timeIntervalSince1970)] \(s)\n".write(toFile: p + "/diag.log", atomically: true, encoding: .utf8)
+            let line = "[\(Date().timeIntervalSince1970)] \(s)\n"
+            let path = p + "/diag.log"
+            if let fh = FileHandle(forWritingAtPath: path) {
+                fh.seekToEndOfFile()
+                fh.write(line.data(using: .utf8)!)
+                fh.closeFile()
+            } else {
+                try? line.write(toFile: path, atomically: true, encoding: .utf8)
+            }
         }
     }
 
     private func readCdiagLog() {
         guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
-        let path = p + "/c_diag.log"
-        cDiagLog = (try? String(contentsOfFile: path, encoding: .utf8)) ?? "(no c_diag.log found)"
+        let cdiagPath = p + "/c_diag.log"
+        let diagPath = p + "/diag.log"
+        let cdiag = (try? String(contentsOfFile: cdiagPath, encoding: .utf8)) ?? ""
+        let diag = (try? String(contentsOfFile: diagPath, encoding: .utf8)) ?? ""
+        var combined = ""
+        if !cdiag.isEmpty { combined += "=== c_diag.log ===\n\(cdiag)\n" }
+        if !diag.isEmpty { combined += "=== diag.log ===\n\(diag)\n" }
+        cDiagLog = combined.isEmpty ? "(no log files found)" : combined
     }
 
     private func shareLogs() {

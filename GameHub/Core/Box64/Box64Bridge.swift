@@ -150,11 +150,18 @@ class Box64Bridge {
 
         Self.log("calling box64_create(), memory = \(Self.memoryUsageMB())MB...")
         var localCtx: UnsafeMutablePointer<box64_context_t>?
-        Self.writeDiag("before_box64_create")
+        Self.writeDiag("before_box64_create START")
+        let docsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? "/tmp"
+        Self.writeDiag("docsPath=\(docsPath)")
+        Self.writeDiag("box64InstallPath=\(box64InstallPath)")
+        Self.writeDiag("wineInstallPath=\(wineInstallPath)")
+        Self.writeDiag("HOME=\(getenv("HOME") ?? "nil")")
+        Self.writeDiag("CRASH_LOG_PATH=\(getenv("CRASH_LOG_PATH") ?? "nil")")
+        Self.writeDiag("calling box64_create() NOW")
         autoreleasepool {
             localCtx = box64_create()
         }
-        Self.writeDiag("after_box64_create")
+        Self.writeDiag("after_box64_create result=\(localCtx != nil ? "OK" : "NULL")")
         Self.log("box64_create returned \(localCtx != nil ? "OK" : "NULL"), memory = \(Self.memoryUsageMB())MB")
 
         if let localCtx = localCtx {

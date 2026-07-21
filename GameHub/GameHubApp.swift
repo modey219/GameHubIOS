@@ -70,7 +70,7 @@ struct GameHubApp: App {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
                         .font(.title2)
-                    Text(error)
+                    Text(verbatim: error)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -87,7 +87,7 @@ struct GameHubApp: App {
                 VStack(spacing: 8) {
                     ProgressView()
                         .scaleEffect(1.2)
-                    Text(setupProgress)
+                    Text(verbatim: setupProgress)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
 
@@ -95,7 +95,7 @@ struct GameHubApp: App {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 2) {
                                 ForEach(Array(setupLog.enumerated()), id: \.offset) { idx, line in
-                                    Text(line)
+                                    Text(verbatim: line)
                                         .font(.system(.caption2, design: .monospaced))
                                         .foregroundColor(.green)
                                         .id(idx)
@@ -121,7 +121,7 @@ struct GameHubApp: App {
     }
 
     private func logStep(_ n: Int, _ text: String) {
-        let ts = ISO8601DateFormatter().string(from: Date())
+        let ts = ISO8601DateFormatter().string(from: Date()) ?? "unknown"
         let line = "[\(ts)] STEP \(n): \(text)"
         NSLog("%@", line)
         DispatchQueue.main.async {

@@ -29,6 +29,7 @@ struct GameHubApp: App {
     @State private var setupProgress = "Initializing..."
     @State private var setupLog: [String] = []
     @State private var currentStep = 0
+    @State private var cDiagLog: String = ""
 
     var body: some Scene {
         WindowGroup {
@@ -48,8 +49,17 @@ struct GameHubApp: App {
                 }
             }
             .onAppear {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    performSetup()
+                if UserDefaults.standard.bool(forKey: "_crash_sentinel") {
+                    readCdiagLog()
+                    setupError = "Previous run crashed during Box64 init. See logs below."
+                    UserDefaults.standard.set(false, forKey: "_crash_sentinel")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        isLoading = false
+                    }
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        performSetup()
+                    }
                 }
             }
         }
@@ -80,13 +90,35 @@ struct GameHubApp: App {
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-                    Button("Continue Anyway") {
-                        isLoading = false
+                    if !cDiagLog.isEmpty {
+                        ScrollView {
+                            Text(verbatim: cDiagLog)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundColor(.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                        }
+                        .frame(maxHeight: 200)
+                        .background(Color.black.opacity(0.8))
+                        .cornerRadius(8)
+                        .padding(.horizontal, 24)
                     }
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
+                    HStack(spacing: 16) {
+                        Button("Continue Anyway") {
+                            isLoading = false
+                        }
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                        Button("Share Logs") {
+                            shareLogs()
+                        }
+                        .padding()
+                        .background(Color.gray)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                    }
                 }
             } else {
                 VStack(spacing: 8) {
@@ -145,6 +177,27 @@ struct GameHubApp: App {
         }
     }
 
+    private func readCdiagLog() {
+        guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
+        let path = p + "/c_diag.log"
+        cDiagLog = (try? String(contentsOfFile: path, encoding: .utf8)) ?? "(no c_diag.log found)"
+    }
+
+    private func shareLogs() {
+        guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
+        let diagPath = p + "/diag.log"
+        let cdiagPath = p + "/c_diag.log"
+        var text = "=== diag.log ===\n" + ((try? String(contentsOfFile: diagPath)) ?? "N/A") + "\n"
+        text += "=== c_diag.log ===\n" + ((try? String(contentsOfFile: cdiagPath)) ?? "N/A") + "\n"
+        text += "=== bridge.log ===\n" + ((try? String(contentsOfFile: p + "/bridge.log")) ?? "N/A") + "\n"
+        text += "=== crash.log ===\n" + ((try? String(contentsOfFile: p + "/crash.log")) ?? "N/A") + "\n"
+        let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = scene.windows.first?.rootViewController {
+            root.present(av, animated: true)
+        }
+    }
+
     private func performSetup() {
         DispatchQueue.global(qos: .userInitiated).async {
             let fm = FileManager.default
@@ -186,6 +239,7 @@ struct GameHubApp: App {
                     logStep(-1, "EXTRACTION FAILED: \(error)")
                     DispatchQueue.main.async {
                         self.setupError = "Extraction error: \(error.localizedDescription)"
+                        self.readCdiagLog()
                         self.isLoading = false
                     }
                     return
@@ -201,7 +255,10 @@ struct GameHubApp: App {
 
             writeDiag("step=box64_init")
             logStep(20, "Initializing Box64...")
+            UserDefaults.standard.set(true, forKey: "_crash_sentinel")
+            UserDefaults.standard.synchronize()
             Box64Bridge.shared.initialize()
+            UserDefaults.standard.set(false, forKey: "_crash_sentinel")
             writeDiag("step=box64_init_done")
             logStep(20, "Box64 init complete")
 

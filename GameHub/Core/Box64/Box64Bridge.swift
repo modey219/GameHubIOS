@@ -413,7 +413,8 @@ class Box64Bridge {
         }
         Self.log("extractBox64: source=\(bundledPath) dest=\(destination)")
         let srcExists = fm.fileExists(atPath: bundledPath)
-        let srcSize = (try? fm.attributesOfItem(atPath: bundledPath).flatMap { $0[.size] as? NSNumber }?.intValue) ?? -1
+        let srcAttrs = try? fm.attributesOfItem(atPath: bundledPath)
+        let srcSize = (srcAttrs?[.size] as? NSNumber)?.intValue ?? -1
         let dstDirExists = fm.fileExists(atPath: box64InstallPath)
         Self.log("extractBox64: srcExists=\(srcExists) srcSize=\(srcSize) dstDirExists=\(dstDirExists)")
         guard streamCopy(src: bundledPath, dst: destination, fm: fm) else {

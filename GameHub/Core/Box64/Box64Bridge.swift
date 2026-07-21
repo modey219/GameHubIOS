@@ -428,26 +428,6 @@ class Box64Bridge {
         Self.log("extractBox64: OK (\(size.intValue) bytes)")
     }
 
-    private func copyDirRecursive(src: String, dst: String, fm: FileManager) throws {
-        try fm.createDirectory(atPath: dst, withIntermediateDirectories: true)
-        let contents = try fm.contentsOfDirectory(atPath: src).filter { $0 != ".gitkeep" }
-        for item in contents {
-            try autoreleasepool {
-                let srcPath = (src as NSString).appendingPathComponent(item)
-                let dstPath = (dst as NSString).appendingPathComponent(item)
-                var isDir: ObjCBool = false
-                fm.fileExists(atPath: srcPath, isDirectory: &isDir)
-                if isDir.boolValue {
-                    try copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
-                } else {
-                    guard streamCopy(src: srcPath, dst: dstPath, fm: fm) else {
-                        throw SetupError.copyFailed("failed to copy \(item)")
-                    }
-                }
-            }
-        }
-    }
-
     private func extractWine() throws {
         let fm = FileManager.default
         let wine64Dest = (wineInstallPath as NSString).appendingPathComponent("bin/wine64")
@@ -461,23 +441,7 @@ class Box64Bridge {
             throw SetupError.wineMissing
         }
 
-        try fm.createDirectory(atPath: wineInstallPath, withIntermediateDirectories: true)
-        let contents = try fm.contentsOfDirectory(atPath: bundledWineDir).filter { $0 != ".gitkeep" }
-        for item in contents {
-            try autoreleasepool {
-                let srcPath = (bundledWineDir as NSString).appendingPathComponent(item)
-                let dstPath = (wineInstallPath as NSString).appendingPathComponent(item)
-                var isDir: ObjCBool = false
-                fm.fileExists(atPath: srcPath, isDirectory: &isDir)
-                if isDir.boolValue {
-                    try copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
-                } else {
-                    guard streamCopy(src: srcPath, dst: dstPath, fm: fm) else {
-                        throw SetupError.copyFailed("failed to copy \(item) from Wine")
-                    }
-                }
-            }
-        }
+        try fm.copyItem(atPath: bundledWineDir, toPath: wineInstallPath)
 
         let binaries = ["bin/wine", "bin/wine64", "bin/wineserver", "bin/wineboot"]
         for bin in binaries {
@@ -496,23 +460,7 @@ class Box64Bridge {
 
         guard let bundledMVK = findBundledResource("MoltenVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: mvkDir) { try? fm.removeItem(atPath: mvkDir) }
-        try fm.createDirectory(atPath: mvkDir, withIntermediateDirectories: true)
-        let contents = try fm.contentsOfDirectory(atPath: bundledMVK).filter { $0 != ".gitkeep" }
-        for item in contents {
-            try autoreleasepool {
-                let srcPath = (bundledMVK as NSString).appendingPathComponent(item)
-                let dstPath = (mvkDir as NSString).appendingPathComponent(item)
-                var isDir: ObjCBool = false
-                fm.fileExists(atPath: srcPath, isDirectory: &isDir)
-                if isDir.boolValue {
-                    try copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
-                } else {
-                    guard streamCopy(src: srcPath, dst: dstPath, fm: fm) else {
-                        throw SetupError.copyFailed("failed to copy \(item) from MoltenVK")
-                    }
-                }
-            }
-        }
+        try fm.copyItem(atPath: bundledMVK, toPath: mvkDir)
     }
 
     private func extractDXVK() throws {
@@ -522,22 +470,6 @@ class Box64Bridge {
 
         guard let bundledDXVK = findBundledResource("DXVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: dxvkDir) { try? fm.removeItem(atPath: dxvkDir) }
-        try fm.createDirectory(atPath: dxvkDir, withIntermediateDirectories: true)
-        let contents = try fm.contentsOfDirectory(atPath: bundledDXVK).filter { $0 != ".gitkeep" }
-        for item in contents {
-            try autoreleasepool {
-                let srcPath = (bundledDXVK as NSString).appendingPathComponent(item)
-                let dstPath = (dxvkDir as NSString).appendingPathComponent(item)
-                var isDir: ObjCBool = false
-                fm.fileExists(atPath: srcPath, isDirectory: &isDir)
-                if isDir.boolValue {
-                    try copyDirRecursive(src: srcPath, dst: dstPath, fm: fm)
-                } else {
-                    guard streamCopy(src: srcPath, dst: dstPath, fm: fm) else {
-                        throw SetupError.copyFailed("failed to copy \(item) from DXVK")
-                    }
-                }
-            }
-        }
+        try fm.copyItem(atPath: bundledDXVK, toPath: dxvkDir)
     }
 }

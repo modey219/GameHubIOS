@@ -80,15 +80,29 @@ void install_crash_handler(const char *log_path) {
     sigaction(SIGTRAP, &sa, NULL);
 }
 
-static void bridge_log(const char *msg) {
-    char path[1024];
-    if (g_docs_path[0]) {
-        snprintf(path, sizeof(path), "%s/bridge.log", g_docs_path);
-    } else {
-        const char *home = getenv("HOME");
-        if (!home) return;
-        snprintf(path, sizeof(path), "%s/Documents/bridge.log", home);
+static const char *get_docs_dir(void) {
+    const char *crash_log = getenv("CRASH_LOG_PATH");
+    if (crash_log && crash_log[0]) {
+        size_t cl_len = strlen(crash_log);
+        if (cl_len > 10) {
+            size_t copy_len = cl_len - 10;
+            static char docs[1024];
+            if (copy_len < sizeof(docs) - 1) {
+                memcpy(docs, crash_log, copy_len);
+                docs[copy_len] = '\0';
+                return docs;
+            }
+        }
     }
+    if (g_docs_path[0]) return g_docs_path;
+    return NULL;
+}
+
+static void bridge_log(const char *msg) {
+    const char *docs = get_docs_dir();
+    if (!docs) return;
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/bridge.log", docs);
     int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd >= 0) {
         write(fd, msg, strlen(msg));
@@ -97,21 +111,36 @@ static void bridge_log(const char *msg) {
     }
 }
 
-void c_diag(const char *s) {
-    char diag_path[1024];
-    if (g_docs_path[0]) {
-        snprintf(diag_path, sizeof(diag_path), "%s/c_diag.log", g_docs_path);
-    } else {
-        const char *home = getenv("HOME");
-        if (!home) return;
-        snprintf(diag_path, sizeof(diag_path), "%s/Documents/c_diag.log", home);
-    }
-    int fd = open(diag_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+static void append_to_log(const char *base_path, const char *filename, const char *msg) {
+    char full[1032];
+    size_t blen = strlen(base_path);
+    size_t flen = strlen(filename);
+    if (blen + flen + 2 > sizeof(full)) return;
+    memcpy(full, base_path, blen);
+    full[blen] = '/';
+    memcpy(full + blen + 1, filename, flen);
+    full[blen + 1 + flen] = '\0';
+    int fd = open(full, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd >= 0) {
-        write(fd, s, strlen(s));
+        write(fd, msg, strlen(msg));
         write(fd, "\n", 1);
         close(fd);
     }
+}
+
+void c_diag(const char *s) {
+    const char *docs = get_docs_dir();
+    if (!docs) {
+        const char *home = getenv("HOME");
+        if (!home) return;
+        char buf[1032];
+        snprintf(buf, sizeof(buf), "%s/Documents", home);
+        append_to_log(buf, "c_diag.log", s);
+        append_to_log(buf, "diag.log", s);
+        return;
+    }
+    append_to_log(docs, "c_diag.log", s);
+    append_to_log(docs, "diag.log", s);
 }
 
 box64_context_t *box64_create(void) {

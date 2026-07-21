@@ -1,0 +1,139 @@
+{"app_name":"MNEmulator","timestamp":"2026-07-19 11:44:05.00 +0300","app_version":"1.0.0","slice_uuid":"767EEE9D-040A-344F-BDE9-C8BDCDAC4FF1","build_version":"1","bundleID":"com.mnemulator.ios.WLBA4LKYFH","duration_ms":"12046238","share_with_app_devs":1,"is_first_party":0,"bug_type":"145","os_version":"iPhone OS 27.0 (24A5380h)","roots_installed":0,"name":"MNEmulator","incident_id":"0167B5A8-9AA2-4ABB-B757-979CAACA7835"}
+Date/Time:        2026-07-19 08:23:04.996 +0300
+End time:         2026-07-19 11:43:51.233 +0300
+OS Version:       iPhone OS 27.0 (Build 24A5380h)
+Architecture:     arm64e
+Report Version:   73
+Incident Identifier: 0167B5A8-9AA2-4ABB-B757-979CAACA7835
+Share With Devs:  Yes
+
+Data Source:      Microstackshots
+Shared Cache:     442CF95D-A137-3136-A25A-10058C527C5D slid base address 0x19fb38000
+
+Command:          MNEmulator
+Path:             /private/var/containers/Bundle/Application/0ADDBB7B-8264-4623-8E9A-914E28E7C5CA/App.app/MNEmulator
+Identifier:       com.mnemulator.ios.WLBA4LKYFH
+Version:          1.0.0 (1)
+Is First Party:   No
+Beta Identifier:  4D79BF53-8027-4DDB-A725-7DD74D715BA7
+Resource Coalition: "com.mnemulator.ios.WLBA4LKYFH"(860)
+Architecture:     arm64
+Parent:           UNKNOWN [1]
+PID:              1687
+
+Event:            disk writes
+Action taken:     none
+Writes:           4294.99 MB of file backed memory dirtied over 12046 seconds (356.54 KB per second average), exceeding limit of 49.71 KB per second over 86400 seconds
+Writes limit:     4294.97 MB
+Limit duration:   86400s
+Writes caused:    4294.99 MB
+Writes duration:  12046s
+Duration:         12046.24s
+Duration Sampled: 2.53s (event starts 12043.67s before samples)
+Steps:            27 (10.49 MB/step)
+
+Hardware model:   iPad12,1
+Active cpus:      6
+Memory size:      2.87 GB
+HW page size:     16384
+VM page size:     16384
+Shared cache residency: 5.23% (355.12 MB / 6794.25 MB)
+
+Time Since Boot:  19957s
+Time Awake Since Boot: 15810s
+Time Since Wake:  1084s
+
+Total CPU Time:   0.768s
+Advisory levels:  Battery -> 1, User -> 3, ThermalPressure -> 0, Combined -> 1
+Free disk space:  11.63 GB/59.59 GB, low space threshold 150 MB
+Vnodes Available: 71.83% (14365/20000, 10000 allocated, 10000 soft limit)
+Models:           none
+
+Preferred User Language: ar-IQ, en-IQ
+Country Code:     IQ
+Keyboards:        en_GB QWERTY, ar Arabic
+OS Cryptex File Extents: 3934
+
+Heaviest stack for the target process:
+  27  ??? (libsystem_pthread.dylib + 2320) [0x1a0072910]
+  27  ??? (libsystem_pthread.dylib + 4604) [0x1a00731fc]
+  27  ??? (libdispatch.dylib + 86256) [0x1cea4f0f0]
+  27  ??? (libdispatch.dylib + 84332) [0x1cea4e96c]
+  27  ??? (libdispatch.dylib + 114644) [0x1cea55fd4]
+  27  ??? (libdispatch.dylib + 7372) [0x1cea3bccc]
+  27  ??? (MNEmulator + 323996) [0x104f8719c]
+  27  ??? (MNEmulator + 335244) [0x104f89d8c]
+  26  ??? (MNEmulator + 75504) [0x104f4a6f0]
+  26  ??? (MNEmulator + 76856) [0x104f4ac38]
+  26  ??? (MNEmulator + 85508) [0x104f4ce04]
+  25  ??? (MNEmulator + 84144) [0x104f4c8b0]
+  25  ??? (MNEmulator + 84144) [0x104f4c8b0]
+  25  ??? (MNEmulator + 83772) [0x104f4c73c]
+  24  ??? (MNEmulator + 90724) [0x104f4e264]
+  24  ??? (CoreFoundation + 216576) [0x1a0167e00]
+  24  ??? (CoreFoundation + 1092792) [0x1a023dcb8]
+  24  ??? (libsystem_kernel.dylib + 20528) [0x257230030]
+
+
+Powerstats for:   MNEmulator [1687]
+UUID:             767EEE9D-040A-344F-BDE9-C8BDCDAC4FF1
+Path:             /private/var/containers/Bundle/Application/0ADDBB7B-8264-4623-8E9A-914E28E7C5CA/App.app/MNEmulator
+Identifier:       com.mnemulator.ios.WLBA4LKYFH
+Version:          1.0.0 (1)
+Is First Party:   No
+Beta Identifier:  4D79BF53-8027-4DDB-A725-7DD74D715BA7
+Resource Coalition: 27 samples "com.mnemulator.ios.WLBA4LKYFH"(860)
+Architecture:     arm64
+Parent:           UNKNOWN [1]
+UID:              501
+Footprint:        9648 KB
+Pageins:          9 pages
+Start time:       2026-07-19 11:43:48.667 +0300
+End time:         2026-07-19 11:43:51.197 +0300
+Num samples:      27 (100%)
+Energy:           535.92 uWh
+Num threads:      1
+Primary state:    27 samples Frontmost App, Non-Suppressed, Kernel mode, Effective Thread QoS User Initiated, Requested Thread QoS User Initiated, Override Thread QoS Unspecified, p-core
+User Activity:    0 samples Idle, 27 samples Active
+Power Source:     27 samples on Battery, 0 samples on AC
+  27  ??? (libsystem_pthread.dylib + 2320) [0x1a0072910]
+    27  ??? (libsystem_pthread.dylib + 4604) [0x1a00731fc]
+      27  ??? (libdispatch.dylib + 86256) [0x1cea4f0f0]
+        27  ??? (libdispatch.dylib + 84332) [0x1cea4e96c]
+          27  ??? (libdispatch.dylib + 114644) [0x1cea55fd4]
+            27  ??? (libdispatch.dylib + 7372) [0x1cea3bccc]
+              27  ??? (MNEmulator + 323996) [0x104f8719c]
+                27  ??? (MNEmulator + 335244) [0x104f89d8c]
+                  26  ??? (MNEmulator + 75504) [0x104f4a6f0]
+                    26  ??? (MNEmulator + 76856) [0x104f4ac38]
+                      26  ??? (MNEmulator + 85508) [0x104f4ce04]
+                        25  ??? (MNEmulator + 84144) [0x104f4c8b0]
+                          25  ??? (MNEmulator + 84144) [0x104f4c8b0]
+                            25  ??? (MNEmulator + 83772) [0x104f4c73c]
+                              24  ??? (MNEmulator + 90724) [0x104f4e264]
+                                24  ??? (CoreFoundation + 216576) [0x1a0167e00]
+                                  24  ??? (CoreFoundation + 1092792) [0x1a023dcb8]
+                                    24  ??? (libsystem_kernel.dylib + 20528) [0x257230030]
+                              1   ??? (MNEmulator + 90632) [0x104f4e208]
+                                1   ??? (CoreFoundation + 215692) [0x1a0167a8c]
+                                  1   ??? (CoreFoundation + 930968) [0x1a0216498]
+                                    1   ??? (libsystem_kernel.dylib + 26516) [0x257231794]
+                        1   ??? (MNEmulator + 83772) [0x104f4c73c]
+                          1   ??? (MNEmulator + 90724) [0x104f4e264]
+                            1   ??? (CoreFoundation + 216576) [0x1a0167e00]
+                              1   ??? (CoreFoundation + 1092792) [0x1a023dcb8]
+                                1   ??? (libsystem_kernel.dylib + 20528) [0x257230030]
+                  1   ??? (MNEmulator + 75200) [0x104f4a5c0]
+                    1   ??? (MNEmulator + 76856) [0x104f4ac38]
+                      1   ??? (MNEmulator + 83396) [0x104f4c5c4]
+                        1   ??? (MNEmulator + 90724) [0x104f4e264]
+                          1   ??? (CoreFoundation + 216576) [0x1a0167e00]
+                            1   ??? (CoreFoundation + 1092792) [0x1a023dcb8]
+                              1   ??? (libsystem_kernel.dylib + 20528) [0x257230030]
+
+  Binary Images:
+           0x104f38000 -                ???  com.mnemulator.ios.WLBA4LKYFH 1.0.0 (1) <767EEE9D-040A-344F-BDE9-C8BDCDAC4FF1>  /private/var/containers/Bundle/Application/0ADDBB7B-8264-4623-8E9A-914E28E7C5CA/App.app/MNEmulator
+           0x1a0072000 -        0x1a007e247  libsystem_pthread.dylib                 <E4289190-AF23-386D-A453-4B6FB1A2F5AC>  /usr/lib/system/libsystem_pthread.dylib
+           0x1a0133000 -        0x1a06148b7  CoreFoundation                          <43092235-E272-3CAF-B9AE-76669EC5AE46>  /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation
+           0x1cea3a000 -        0x1cea80d5f  libdispatch.dylib                       <6DE5DC49-F6C5-3FAD-AB47-9835C63C50B9>  /usr/lib/system/libdispatch.dylib
+           0x25722b000 -        0x2572681c3  libsystem_kernel.dylib                  <E3AE0279-A7DA-32A6-9273-E5180EFB94A7>  /usr/lib/system/libsystem_kernel.dylib

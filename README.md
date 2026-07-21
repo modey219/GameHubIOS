@@ -2,7 +2,7 @@
 
 Run Windows PC games on your iPhone and iPad. No internet required after installation.
 
-**Created by Telegram: [@R_MOX](https://t.me/R_MOX)
+**Created by: [@R_MOX](https://t.me/R_MOX)
 
 ## How It Works
 

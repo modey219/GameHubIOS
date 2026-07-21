@@ -401,6 +401,7 @@ class Box64Bridge {
 
     private func extractBox64() throws {
         let fm = FileManager.default
+        try fm.createDirectory(atPath: box64InstallPath, withIntermediateDirectories: true)
         let destination = (box64InstallPath as NSString).appendingPathComponent("box64")
         if isNonEmptyFile(destination) { return }
         if fm.fileExists(atPath: destination) {
@@ -412,8 +413,12 @@ class Box64Bridge {
             throw SetupError.box64Missing
         }
         Self.log("extractBox64: source=\(bundledPath) dest=\(destination)")
+        let srcExists = fm.fileExists(atPath: bundledPath)
+        let srcSize = (try? fm.attributesOfItem(atPath: bundledPath).flatMap { $0[.size] as? NSNumber }?.intValue) ?? -1
+        let dstDirExists = fm.fileExists(atPath: box64InstallPath)
+        Self.log("extractBox64: srcExists=\(srcExists) srcSize=\(srcSize) dstDirExists=\(dstDirExists)")
         guard streamCopy(src: bundledPath, dst: destination, fm: fm) else {
-            throw SetupError.copyFailed("streamCopy returned false for \(bundledPath) -> \(destination)")
+            throw SetupError.copyFailed("streamCopy returned false for \(bundledPath) -> \(destination) (srcExists=\(srcExists) srcSize=\(srcSize) dstDirExists=\(dstDirExists))")
         }
         guard let attrs = try? fm.attributesOfItem(atPath: destination),
               let size = attrs[.size] as? NSNumber, size.intValue > 0 else {

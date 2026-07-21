@@ -160,8 +160,8 @@ class Box64Bridge {
         Self.writeDiag("docsPath=\(docsPath)")
         Self.writeDiag("box64InstallPath=\(box64InstallPath)")
         Self.writeDiag("wineInstallPath=\(wineInstallPath)")
-        Self.writeDiag("HOME=\(getenv("HOME").flatMap { String(cString: $0) } ?? "nil")")
-        Self.writeDiag("CRASH_LOG_PATH=\(getenv("CRASH_LOG_PATH").flatMap { String(cString: $0) } ?? "nil")")
+        Self.writeDiag("HOME_wine=\(wineInstallPath)")
+        Self.writeDiag("CRASH_LOG=\(docsPath)/crash.log")
 
         Self.writeDiag("step1: calloc")
         let localCtx = autoreleasepool { () -> UnsafeMutablePointer<box64_context_t>? in
@@ -174,13 +174,25 @@ class Box64Bridge {
             return
         }
 
-        Self.writeDiag("step2: syscall_emulator_create")
-        let step2Result = autoreleasepool { () -> Int32 in
-            box64_create_step2(localCtx)
+        Self.writeDiag("step2a: syscall_emulator_create_alloc")
+        let step2aResult = autoreleasepool { () -> Int32 in
+            box64_create_step2a(localCtx)
         }
-        Self.writeDiag("step2: result=\(step2Result)")
-        if step2Result != 0 {
-            Self.log("box64_create_step2 FAILED: \(step2Result)")
+        Self.writeDiag("step2a: result=\(step2aResult)")
+        if step2aResult != 0 {
+            Self.log("box64_create_step2a FAILED: \(step2aResult)")
+            box64_destroy(localCtx)
+            lock.unlock()
+            return
+        }
+
+        Self.writeDiag("step2b: syscall_emulator_create_init")
+        let step2bResult = autoreleasepool { () -> Int32 in
+            box64_create_step2b(localCtx)
+        }
+        Self.writeDiag("step2b: result=\(step2bResult)")
+        if step2bResult != 0 {
+            Self.log("box64_create_step2b FAILED: \(step2bResult)")
             box64_destroy(localCtx)
             lock.unlock()
             return

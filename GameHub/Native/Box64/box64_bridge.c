@@ -155,10 +155,19 @@ box64_context_t *box64_create_step1(void) {
 }
 
 int box64_create_step2(box64_context_t *ctx) {
+    return box64_create_step2a(ctx);
+}
+
+int box64_create_step2a(box64_context_t *ctx) {
     if (!ctx) return -1;
-    ctx->emulator = syscall_emulator_create();
+    ctx->emulator = syscall_emulator_create_alloc();
     if (!ctx->emulator) return -2;
     return 0;
+}
+
+int box64_create_step2b(box64_context_t *ctx) {
+    if (!ctx || !ctx->emulator) return -1;
+    return syscall_emulator_create_init(ctx->emulator);
 }
 
 void box64_create_step3(box64_context_t *ctx) {

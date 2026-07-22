@@ -38,16 +38,17 @@ struct GameHubApp: App {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
 
+                ContentView()
+                    .environmentObject(containerManager)
+                    .environmentObject(jitManager)
+                    .environmentObject(settingsManager)
+                    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                        jitManager.checkJITStatus()
+                    }
+                    .opacity(isLoading ? 0 : 1)
+
                 if isLoading {
                     splashView
-                } else {
-                    ContentView()
-                        .environmentObject(containerManager)
-                        .environmentObject(jitManager)
-                        .environmentObject(settingsManager)
-                        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                            jitManager.checkJITStatus()
-                        }
                 }
             }
             .onAppear {

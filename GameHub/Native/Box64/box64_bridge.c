@@ -164,7 +164,18 @@ int box64_create_step2a(box64_context_t *ctx) {
 
 int box64_create_step2b(box64_context_t *ctx) {
     if (!ctx || !ctx->emulator) return -1;
-    return syscall_emulator_create_init(ctx->emulator);
+    emulator_context_t *em = ctx->emulator;
+    em->process.pid = getpid();
+    em->process.ppid = getppid();
+    em->process.start_brk = 0x70000000ULL;
+    em->process.brk = 0x70000000ULL;
+    em->process.mmap_base = 0x70000000ULL;
+    em->process.cwd[0] = '/'; em->process.cwd[1] = '\0';
+    em->process.root[0] = '/'; em->process.root[1] = '\0';
+    em->process.limits[7].rlim_cur = 1024;
+    em->process.limits[7].rlim_max = 4096;
+    em->initialized = 1;
+    return 0;
 }
 
 void box64_create_step3(box64_context_t *ctx) {

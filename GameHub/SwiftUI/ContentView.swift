@@ -4,22 +4,10 @@ struct ContentView: View {
     @EnvironmentObject var containerManager: ContainerManager
     @EnvironmentObject var jitManager: JITManager
     @EnvironmentObject var settingsManager: SettingsManager
-    @AppStorage("hasLaunchedBefore") private var hasLaunchedBefore = false
     @State private var selectedTab = 0
 
     var body: some View {
-        Group {
-            if !hasLaunchedBefore {
-                WelcomeView {
-                    hasLaunchedBefore = true
-                }
-                .environmentObject(containerManager)
-                .environmentObject(jitManager)
-                .environmentObject(settingsManager)
-            } else {
-                mainTabs
-            }
-        }
+        mainTabs
     }
 
     private var mainTabs: some View {

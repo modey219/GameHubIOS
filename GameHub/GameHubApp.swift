@@ -51,15 +51,9 @@ struct GameHubApp: App {
                 }
             }
             .onAppear {
-                if UserDefaults.standard.bool(forKey: "_crash_sentinel") {
-                    readCdiagLog()
-                    setupError = "Previous run crashed during Box64 init. See logs below."
-                    UserDefaults.standard.set(false, forKey: "_crash_sentinel")
-                    UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-                } else {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        performSetup()
-                    }
+                UserDefaults.standard.set(false, forKey: "_crash_sentinel")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    performSetup()
                 }
             }
             .sheet(isPresented: $showShareSheet) {

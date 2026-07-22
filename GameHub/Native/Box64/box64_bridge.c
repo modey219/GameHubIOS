@@ -12,6 +12,8 @@
 #include <dirent.h>
 
 static box64_context_t *g_box64 = NULL;
+static box64_context_t g_static_box64;
+static int g_static_box64_used = 0;
 static int g_wine_exit_code = 0;
 static int g_wine_running = 0;
 static char g_wine_error[1024] = {0};
@@ -144,10 +146,9 @@ box64_context_t *box64_create(void) {
 }
 
 box64_context_t *box64_create_step1(void) {
-    box64_context_t *ctx = calloc(1, sizeof(box64_context_t));
-    if (!ctx) return NULL;
-    memset(ctx, 0, sizeof(box64_context_t));
-    return ctx;
+    memset(&g_static_box64, 0, sizeof(box64_context_t));
+    g_static_box64_used = 1;
+    return &g_static_box64;
 }
 
 int box64_create_step2(box64_context_t *ctx) {
@@ -179,7 +180,12 @@ void box64_destroy(box64_context_t *ctx) {
     syscall_set_context(NULL);
     syscall_emulator_destroy(ctx->emulator);
     if (ctx == g_box64) g_box64 = NULL;
-    free(ctx);
+    if (ctx == &g_static_box64) {
+        memset(ctx, 0, sizeof(box64_context_t));
+        g_static_box64_used = 0;
+    } else {
+        free(ctx);
+    }
 }
 
 static int file_exists(const char *path) {

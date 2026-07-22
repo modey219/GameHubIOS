@@ -4,9 +4,14 @@ struct ContentView: View {
     @EnvironmentObject var containerManager: ContainerManager
     @EnvironmentObject var jitManager: JITManager
     @EnvironmentObject var settingsManager: SettingsManager
+    @State private var selectedTab = 0
 
     var body: some View {
-        Text("ContentView WORKS")
-            .font(.largeTitle)
+        TabView(selection: $selectedTab) {
+            Text("Tab 1")
+                .tabItem { Label("Games", systemImage: "gamecontroller") }
+                .tag(0)
+        }
+        .accentColor(.blue)
     }
 }

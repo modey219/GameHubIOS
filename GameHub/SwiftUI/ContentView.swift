@@ -22,22 +22,6 @@ struct ContentView: View {
             GameLibraryView()
                 .tabItem { Label("Games", systemImage: "gamecontroller") }
                 .tag(0)
-
-            ContainerListView()
-                .tabItem { Label("Containers", systemImage: "shippingbox") }
-                .tag(1)
-
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gear") }
-                .tag(2)
-
-            JITStatusView()
-                .tabItem { Label("JIT", systemImage: "bolt.fill") }
-                .tag(3)
-
-            DebugView()
-                .tabItem { Label("Debug", systemImage: "ladybug") }
-                .tag(4)
         }
         .accentColor(.blue)
     }

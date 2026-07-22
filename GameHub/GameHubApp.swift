@@ -10,27 +10,6 @@ func setupCrashHandler() {
             try? crash.write(toFile: log, atomically: true, encoding: .utf8)
         }
     }
-    signal(SIGABRT) { sig in
-        let msg = "[Signal] SIGABRT received\nThread call stack:\n" + Thread.callStackSymbols.joined(separator: "\n")
-        if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
-            try? msg.write(toFile: path + "/crash.log", atomically: true, encoding: .utf8)
-        }
-        _exit(1)
-    }
-    signal(SIGSEGV) { sig in
-        let msg = "[Signal] SIGSEGV received\nThread call stack:\n" + Thread.callStackSymbols.joined(separator: "\n")
-        if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
-            try? msg.write(toFile: path + "/crash.log", atomically: true, encoding: .utf8)
-        }
-        _exit(1)
-    }
-    signal(SIGBUS) { sig in
-        let msg = "[Signal] SIGBUS received\nThread call stack:\n" + Thread.callStackSymbols.joined(separator: "\n")
-        if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
-            try? msg.write(toFile: path + "/crash.log", atomically: true, encoding: .utf8)
-        }
-        _exit(1)
-    }
     if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
         let crashLogPath = path + "/crash.log"
         crashLogPath.withCString { install_crash_handler($0) }

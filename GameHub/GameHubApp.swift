@@ -52,12 +52,6 @@ struct GameHubApp: App {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     performSetup()
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
-                    if self.isLoading {
-                        writeDiag("step=FALLBACK_FORCE_LOAD")
-                        self.isLoading = false
-                    }
-                }
             }
             .sheet(isPresented: $showShareSheet) {
                 ShareSheet(activityItems: [shareText])

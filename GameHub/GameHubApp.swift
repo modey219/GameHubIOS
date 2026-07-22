@@ -38,16 +38,17 @@ struct GameHubApp: App {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
 
+                ContentView()
+                    .environmentObject(containerManager)
+                    .environmentObject(jitManager)
+                    .environmentObject(settingsManager)
+                    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                        jitManager.checkJITStatus()
+                    }
+                    .opacity(isLoading ? 0 : 1)
+
                 if isLoading {
                     splashView
-                } else {
-                    ContentView()
-                        .environmentObject(containerManager)
-                        .environmentObject(jitManager)
-                        .environmentObject(settingsManager)
-                        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                            jitManager.checkJITStatus()
-                        }
                 }
             }
             .onAppear {
@@ -284,9 +285,6 @@ struct GameHubApp: App {
             logStep(4, "Prefix init complete")
 
             writeDiag("step=settings")
-            logStep(5, "Applying settings...")
-            settingsManager.applySettings()
-            writeDiag("step=settings_done")
             logStep(5, "ALL DONE!")
 
             UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")

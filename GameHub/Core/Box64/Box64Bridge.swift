@@ -272,11 +272,17 @@ class Box64Bridge {
         var result = LaunchResult()
 
         lock.lock()
-        guard isInitialized, let ctx = ctx else {
+        if !isInitialized || ctx == nil {
             lock.unlock()
-            Self.log("ERROR: Box64 not initialized")
-            result.error = "Box64 not initialized. Please restart the app."
-            return result
+            Self.log("Box64 not initialized yet, initializing now...")
+            initialize()
+            lock.lock()
+            guard isInitialized else {
+                lock.unlock()
+                Self.log("ERROR: Box64 auto-init failed")
+                result.error = "Box64 initialization failed. Please restart the app."
+                return result
+            }
         }
 
         safeSetenv("WINEPREFIX", containerPath, 1)

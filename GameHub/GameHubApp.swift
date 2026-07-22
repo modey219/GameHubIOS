@@ -10,6 +10,27 @@ func setupCrashHandler() {
             try? crash.write(toFile: log, atomically: true, encoding: .utf8)
         }
     }
+    signal(SIGABRT) { sig in
+        let msg = "[Signal] SIGABRT received\nThread call stack:\n" + Thread.callStackSymbols.joined(separator: "\n")
+        if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
+            try? msg.write(toFile: path + "/crash.log", atomically: true, encoding: .utf8)
+        }
+        _exit(1)
+    }
+    signal(SIGSEGV) { sig in
+        let msg = "[Signal] SIGSEGV received\nThread call stack:\n" + Thread.callStackSymbols.joined(separator: "\n")
+        if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
+            try? msg.write(toFile: path + "/crash.log", atomically: true, encoding: .utf8)
+        }
+        _exit(1)
+    }
+    signal(SIGBUS) { sig in
+        let msg = "[Signal] SIGBUS received\nThread call stack:\n" + Thread.callStackSymbols.joined(separator: "\n")
+        if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
+            try? msg.write(toFile: path + "/crash.log", atomically: true, encoding: .utf8)
+        }
+        _exit(1)
+    }
     if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
         let crashLogPath = path + "/crash.log"
         crashLogPath.withCString { install_crash_handler($0) }
@@ -38,17 +59,16 @@ struct GameHubApp: App {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
 
-                ContentView()
-                    .environmentObject(containerManager)
-                    .environmentObject(jitManager)
-                    .environmentObject(settingsManager)
-                    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                        jitManager.checkJITStatus()
-                    }
-                    .opacity(isLoading ? 0 : 1)
-
                 if isLoading {
                     splashView
+                } else {
+                    ContentView()
+                        .environmentObject(containerManager)
+                        .environmentObject(jitManager)
+                        .environmentObject(settingsManager)
+                        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                            jitManager.checkJITStatus()
+                        }
                 }
             }
             .onAppear {
@@ -224,6 +244,21 @@ struct GameHubApp: App {
                 return
             }
 
+            let alreadyLaunched = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
+            let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
+            let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
+
+            if alreadyLaunched && box64Exists && wineExists {
+                writeDiag("step=skip_init_already_launched")
+                logStep(1, "Quick launch (already initialized)...")
+                DispatchQueue.main.async {
+                    withAnimation(.easeIn(duration: 0.3)) {
+                        self.isLoading = false
+                    }
+                }
+                return
+            }
+
             writeDiag("step=clean")
             logStep(1, "Cleaning stale 0-byte files...")
             for stalePath in ["Box64/box64", "Wine/bin/wine64", "Wine/bin/wine", "Wine/bin/wineserver", "Wine/bin/wineboot"] {
@@ -239,8 +274,6 @@ struct GameHubApp: App {
 
             writeDiag("step=check")
             logStep(1, "Checking existing files...")
-            let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
-            let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
             logStep(1, "Box64 exists: \(box64Exists), Wine exists: \(wineExists)")
 
             if !box64Exists || !wineExists {
@@ -263,14 +296,8 @@ struct GameHubApp: App {
                 }
             }
 
-            writeDiag("step=box64_init")
-            logStep(2, "Initializing Box64...")
-            UserDefaults.standard.set(true, forKey: "_crash_sentinel")
-            UserDefaults.standard.synchronize()
-            Box64Bridge.shared.initialize()
-            UserDefaults.standard.set(false, forKey: "_crash_sentinel")
-            writeDiag("step=box64_init_done")
-            logStep(2, "Box64 init complete")
+            writeDiag("step=prefix_done")
+            logStep(4, "Prefix init complete")
 
             writeDiag("step=wine_init")
             logStep(3, "Initializing Wine...")
@@ -284,10 +311,12 @@ struct GameHubApp: App {
             writeDiag("step=prefix_done")
             logStep(4, "Prefix init complete")
 
+            writeDiag("step=box64_deferred")
+            logStep(2, "Box64 will init on first game launch")
+
             writeDiag("step=settings")
             logStep(5, "ALL DONE!")
 
-            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
             writeDiag("step=all_done")
             DispatchQueue.main.async {
                 withAnimation(.easeIn(duration: 0.3)) {

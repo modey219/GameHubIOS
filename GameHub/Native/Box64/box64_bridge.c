@@ -126,6 +126,16 @@ void set_c_diag_docs_path(const char *path) {
     if (!path || !path[0]) return;
     strncpy(g_docs_path, path, sizeof(g_docs_path) - 1);
     g_docs_path[sizeof(g_docs_path) - 1] = '\0';
+
+    char test_path[1032];
+    snprintf(test_path, sizeof(test_path), "%s/c_diag_test.txt", g_docs_path);
+    int fd = open(test_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) {
+        const char *msg = "C file IO works!\n";
+        write(fd, msg, strlen(msg));
+        close(fd);
+    }
+
     c_diag("set_c_diag_docs_path: OK");
 }
 

@@ -289,6 +289,7 @@ struct GameHubApp: App {
 
             writeDiag("step=all_done")
             logStep(5, "ALL DONE!")
+            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
             DispatchQueue.main.async {
                 withAnimation(.easeIn(duration: 0.3)) {
                     self.isLoading = false

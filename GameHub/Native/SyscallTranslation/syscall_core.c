@@ -71,39 +71,15 @@ emulator_context_t *syscall_emulator_create(void) {
     return ctx;
 }
 
+static emulator_context_t g_static_emulator;
+static int g_static_emulator_used = 0;
+
 emulator_context_t *syscall_emulator_create_alloc(void) {
-    size_t alloc_size = sizeof(emulator_context_t);
-    c_diag("syscall_alloc: entered");
-
-    char buf[256];
-    c_diag("syscall_alloc: start");
-    snprintf(buf, sizeof(buf), "[SyscallCore] alloc: size=%zu bytes\n", alloc_size);
-    fprintf(stderr, "%s", buf);
-
-    void *mem = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (mem == MAP_FAILED) {
-        c_diag("syscall_alloc: mmap FAILED, trying calloc");
-        fprintf(stderr, "[SyscallCore] alloc: mmap FAILED, trying calloc\n");
-        emulator_context_t *ctx = (emulator_context_t *)calloc(1, alloc_size);
-        if (!ctx) {
-            c_diag("syscall_alloc: calloc also FAILED");
-            fprintf(stderr, "[SyscallCore] alloc: calloc FAILED\n");
-            return NULL;
-        }
-        memset(ctx, 0, alloc_size);
-        c_diag("syscall_alloc: calloc OK");
-        fprintf(stderr, "[SyscallCore] alloc: calloc OK ctx=%p\n", (void*)ctx);
-        return ctx;
-    }
-
-    c_diag("syscall_alloc: mmap OK");
-    fprintf(stderr, "[SyscallCore] alloc: mmap OK ptr=%p\n", mem);
-    memset(mem, 0, alloc_size);
-    c_diag("syscall_alloc: memset done");
-
-    emulator_context_t *ctx = (emulator_context_t *)mem;
-    ctx->allocated_with_mmap = 1;
-    return ctx;
+    c_diag("syscall_alloc: using static buffer");
+    memset(&g_static_emulator, 0, sizeof(emulator_context_t));
+    g_static_emulator_used = 1;
+    c_diag("syscall_alloc: static OK");
+    return &g_static_emulator;
 }
 
 int syscall_emulator_create_init(emulator_context_t *ctx) {
@@ -150,7 +126,10 @@ void syscall_emulator_destroy(emulator_context_t *ctx) {
         if (ctx->process.mmap_regions[i].host_addr)
             munmap(ctx->process.mmap_regions[i].host_addr, ctx->process.mmap_regions[i].size);
     }
-    if (ctx->allocated_with_mmap) {
+    if (ctx == &g_static_emulator) {
+        memset(ctx, 0, sizeof(emulator_context_t));
+        g_static_emulator_used = 0;
+    } else if (ctx->allocated_with_mmap) {
         munmap(ctx, sizeof(emulator_context_t));
     } else {
         free(ctx);

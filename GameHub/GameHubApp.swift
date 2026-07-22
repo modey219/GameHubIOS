@@ -296,14 +296,8 @@ struct GameHubApp: App {
                 }
             }
 
-            writeDiag("step=box64_init")
-            logStep(2, "Initializing Box64...")
-            UserDefaults.standard.set(true, forKey: "_crash_sentinel")
-            UserDefaults.standard.synchronize()
-            Box64Bridge.shared.initialize()
-            UserDefaults.standard.set(false, forKey: "_crash_sentinel")
-            writeDiag("step=box64_init_done")
-            logStep(2, "Box64 init complete")
+            writeDiag("step=prefix_done")
+            logStep(4, "Prefix init complete")
 
             writeDiag("step=wine_init")
             logStep(3, "Initializing Wine...")
@@ -316,6 +310,9 @@ struct GameHubApp: App {
             WinePrefixManager.shared.initializePrefix()
             writeDiag("step=prefix_done")
             logStep(4, "Prefix init complete")
+
+            writeDiag("step=box64_deferred")
+            logStep(2, "Box64 will init on first game launch")
 
             writeDiag("step=settings")
             logStep(5, "ALL DONE!")

@@ -521,8 +521,8 @@ class Box64Bridge {
             throw SetupError.wineMissing
         }
 
-        Self.log("extractWine: using shellCopy cp -R for speed")
-        try shellCopy(src: bundledWineDir, dst: wineInstallPath)
+        Self.log("extractWine: using fm.copyItem")
+        try fm.copyItem(atPath: bundledWineDir, toPath: wineInstallPath)
 
         let binaries = ["bin/wine", "bin/wine64", "bin/wineserver", "bin/wineboot"]
         for bin in binaries {
@@ -541,8 +541,8 @@ class Box64Bridge {
 
         guard let bundledMVK = findBundledResource("MoltenVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: mvkDir) { try? fm.removeItem(atPath: mvkDir) }
-        Self.log("extractMoltenVK: using shellCopy cp -R")
-        try shellCopy(src: bundledMVK, dst: mvkDir)
+        Self.log("extractMoltenVK: using fm.copyItem")
+        try fm.copyItem(atPath: bundledMVK, toPath: mvkDir)
     }
 
     private func extractDXVK() throws {
@@ -552,7 +552,7 @@ class Box64Bridge {
 
         guard let bundledDXVK = findBundledResource("DXVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: dxvkDir) { try? fm.removeItem(atPath: dxvkDir) }
-        Self.log("extractDXVK: using shellCopy cp -R")
-        try shellCopy(src: bundledDXVK, dst: dxvkDir)
+        Self.log("extractDXVK: using fm.copyItem")
+        try fm.copyItem(atPath: bundledDXVK, toPath: dxvkDir)
     }
 }

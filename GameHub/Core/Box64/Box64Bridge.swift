@@ -104,39 +104,73 @@ class Box64Bridge {
 
         try fm.createDirectory(at: docs.appendingPathComponent("Graphics"), withIntermediateDirectories: true)
 
-        progressCallback?("Extracting Box64...")
-        NSLog("[MNEmulator] extractBox64 start")
-        try autoreleasepool {
-            try extractBox64()
-        }
-        NSLog("[MNEmulator] extractBox64 done")
+        progressCallback?("Extracting Box64 + Wine (parallel)...")
+        NSLog("[MNEmulator] parallel extraction start")
 
-        progressCallback?("Extracting Wine...")
-        NSLog("[MNEmulator] extractWine start")
-        try autoreleasepool {
-            try extractWine()
-        }
-        NSLog("[MNEmulator] extractWine done")
+        let box64Queue = DispatchQueue(label: "extract.box64", qos: .userInitiated)
+        let mvkQueue = DispatchQueue(label: "extract.mvk", qos: .utility)
+        let dxvkQueue = DispatchQueue(label: "extract.dxvk", qos: .utility)
 
-        progressCallback?("Extracting MoltenVK...")
-        NSLog("[MNEmulator] extractMoltenVK start")
-        autoreleasepool {
-            do { try extractMoltenVK() } catch { NSLog("[MNEmulator] extractMoltenVK skipped: \(error)") }
-        }
-        NSLog("[MNEmulator] extractMoltenVK done")
+        var box64Error: Error?
+        var wineError: Error?
+        var mvkError: Error?
+        var dxvkError: Error?
 
-        progressCallback?("Extracting DXVK...")
-        NSLog("[MNEmulator] extractDXVK start")
-        autoreleasepool {
-            let memMB = Self.memoryUsageMB()
-            NSLog("[MNEmulator] before DXVK: memory = \(memMB)MB")
-            if memMB > 350 {
-                NSLog("[MNEmulator] skipping DXVK — memory too high (\(memMB)MB)")
-                return
+        let group = DispatchGroup()
+
+        group.enter()
+        box64Queue.async {
+            NSLog("[MNEmulator] extractBox64 start")
+            do { try autoreleasepool { try self.extractBox64() } }
+            catch { box64Error = error }
+            NSLog("[MNEmulator] extractBox64 done")
+            group.leave()
+        }
+
+        group.enter()
+        box64Queue.async {
+            NSLog("[MNEmulator] extractWine start")
+            do { try autoreleasepool { try self.extractWine() } }
+            catch { wineError = error }
+            NSLog("[MNEmulator] extractWine done")
+            group.leave()
+        }
+
+        group.enter()
+        mvkQueue.async {
+            NSLog("[MNEmulator] extractMoltenVK start")
+            autoreleasepool {
+                do { try self.extractMoltenVK() }
+                catch { mvkError = error; NSLog("[MNEmulator] extractMoltenVK skipped: \(error)") }
             }
-            do { try extractDXVK() } catch { NSLog("[MNEmulator] extractDXVK skipped: \(error)") }
+            NSLog("[MNEmulator] extractMoltenVK done")
+            group.leave()
         }
-        NSLog("[MNEmulator] extractDXVK done — all extraction complete")
+
+        group.enter()
+        dxvkQueue.async {
+            NSLog("[MNEmulator] extractDXVK start")
+            let skip = autoreleasepool { () -> Bool in
+                let memMB = Self.memoryUsageMB()
+                NSLog("[MNEmulator] before DXVK: memory = \(memMB)MB")
+                if memMB > 350 {
+                    NSLog("[MNEmulator] skipping DXVK — memory too high (\(memMB)MB)")
+                    return true
+                }
+                do { try self.extractDXVK() }
+                catch { dxvkError = error; NSLog("[MNEmulator] extractDXVK skipped: \(error)") }
+                return false
+            }
+            if !skip { NSLog("[MNEmulator] extractDXVK done") }
+            group.leave()
+        }
+
+        group.wait()
+
+        if let err = box64Error { throw err }
+        if let err = wineError { throw err }
+        progressCallback?("All extractions complete")
+        NSLog("[MNEmulator] all extraction done")
     }
 
     func initialize() {
@@ -489,7 +523,8 @@ class Box64Bridge {
             throw SetupError.wineMissing
         }
 
-        try fm.copyItem(atPath: bundledWineDir, toPath: wineInstallPath)
+        Self.log("extractWine: using shellCopy cp -R for speed")
+        shellCopy(src: bundledWineDir, dst: wineInstallPath)
 
         let binaries = ["bin/wine", "bin/wine64", "bin/wineserver", "bin/wineboot"]
         for bin in binaries {
@@ -508,7 +543,8 @@ class Box64Bridge {
 
         guard let bundledMVK = findBundledResource("MoltenVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: mvkDir) { try? fm.removeItem(atPath: mvkDir) }
-        try fm.copyItem(atPath: bundledMVK, toPath: mvkDir)
+        Self.log("extractMoltenVK: using shellCopy cp -R")
+        shellCopy(src: bundledMVK, dst: mvkDir)
     }
 
     private func extractDXVK() throws {
@@ -518,6 +554,7 @@ class Box64Bridge {
 
         guard let bundledDXVK = findBundledResource("DXVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: dxvkDir) { try? fm.removeItem(atPath: dxvkDir) }
-        try fm.copyItem(atPath: bundledDXVK, toPath: dxvkDir)
+        Self.log("extractDXVK: using shellCopy cp -R")
+        shellCopy(src: bundledDXVK, dst: dxvkDir)
     }
 }

@@ -113,8 +113,6 @@ class Box64Bridge {
 
         var box64Error: Error?
         var wineError: Error?
-        var mvkError: Error?
-        var dxvkError: Error?
 
         let group = DispatchGroup()
 
@@ -141,7 +139,7 @@ class Box64Bridge {
             NSLog("[MNEmulator] extractMoltenVK start")
             autoreleasepool {
                 do { try self.extractMoltenVK() }
-                catch { mvkError = error; NSLog("[MNEmulator] extractMoltenVK skipped: \(error)") }
+                catch { NSLog("[MNEmulator] extractMoltenVK skipped: \(error)") }
             }
             NSLog("[MNEmulator] extractMoltenVK done")
             group.leave()
@@ -158,7 +156,7 @@ class Box64Bridge {
                     return true
                 }
                 do { try self.extractDXVK() }
-                catch { dxvkError = error; NSLog("[MNEmulator] extractDXVK skipped: \(error)") }
+                catch { NSLog("[MNEmulator] extractDXVK skipped: \(error)") }
                 return false
             }
             if !skip { NSLog("[MNEmulator] extractDXVK done") }
@@ -524,7 +522,7 @@ class Box64Bridge {
         }
 
         Self.log("extractWine: using shellCopy cp -R for speed")
-        shellCopy(src: bundledWineDir, dst: wineInstallPath)
+        try shellCopy(src: bundledWineDir, dst: wineInstallPath)
 
         let binaries = ["bin/wine", "bin/wine64", "bin/wineserver", "bin/wineboot"]
         for bin in binaries {
@@ -544,7 +542,7 @@ class Box64Bridge {
         guard let bundledMVK = findBundledResource("MoltenVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: mvkDir) { try? fm.removeItem(atPath: mvkDir) }
         Self.log("extractMoltenVK: using shellCopy cp -R")
-        shellCopy(src: bundledMVK, dst: mvkDir)
+        try shellCopy(src: bundledMVK, dst: mvkDir)
     }
 
     private func extractDXVK() throws {
@@ -555,6 +553,6 @@ class Box64Bridge {
         guard let bundledDXVK = findBundledResource("DXVK", isDirectory: true) else { return }
         if fm.fileExists(atPath: dxvkDir) { try? fm.removeItem(atPath: dxvkDir) }
         Self.log("extractDXVK: using shellCopy cp -R")
-        shellCopy(src: bundledDXVK, dst: dxvkDir)
+        try shellCopy(src: bundledDXVK, dst: dxvkDir)
     }
 }

@@ -55,9 +55,7 @@ struct GameHubApp: App {
                     readCdiagLog()
                     setupError = "Previous run crashed during Box64 init. See logs below."
                     UserDefaults.standard.set(false, forKey: "_crash_sentinel")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        isLoading = false
-                    }
+                    UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
                 } else {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         performSetup()
@@ -220,6 +218,7 @@ struct GameHubApp: App {
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
                 writeDiag("FAIL: no docs dir")
+                UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
                 DispatchQueue.main.async { self.isLoading = false }
                 return
             }
@@ -254,48 +253,49 @@ struct GameHubApp: App {
                 } catch {
                     writeDiag("extraction_failed=\(error)")
                     logStep(-1, "EXTRACTION FAILED: \(error)")
+                    UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
                     DispatchQueue.main.async {
                         self.setupError = "Extraction error: \(error.localizedDescription)"
                         self.readCdiagLog()
-                        self.isLoading = false
                     }
                     return
                 }
             }
 
-            writeDiag("step=isloading_false")
-            DispatchQueue.main.async {
-                withAnimation(.easeIn(duration: 0.3)) {
-                    self.isLoading = false
-                }
-            }
-
             writeDiag("step=box64_init")
-            logStep(20, "Initializing Box64...")
+            logStep(2, "Initializing Box64...")
             UserDefaults.standard.set(true, forKey: "_crash_sentinel")
             UserDefaults.standard.synchronize()
             Box64Bridge.shared.initialize()
             UserDefaults.standard.set(false, forKey: "_crash_sentinel")
             writeDiag("step=box64_init_done")
-            logStep(20, "Box64 init complete")
+            logStep(2, "Box64 init complete")
 
             writeDiag("step=wine_init")
-            logStep(21, "Initializing Wine...")
+            logStep(3, "Initializing Wine...")
             WineBridge.shared.initialize()
             writeDiag("step=wine_init_done")
-            logStep(21, "Wine init complete")
+            logStep(3, "Wine init complete")
 
             writeDiag("step=prefix")
-            logStep(22, "Setting up prefix...")
+            logStep(4, "Setting up prefix...")
             WinePrefixManager.shared.initializePrefix()
             writeDiag("step=prefix_done")
-            logStep(22, "Prefix init complete")
+            logStep(4, "Prefix init complete")
 
             writeDiag("step=settings")
-            logStep(23, "Applying settings...")
+            logStep(5, "Applying settings...")
             settingsManager.applySettings()
             writeDiag("step=settings_done")
-            logStep(23, "ALL DONE!")
+            logStep(5, "ALL DONE!")
+
+            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+            writeDiag("step=all_done")
+            DispatchQueue.main.async {
+                withAnimation(.easeIn(duration: 0.3)) {
+                    self.isLoading = false
+                }
+            }
         }
     }
 }

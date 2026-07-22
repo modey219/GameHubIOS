@@ -8,7 +8,7 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            Text("Tab 1")
+            GameLibraryView()
                 .tabItem { Label("Games", systemImage: "gamecontroller") }
                 .tag(0)
         }

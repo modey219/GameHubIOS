@@ -12,7 +12,6 @@ class Box64Bridge {
     private var _isRunning = false
 
     private static let logQueue = DispatchQueue(label: "com.box64.swiftlog")
-    private static var logFD: Int32 = -1
     private static let logDateFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         return f
@@ -22,15 +21,14 @@ class Box64Bridge {
         let ts = logDateFormatter.string(from: Date())
         let line = "[\(ts)] \(msg)\n"
         logQueue.sync {
-            if logFD < 0 {
-                let home = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-                    .map { $0.path } ?? "/tmp"
-                let path = "\(home)/swift_box64.log"
-                logFD = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
-            }
-            if logFD >= 0 {
-                line.withCString { ptr in
-                    _ = write(logFD, ptr, strlen(ptr))
+            if let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
+                let path = p + "/swift_box64.log"
+                if let fh = FileHandle(forWritingAtPath: path) {
+                    fh.seekToEndOfFile()
+                    fh.write(line.data(using: .utf8)!)
+                    fh.closeFile()
+                } else {
+                    try? line.write(toFile: path, atomically: true, encoding: .utf8)
                 }
             }
         }

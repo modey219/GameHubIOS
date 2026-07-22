@@ -284,9 +284,6 @@ struct GameHubApp: App {
             logStep(4, "Prefix init complete")
 
             writeDiag("step=settings")
-            logStep(5, "Applying settings...")
-            settingsManager.applySettings()
-            writeDiag("step=settings_done")
             logStep(5, "ALL DONE!")
 
             UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")

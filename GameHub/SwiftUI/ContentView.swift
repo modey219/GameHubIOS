@@ -12,7 +12,7 @@ struct ContentView: View {
                 .tabItem { Label("Games", systemImage: "gamecontroller") }
                 .tag(0)
 
-            Text("Containers Tab")
+            ContainerListView()
                 .tabItem { Label("Containers", systemImage: "cube") }
                 .tag(1)
 

@@ -8,9 +8,25 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            GameLibraryView()
+            Text("Games")
                 .tabItem { Label("Games", systemImage: "gamecontroller") }
                 .tag(0)
+
+            Text("Containers")
+                .tabItem { Label("Containers", systemImage: "cube") }
+                .tag(1)
+
+            Text("JIT")
+                .tabItem { Label("JIT", systemImage: "cpu") }
+                .tag(2)
+
+            Text("Settings")
+                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tag(3)
+
+            Text("Debug")
+                .tabItem { Label("Debug", systemImage: "ant") }
+                .tag(4)
         }
         .accentColor(.blue)
     }

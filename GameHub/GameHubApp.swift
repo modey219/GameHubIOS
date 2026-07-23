@@ -36,7 +36,6 @@ struct RootView: View {
     @ObservedObject var jitManager: JITManager
     @ObservedObject var settingsManager: SettingsManager
     @State private var showContent = false
-    @State private var setupDone = false
 
     var body: some View {
         ZStack {
@@ -59,81 +58,60 @@ struct RootView: View {
                 }
             }
         }
-        .onAppear {
-            NSLog("[RootView] onAppear - starting setup")
-            performSetup()
+        .task {
+            await performSetup()
+            showContent = true
         }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-            if setupDone && !showContent {
-                NSLog("[RootView] Timer: setupDone=\(setupDone), switching to content")
-                showContent = true
+    }
+
+    @MainActor
+    private func performSetup() async {
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+            return
+        }
+
+        let alreadyLaunched = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
+        let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
+        let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
+
+        if alreadyLaunched && box64Exists && wineExists { return }
+
+        UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+        UserDefaults.standard.synchronize()
+
+        for stalePath in ["Box64/box64", "Wine/bin/wine64"] {
+            let fullPath = docs.appendingPathComponent(stalePath).path
+            if fm.fileExists(atPath: fullPath),
+               let attrs = try? fm.attributesOfItem(atPath: fullPath),
+               let size = attrs[.size] as? NSNumber,
+               size.intValue == 0 {
+                try? fm.removeItem(atPath: fullPath)
             }
         }
-    }
 
-    private func showContentNow() {
-        NSLog("[RootView] showContentNow called")
-        setupDone = true
-        showContent = true
-    }
+        if !box64Exists || !wineExists {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        try Box64Bridge.shared.setupAllBundledBinaries { _ in }
+                    } catch {
+                        NSLog("[RootView] extraction failed: \(error)")
+                    }
+                    continuation.resume()
+                }
+            }
+        }
 
-    private func performSetup() {
-        NSLog("[RootView] performSetup entered")
-        DispatchQueue.global(qos: .userInitiated).async {
-            NSLog("[RootView] background thread started")
-            let fm = FileManager.default
-            guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
-                NSLog("[RootView] no docs dir, showing content")
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                WineBridge.shared.initialize()
+                WinePrefixManager.shared.initializePrefix()
                 UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-                DispatchQueue.main.async { self.showContentNow() }
-                return
+                UserDefaults.standard.synchronize()
+                continuation.resume()
             }
-
-            let alreadyLaunched = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
-            let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
-            let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
-
-            NSLog("[RootView] alreadyLaunched=\(alreadyLaunched), box64=\(box64Exists), wine=\(wineExists)")
-
-            if alreadyLaunched && box64Exists && wineExists {
-                NSLog("[RootView] quick launch - showing content")
-                DispatchQueue.main.async { self.showContentNow() }
-                return
-            }
-
-            NSLog("[RootView] full setup needed")
-            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-            UserDefaults.standard.synchronize()
-
-            for stalePath in ["Box64/box64", "Wine/bin/wine64"] {
-                let fullPath = docs.appendingPathComponent(stalePath).path
-                if fm.fileExists(atPath: fullPath),
-                   let attrs = try? fm.attributesOfItem(atPath: fullPath),
-                   let size = attrs[.size] as? NSNumber,
-                   size.intValue == 0 {
-                    try? fm.removeItem(atPath: fullPath)
-                }
-            }
-
-            if !box64Exists || !wineExists {
-                NSLog("[RootView] extracting binaries...")
-                do {
-                    try Box64Bridge.shared.setupAllBundledBinaries { _ in }
-                    NSLog("[RootView] extraction complete")
-                } catch {
-                    NSLog("[RootView] extraction failed: \(error)")
-                }
-            }
-
-            NSLog("[RootView] initializing wine...")
-            WineBridge.shared.initialize()
-            NSLog("[RootView] initializing prefix...")
-            WinePrefixManager.shared.initializePrefix()
-
-            NSLog("[RootView] setup complete - showing content")
-            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-            UserDefaults.standard.synchronize()
-            DispatchQueue.main.async { self.showContentNow() }
         }
     }
 }

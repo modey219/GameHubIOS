@@ -23,32 +23,7 @@ struct GameLibraryView: View {
                     }
                 }
                 .navigationTitle("Game Library")
-                .searchable(text: $searchText, prompt: "Search games...")
-
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Menu {
-                            Button(action: { showAddGame = true }) {
-                                Label("Add Game", systemImage: "plus")
-                            }
-                            Button(action: { showImportSheet = true }) {
-                                Label("Import Game", systemImage: "square.and.arrow.down")
-                            }
-                        } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 56))
-                                .foregroundColor(.blue)
-                                .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
-                        }
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 20)
-                    }
-                }
             }
-            .sheet(isPresented: $showAddGame) { AddGameView() }
-            .sheet(isPresented: $showImportSheet) { ImportGameView() }
         }
     }
 

@@ -8,23 +8,23 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            GameLibraryView()
+            Text("Games Tab")
                 .tabItem { Label("Games", systemImage: "gamecontroller") }
                 .tag(0)
 
-            ContainerListView()
+            Text("Containers Tab")
                 .tabItem { Label("Containers", systemImage: "cube") }
                 .tag(1)
 
-            JITStatusView()
+            Text("JIT Tab")
                 .tabItem { Label("JIT", systemImage: "cpu") }
                 .tag(2)
 
-            SettingsView()
+            Text("Settings Tab")
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(3)
 
-            DebugView()
+            Text("Debug Tab")
                 .tabItem { Label("Debug", systemImage: "ant") }
                 .tag(4)
         }

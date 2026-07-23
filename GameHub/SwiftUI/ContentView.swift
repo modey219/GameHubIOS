@@ -8,7 +8,7 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            TestNavigationView()
+            TestSearchView()
                 .tabItem { Label("Games", systemImage: "gamecontroller") }
                 .tag(0)
 
@@ -32,9 +32,9 @@ struct ContentView: View {
     }
 }
 
-struct TestNavigationView: View {
+struct TestSearchView: View {
     @EnvironmentObject var containerManager: ContainerManager
-    @State private var showSheet = false
+    @State private var searchText = ""
 
     var body: some View {
         NavigationStack {
@@ -43,16 +43,7 @@ struct TestNavigationView: View {
                     .font(.title)
             }
             .navigationTitle("Game Library")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showSheet = true }) {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-            .sheet(isPresented: $showSheet) {
-                Text("Sheet Content")
-            }
+            .searchable(text: $searchText, prompt: "Search games...")
         }
     }
 }

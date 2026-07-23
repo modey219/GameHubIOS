@@ -26,30 +26,10 @@ struct GameHubApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView(containerManager: containerManager, jitManager: jitManager, settingsManager: settingsManager)
-        }
-    }
-}
-
-struct RootView: View {
-    @ObservedObject var containerManager: ContainerManager
-    @ObservedObject var jitManager: JITManager
-    @ObservedObject var settingsManager: SettingsManager
-    @State private var showContent = false
-
-    var body: some View {
-        VStack {
-            if showContent {
-                Text("CONTENT IS SHOWING!")
-                    .font(.largeTitle)
-            } else {
-                Text("STILL LOADING...")
-                    .font(.largeTitle)
-                    .foregroundColor(.red)
-            }
-        }
-        .onAppear {
-            showContent = true
+            ContentView()
+                .environmentObject(containerManager)
+                .environmentObject(jitManager)
+                .environmentObject(settingsManager)
         }
     }
 }

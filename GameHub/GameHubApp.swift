@@ -35,41 +35,37 @@ struct RootView: View {
     @ObservedObject var containerManager: ContainerManager
     @ObservedObject var jitManager: JITManager
     @ObservedObject var settingsManager: SettingsManager
-    @State private var showSplash = true
+    @State private var showContent = false
 
     var body: some View {
         ZStack {
-            ContentView()
-                .environmentObject(containerManager)
-                .environmentObject(jitManager)
-                .environmentObject(settingsManager)
+            Color(.systemBackground).ignoresSafeArea()
 
-            if showSplash {
-                splashView
-                    .transition(.opacity)
+            if showContent {
+                ContentView()
+                    .environmentObject(containerManager)
+                    .environmentObject(jitManager)
+                    .environmentObject(settingsManager)
+            } else {
+                VStack(spacing: 16) {
+                    Image(systemName: "gamecontroller.fill")
+                        .font(.system(size: 64))
+                        .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    Text("MN emulator").font(.largeTitle).bold()
+                    Text("PC Game Emulator for iPhone & iPad").font(.subheadline).foregroundColor(.secondary)
+                    Text("Created by @R_MOX").font(.caption).foregroundColor(.secondary)
+                    ProgressView().scaleEffect(1.2)
+                }
             }
         }
         .onAppear {
             performSetup()
             DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
-                withAnimation { showSplash = false }
+                if !showContent {
+                    showContent = true
+                }
             }
         }
-    }
-
-    private var splashView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "gamecontroller.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
-            Text("MN emulator").font(.largeTitle).bold()
-            Text("PC Game Emulator for iPhone & iPad").font(.subheadline).foregroundColor(.secondary)
-            Text("Created by @R_MOX").font(.caption).foregroundColor(.secondary)
-            ProgressView().scaleEffect(1.2)
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
     }
 
     private func performSetup() {
@@ -77,7 +73,7 @@ struct RootView: View {
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
                 UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-                DispatchQueue.main.async { withAnimation { showSplash = false } }
+                DispatchQueue.main.async { showContent = true }
                 return
             }
 
@@ -86,7 +82,7 @@ struct RootView: View {
             let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
 
             if alreadyLaunched && box64Exists && wineExists {
-                DispatchQueue.main.async { withAnimation { showSplash = false } }
+                DispatchQueue.main.async { showContent = true }
                 return
             }
 
@@ -116,7 +112,7 @@ struct RootView: View {
 
             UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
             UserDefaults.standard.synchronize()
-            DispatchQueue.main.async { withAnimation { showSplash = false } }
+            DispatchQueue.main.async { showContent = true }
         }
     }
 }

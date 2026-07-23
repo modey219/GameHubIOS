@@ -8,17 +8,13 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            NavigationStack {
-                Text("Games Tab")
-            }
-            .tabItem { Label("Games", systemImage: "gamecontroller") }
-            .tag(0)
+            TestNavigationView()
+                .tabItem { Label("Games", systemImage: "gamecontroller") }
+                .tag(0)
 
-            NavigationStack {
-                Text("Containers Tab")
-            }
-            .tabItem { Label("Containers", systemImage: "cube") }
-            .tag(1)
+            Text("Containers Tab")
+                .tabItem { Label("Containers", systemImage: "cube") }
+                .tag(1)
 
             Text("JIT Tab")
                 .tabItem { Label("JIT", systemImage: "cpu") }
@@ -33,5 +29,30 @@ struct ContentView: View {
                 .tag(4)
         }
         .accentColor(.blue)
+    }
+}
+
+struct TestNavigationView: View {
+    @EnvironmentObject var containerManager: ContainerManager
+    @State private var showSheet = false
+
+    var body: some View {
+        NavigationStack {
+            VStack {
+                Text("Games: \(containerManager.containers.count)")
+                    .font(.title)
+            }
+            .navigationTitle("Game Library")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { showSheet = true }) {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $showSheet) {
+                Text("Sheet Content")
+            }
+        }
     }
 }

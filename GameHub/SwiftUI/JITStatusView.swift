@@ -2,12 +2,16 @@ import SwiftUI
 
 struct JITStatusView: View {
     @EnvironmentObject var jitManager: JITManager
+    @State private var showSystemInfo = false
+    @State private var memoryUsedMB: Double = 0
+    @State private var memoryTimer: Timer?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     statusHeader
+                    metricsCard
                     methodPicker
                     instructionsCard
                     Spacer()
@@ -22,6 +26,28 @@ struct JITStatusView: View {
                     }
                 }
             }
+            .onAppear { startMemoryMonitor() }
+            .onDisappear { memoryTimer?.invalidate() }
+        }
+    }
+
+    private func startMemoryMonitor() {
+        memoryTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            updateMemoryUsage()
+        }
+        updateMemoryUsage()
+    }
+
+    private func updateMemoryUsage() {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        if result == KERN_SUCCESS {
+            memoryUsedMB = Double(info.resident_size) / (1024 * 1024)
         }
     }
 
@@ -53,6 +79,43 @@ struct JITStatusView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
+    }
+
+    private var metricsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "chart.bar.fill").foregroundColor(.purple)
+                Text("System Metrics").font(.headline)
+            }
+
+            let si = jitManager.systemInfo
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                metricBox("Device", value: si.deviceModel, icon: "iphone")
+                metricBox("iOS", value: si.iosVersion, icon: "gearshape")
+                metricBox("CPU", value: "\(si.cpuCount) cores \(si.cpuType)", icon: "cpu")
+                metricBox("RAM Total", value: "\(si.totalMemoryMB) MB", icon: "memorychip")
+                metricBox("RAM Used", value: String(format: "%.0f MB", memoryUsedMB), icon: "chart.line.uptrend.xyaxis")
+                metricBox("RAM Free", value: "\(si.availableMemoryMB) MB", icon: "cloud")
+                metricBox("App Version", value: "\(si.appVersion) (\(si.buildVersion))", icon: "info.circle")
+                metricBox("Jailbreak", value: si.jailbreakDetected ? "Detected" : "Not Detected", icon: si.jailbreakDetected ? "exclamationmark.triangle.fill" : "checkmark.shield")
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+
+    private func metricBox(_ title: String, value: String, icon: String) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon).foregroundColor(.blue).font(.caption)
+            Text(title).font(.caption2).foregroundColor(.secondary)
+            Text(value).font(.caption).bold().lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(8)
+        .background(Color(.systemBackground))
+        .cornerRadius(8)
     }
 
     private var methodPicker: some View {

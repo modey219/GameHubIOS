@@ -2,34 +2,47 @@ import SwiftUI
 
 struct GameLibraryView: View {
     @EnvironmentObject var containerManager: ContainerManager
+    @State private var searchText = ""
     @State private var showAddGame = false
+    @State private var showImportSheet = false
+    @State private var selectedGameID: UUID?
+    @State private var showGameContainer = false
+
+    var filteredGames: [ContainerManager.Container] {
+        if searchText.isEmpty { return containerManager.containers.filter { $0.isEnabled } }
+        return containerManager.containers.filter { $0.isEnabled && $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    var selectedGame: ContainerManager.Container? {
+        guard let id = selectedGameID else { return nil }
+        return containerManager.containers.first { $0.id == id }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
-                if containerManager.containers.isEmpty {
-                    VStack(spacing: 20) {
-                        Image(systemName: "gamecontroller")
-                            .font(.system(size: 60)).foregroundColor(.gray)
-                        Text("No Games Yet").font(.title2).bold()
-                        Text("Import or add PC games to start playing").foregroundColor(.secondary)
-                    }
-                } else {
-                    ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 20)], spacing: 20) {
-                            ForEach(containerManager.containers.filter { $0.isEnabled }) { game in
-                                GameCardView(game: game)
-                            }
-                        }
-                        .padding()
+                Group {
+                    if filteredGames.isEmpty {
+                        emptyState
+                    } else {
+                        gameGrid
                     }
                 }
+                .navigationTitle("Game Library")
+                .searchable(text: $searchText, prompt: "Search games...")
 
                 VStack {
                     Spacer()
                     HStack {
                         Spacer()
-                        Button(action: { showAddGame = true }) {
+                        Menu {
+                            Button(action: { showAddGame = true }) {
+                                Label("Add Game", systemImage: "plus")
+                            }
+                            Button(action: { showImportSheet = true }) {
+                                Label("Import Game", systemImage: "square.and.arrow.down")
+                            }
+                        } label: {
                             Image(systemName: "plus.circle.fill")
                                 .font(.system(size: 56))
                                 .foregroundColor(.blue)
@@ -40,8 +53,49 @@ struct GameLibraryView: View {
                     }
                 }
             }
-            .navigationTitle("Game Library")
             .sheet(isPresented: $showAddGame) { AddGameView() }
+            .sheet(isPresented: $showImportSheet) { ImportGameView() }
+            .sheet(isPresented: $showGameContainer) {
+                if let game = selectedGame {
+                    GameContainerView(container: game)
+                }
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "gamecontroller")
+                .font(.system(size: 60)).foregroundColor(.gray)
+            Text("No Games Yet").font(.title2).bold()
+            Text("Import or add PC games to start playing").foregroundColor(.secondary)
+            Button(action: { showAddGame = true }) {
+                Label("Add Game", systemImage: "plus")
+                    .padding().background(Color.blue).foregroundColor(.white).cornerRadius(10)
+            }
+        }
+    }
+
+    private var gameGrid: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 20)], spacing: 20) {
+                ForEach(filteredGames) { game in
+                    GameCardView(game: game)
+                        .onTapGesture {
+                            selectedGameID = game.id
+                            showGameContainer = true
+                        }
+                        .contextMenu {
+                            Button(action: { containerManager.launchGame(game) }) {
+                                Label("Play", systemImage: "play.fill")
+                            }
+                            Button(role: .destructive, action: { containerManager.deleteContainer(game) }) {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                }
+            }
+            .padding()
         }
     }
 }

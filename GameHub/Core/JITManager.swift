@@ -1,11 +1,26 @@
 import Foundation
 import UIKit
+import MachO
 
 class JITManager: ObservableObject {
     @Published var isJITEnabled = false
     @Published var jitMethod: JITMethod = .jitless
     @Published var jitStatus: JITStatus = .unknown
     @Published var statusMessage: String = ""
+    @Published var systemInfo: SystemInfo = SystemInfo()
+
+    struct SystemInfo {
+        var deviceModel: String = ""
+        var iosVersion: String = ""
+        var totalMemoryMB: UInt64 = 0
+        var availableMemoryMB: UInt64 = 0
+        var cpuCount: Int = 0
+        var cpuType: String = ""
+        var appVersion: String = ""
+        var buildVersion: String = ""
+        var jailbreakDetected: Bool = false
+        var jitSupported: Bool = false
+    }
 
     enum JITMethod: String, CaseIterable, Codable {
         case stikdebug = "stikdebug"
@@ -54,6 +69,7 @@ class JITManager: ObservableObject {
 
     init() {
         loadMethod()
+        gatherSystemInfo()
         checkJITStatus()
     }
 
@@ -180,13 +196,14 @@ class JITManager: ObservableObject {
 
             let sysctlJIT = self.checkSysctlJIT()
             let taskInfoJIT = self.checkTaskInfoJIT()
+            let csopsJIT = self.checkCSOpsJIT()
 
             DispatchQueue.main.async {
                 if jitlessVal == "1" {
                     self.isJITEnabled = true
                     self.jitStatus = .enabled
                     self.statusMessage = "JIT-less mode active (no dynamic recompilation)"
-                } else if sysctlJIT || taskInfoJIT {
+                } else if sysctlJIT || taskInfoJIT || csopsJIT {
                     self.isJITEnabled = true
                     self.jitStatus = .enabled
                     self.statusMessage = "JIT enabled (interpreter mode - no DYNAREC on iOS)."
@@ -231,6 +248,16 @@ class JITManager: ObservableObject {
         return result == KERN_SUCCESS
     }
 
+    private func checkCSOpsJIT() -> Bool {
+        var flags: UInt32 = 0
+        let result = csops(getpid(), 0, &flags, MemoryLayout<UInt32>.size)
+        if result == 0 {
+            let CS_GET_TASK_ALLOW = UInt32(0x04)
+            return (flags & CS_GET_TASK_ALLOW) != 0
+        }
+        return false
+    }
+
     func getJITInstructions() -> String {
         switch jitMethod {
         case .stikdebug:
@@ -268,6 +295,64 @@ class JITManager: ObservableObject {
             5. JIT should now be permanently active
             """
         }
+    }
+
+    private func gatherSystemInfo() {
+        var info = SystemInfo()
+
+        info.iosVersion = UIDevice.current.systemVersion
+        info.appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        info.buildVersion = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+
+        var systemInfo = utsname()
+        uname(&systemInfo)
+        let machineMirror = Mirror(reflecting: systemInfo.machine)
+        info.deviceModel = machineMirror.children.reduce("") { identifier, element in
+            guard let value = element.value as? Int8, value != 0 else { return identifier }
+            return identifier + String(UnicodeScalar(UInt8(value)))
+        }
+
+        info.cpuCount = ProcessInfo.processInfo.processorCount
+
+        let totalBytes = ProcessInfo.processInfo.physicalMemory
+        info.totalMemoryMB = totalBytes / (1024 * 1024)
+
+        var taskInfo = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let result = withUnsafeMutablePointer(to: &taskInfo) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        if result == KERN_SUCCESS {
+            let usedMB = taskInfo.resident_size / (1024 * 1024)
+            info.availableMemoryMB = info.totalMemoryMB > usedMB ? info.totalMemoryMB - usedMB : 0
+        }
+
+        #if arch(arm64)
+        info.cpuType = "ARM64"
+        #else
+        info.cpuType = "Unknown"
+        #endif
+
+        info.jailbreakDetected = checkJailbreak()
+        info.jitSupported = !info.jailbreakDetected || info.jailbreakDetected
+
+        DispatchQueue.main.async {
+            self.systemInfo = info
+        }
+    }
+
+    private func checkJailbreak() -> Bool {
+        let paths = [
+            "/Applications/Cydia.app",
+            "/Library/MobileSubstrate/MobileSubstrate.dylib",
+            "/bin/bash",
+            "/usr/sbin/sshd",
+            "/etc/apt",
+            "/private/var/lib/apt/"
+        ]
+        return paths.contains { FileManager.default.fileExists(atPath: $0) }
     }
 
     private func saveMethod() {

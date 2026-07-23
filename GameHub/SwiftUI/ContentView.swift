@@ -20,7 +20,7 @@ struct ContentView: View {
                 .tabItem { Label("JIT", systemImage: "cpu") }
                 .tag(2)
 
-            Text("Settings Tab")
+            SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(3)
 

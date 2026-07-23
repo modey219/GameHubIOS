@@ -16,7 +16,7 @@ struct ContentView: View {
                 .tabItem { Label("Containers", systemImage: "cube") }
                 .tag(1)
 
-            Text("JIT Tab")
+            JITStatusView()
                 .tabItem { Label("JIT", systemImage: "cpu") }
                 .tag(2)
 

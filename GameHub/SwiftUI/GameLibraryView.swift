@@ -14,24 +14,36 @@ struct GameLibraryView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if filteredGames.isEmpty {
-                    emptyState
-                } else {
-                    gameGrid
-                }
-            }
-            .navigationTitle("Game Library")
-            .searchable(text: $searchText, prompt: "Search games...")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { showImportSheet = true }) {
-                        Image(systemName: "square.and.arrow.down")
+            ZStack {
+                Group {
+                    if filteredGames.isEmpty {
+                        emptyState
+                    } else {
+                        gameGrid
                     }
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showAddGame = true }) {
-                        Image(systemName: "plus")
+                .navigationTitle("Game Library")
+                .searchable(text: $searchText, prompt: "Search games...")
+
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Menu {
+                            Button(action: { showAddGame = true }) {
+                                Label("Add Game", systemImage: "plus")
+                            }
+                            Button(action: { showImportSheet = true }) {
+                                Label("Import Game", systemImage: "square.and.arrow.down")
+                            }
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 56))
+                                .foregroundColor(.blue)
+                                .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                        }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 20)
                     }
                 }
             }

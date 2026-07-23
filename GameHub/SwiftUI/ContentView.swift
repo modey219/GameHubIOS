@@ -8,42 +8,26 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            TestSearchView()
+            GameLibraryView()
                 .tabItem { Label("Games", systemImage: "gamecontroller") }
                 .tag(0)
 
-            Text("Containers Tab")
+            ContainerListView()
                 .tabItem { Label("Containers", systemImage: "cube") }
                 .tag(1)
 
-            Text("JIT Tab")
+            JITStatusView()
                 .tabItem { Label("JIT", systemImage: "cpu") }
                 .tag(2)
 
-            Text("Settings Tab")
+            SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(3)
 
-            Text("Debug Tab")
+            DebugView()
                 .tabItem { Label("Debug", systemImage: "ant") }
                 .tag(4)
         }
         .accentColor(.blue)
-    }
-}
-
-struct TestSearchView: View {
-    @EnvironmentObject var containerManager: ContainerManager
-    @State private var searchText = ""
-
-    var body: some View {
-        NavigationStack {
-            VStack {
-                Text("Games: \(containerManager.containers.count)")
-                    .font(.title)
-            }
-            .navigationTitle("Game Library")
-            .searchable(text: $searchText, prompt: "Search games...")
-        }
     }
 }

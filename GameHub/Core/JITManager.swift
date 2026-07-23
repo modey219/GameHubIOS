@@ -249,8 +249,9 @@ class JITManager: ObservableObject {
     }
 
     private func checkCSOpsJIT() -> Bool {
+        let csopsUnsafe = unsafeBitCast(dlsym(RTLD_DEFAULT, "csops"), to: (@convention(c) (pid_t, UInt32, UnsafeMutableRawPointer, UInt32) -> Int32).self)
         var flags: UInt32 = 0
-        let result = csops(getpid(), 0, &flags, MemoryLayout<UInt32>.size)
+        let result = csopsUnsafe(getpid(), 0, &flags, MemoryLayout<UInt32>.size)
         if result == 0 {
             let CS_GET_TASK_ALLOW = UInt32(0x04)
             return (flags & CS_GET_TASK_ALLOW) != 0

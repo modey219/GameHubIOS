@@ -24,45 +24,35 @@ struct GameHubApp: App {
     @StateObject private var jitManager = JITManager()
     @StateObject private var settingsManager = SettingsManager()
 
-    @State private var isLoading = true
-    @State private var setupError: String?
-    @State private var setupProgress = "Initializing..."
-    @State private var setupLog: [String] = []
-    @State private var currentStep = 0
-    @State private var cDiagLog: String = ""
-    @State private var showShareSheet = false
-    @State private var shareText: String = ""
-
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                Color(.systemBackground).ignoresSafeArea()
+            RootView(containerManager: containerManager, jitManager: jitManager, settingsManager: settingsManager)
+        }
+    }
+}
 
-                if isLoading {
-                    splashView
-                } else {
-                    ContentView()
-                        .environmentObject(containerManager)
-                        .environmentObject(jitManager)
-                        .environmentObject(settingsManager)
-                }
+struct RootView: View {
+    @ObservedObject var containerManager: ContainerManager
+    @ObservedObject var jitManager: JITManager
+    @ObservedObject var settingsManager: SettingsManager
+    @State private var showSplash = true
+
+    var body: some View {
+        ZStack {
+            ContentView()
+                .environmentObject(containerManager)
+                .environmentObject(jitManager)
+                .environmentObject(settingsManager)
+
+            if showSplash {
+                splashView
+                    .transition(.opacity)
             }
-            .onAppear {
-                UserDefaults.standard.set(false, forKey: "_crash_sentinel")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    performSetup()
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
-                    if self.isLoading {
-                        writeDiag("step=FALLBACK_FORCE_LOAD")
-                        UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-                        UserDefaults.standard.synchronize()
-                        self.isLoading = false
-                    }
-                }
-            }
-            .sheet(isPresented: $showShareSheet) {
-                ShareSheet(activityItems: [shareText])
+        }
+        .onAppear {
+            performSetup()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
+                withAnimation { showSplash = false }
             }
         }
     }
@@ -72,153 +62,22 @@ struct GameHubApp: App {
             Image(systemName: "gamecontroller.fill")
                 .font(.system(size: 64))
                 .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
-
-            Text("MN emulator")
-                .font(.largeTitle).bold()
-
-            Text("PC Game Emulator for iPhone & iPad")
-                .font(.subheadline).foregroundColor(.secondary)
-
-            Text("Created by @R_MOX")
-                .font(.caption).foregroundColor(.secondary)
-
-            if let error = setupError {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                        .font(.title2)
-                    Text(verbatim: error)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                    if !cDiagLog.isEmpty {
-                        ScrollView {
-                            Text(verbatim: cDiagLog)
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundColor(.red)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(8)
-                        }
-                        .frame(maxHeight: 200)
-                        .background(Color.black.opacity(0.8))
-                        .cornerRadius(8)
-                        .padding(.horizontal, 24)
-                    }
-                    HStack(spacing: 16) {
-                        Button("Continue Anyway") {
-                            isLoading = false
-                        }
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                        Button("Share Logs") {
-                            shareLogs()
-                        }
-                        .padding()
-                        .background(Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                    }
-                }
-            } else {
-                VStack(spacing: 8) {
-                    ProgressView()
-                        .scaleEffect(1.2)
-                    Text(verbatim: setupProgress)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 2) {
-                                ForEach(Array(setupLog.enumerated()), id: \.offset) { idx, line in
-                                    Text(verbatim: line)
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .foregroundColor(.green)
-                                        .id(idx)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                        }
-                        .frame(maxHeight: 120)
-                        .background(Color.black.opacity(0.8))
-                        .cornerRadius(8)
-                        .padding(.horizontal, 24)
-                        .onChange(of: setupLog.count) { _ in
-                            if setupLog.count > 0 {
-                                withAnimation { proxy.scrollTo(setupLog.count - 1, anchor: .bottom) }
-                            }
-                        }
-                    }
-                }
-            }
+            Text("MN emulator").font(.largeTitle).bold()
+            Text("PC Game Emulator for iPhone & iPad").font(.subheadline).foregroundColor(.secondary)
+            Text("Created by @R_MOX").font(.caption).foregroundColor(.secondary)
+            ProgressView().scaleEffect(1.2)
         }
         .padding()
-    }
-
-    private func logStep(_ n: Int, _ text: String) {
-        let ts = ISO8601DateFormatter().string(from: Date()) ?? "unknown"
-        let line = "[\(ts)] STEP \(n): \(text)"
-        NSLog("%@", line)
-        DispatchQueue.main.async {
-            self.setupLog.append(line)
-            if self.setupLog.count > 100 {
-                self.setupLog.removeFirst(50)
-            }
-            self.currentStep = n
-            self.setupProgress = text
-        }
-    }
-
-    private func writeDiag(_ s: String) {
-        if let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
-            let line = "[\(Date().timeIntervalSince1970)] \(s)\n"
-            let path = p + "/diag.log"
-            if let fh = FileHandle(forWritingAtPath: path) {
-                fh.seekToEndOfFile()
-                fh.write(line.data(using: .utf8)!)
-                fh.closeFile()
-            } else {
-                try? line.write(toFile: path, atomically: true, encoding: .utf8)
-            }
-        }
-    }
-
-    private func readCdiagLog() {
-        guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
-        let cdiagPath = p + "/c_diag.log"
-        let diagPath = p + "/diag.log"
-        let cdiag = (try? String(contentsOfFile: cdiagPath, encoding: .utf8)) ?? ""
-        let diag = (try? String(contentsOfFile: diagPath, encoding: .utf8)) ?? ""
-        var combined = ""
-        if !cdiag.isEmpty { combined += "=== c_diag.log ===\n\(cdiag)\n" }
-        if !diag.isEmpty { combined += "=== diag.log ===\n\(diag)\n" }
-        cDiagLog = combined.isEmpty ? "(no log files found)" : combined
-    }
-
-    private func shareLogs() {
-        guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
-        let diagPath = p + "/diag.log"
-        let cdiagPath = p + "/c_diag.log"
-        var text = "=== diag.log ===\n" + ((try? String(contentsOfFile: diagPath)) ?? "N/A") + "\n"
-        text += "=== c_diag.log ===\n" + ((try? String(contentsOfFile: cdiagPath)) ?? "N/A") + "\n"
-        text += "=== bridge.log ===\n" + ((try? String(contentsOfFile: p + "/bridge.log")) ?? "N/A") + "\n"
-        text += "=== crash.log ===\n" + ((try? String(contentsOfFile: p + "/crash.log")) ?? "N/A") + "\n"
-        UIPasteboard.general.string = text
-        shareText = text
-        showShareSheet = true
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
     }
 
     private func performSetup() {
         DispatchQueue.global(qos: .userInitiated).async {
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
-                writeDiag("FAIL: no docs dir")
                 UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-                DispatchQueue.main.async { self.isLoading = false }
+                DispatchQueue.main.async { withAnimation { showSplash = false } }
                 return
             }
 
@@ -227,86 +86,37 @@ struct GameHubApp: App {
             let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
 
             if alreadyLaunched && box64Exists && wineExists {
-                writeDiag("step=skip_init_already_launched")
-                logStep(1, "Quick launch (already initialized)...")
-                DispatchQueue.main.async {
-                    withAnimation(.easeIn(duration: 0.3)) {
-                        self.isLoading = false
-                    }
-                }
+                DispatchQueue.main.async { withAnimation { showSplash = false } }
                 return
             }
 
-            writeDiag("step=clean")
-            logStep(1, "Cleaning stale 0-byte files...")
             UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
             UserDefaults.standard.synchronize()
-            for stalePath in ["Box64/box64", "Wine/bin/wine64", "Wine/bin/wine", "Wine/bin/wineserver", "Wine/bin/wineboot"] {
+
+            for stalePath in ["Box64/box64", "Wine/bin/wine64"] {
                 let fullPath = docs.appendingPathComponent(stalePath).path
                 if fm.fileExists(atPath: fullPath),
                    let attrs = try? fm.attributesOfItem(atPath: fullPath),
                    let size = attrs[.size] as? NSNumber,
                    size.intValue == 0 {
                     try? fm.removeItem(atPath: fullPath)
-                    logStep(1, "Removed stale 0-byte file: \(stalePath)")
                 }
             }
-
-            writeDiag("step=check")
-            logStep(1, "Checking existing files...")
-            logStep(1, "Box64 exists: \(box64Exists), Wine exists: \(wineExists)")
 
             if !box64Exists || !wineExists {
-                writeDiag("step=extract")
-                var stepCounter = 2
                 do {
-                    try Box64Bridge.shared.setupAllBundledBinaries { detail in
-                        stepCounter += 1
-                        self.logStep(stepCounter, detail)
-                    }
+                    try Box64Bridge.shared.setupAllBundledBinaries { _ in }
                 } catch {
-                    writeDiag("extraction_failed=\(error)")
-                    logStep(-1, "EXTRACTION FAILED: \(error)")
-                    UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-                    DispatchQueue.main.async {
-                        self.setupError = "Extraction error: \(error.localizedDescription)"
-                        self.readCdiagLog()
-                    }
-                    return
+                    NSLog("[MNEmulator] extraction failed: \(error)")
                 }
             }
 
-            writeDiag("step=wine_init")
-            logStep(3, "Initializing Wine...")
             WineBridge.shared.initialize()
-            writeDiag("step=wine_init_done")
-            logStep(3, "Wine init complete")
-
-            writeDiag("step=prefix")
-            logStep(4, "Setting up prefix...")
             WinePrefixManager.shared.initializePrefix()
-            writeDiag("step=prefix_done")
-            logStep(4, "Prefix init complete")
 
-            writeDiag("step=box64_deferred")
-            logStep(2, "Box64 will init on first game launch")
-
-            writeDiag("step=all_done")
-            logStep(5, "ALL DONE!")
             UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-            DispatchQueue.main.async {
-                withAnimation(.easeIn(duration: 0.3)) {
-                    self.isLoading = false
-                }
-            }
+            UserDefaults.standard.synchronize()
+            DispatchQueue.main.async { withAnimation { showSplash = false } }
         }
     }
-}
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }

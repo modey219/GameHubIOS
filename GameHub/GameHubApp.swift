@@ -48,7 +48,18 @@ struct GameHubApp: App {
                 }
             }
             .onAppear {
-                performSetup()
+                UserDefaults.standard.set(false, forKey: "_crash_sentinel")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    performSetup()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
+                    if self.isLoading {
+                        writeDiag("step=FALLBACK_FORCE_LOAD")
+                        UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+                        UserDefaults.standard.synchronize()
+                        self.isLoading = false
+                    }
+                }
             }
             .sheet(isPresented: $showShareSheet) {
                 ShareSheet(activityItems: [shareText])
@@ -202,28 +213,34 @@ struct GameHubApp: App {
     }
 
     private func performSetup() {
-        let alreadyLaunched = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
-        if alreadyLaunched {
-            writeDiag("step=quick_launch")
-            DispatchQueue.main.async {
-                self.isLoading = false
-            }
-            return
-        }
-
-        DispatchQueue.main.async {
-            self.isLoading = false
-        }
-
         DispatchQueue.global(qos: .userInitiated).async {
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
                 writeDiag("FAIL: no docs dir")
+                UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+                DispatchQueue.main.async { self.isLoading = false }
+                return
+            }
+
+            let alreadyLaunched = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
+            let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
+            let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
+
+            if alreadyLaunched && box64Exists && wineExists {
+                writeDiag("step=skip_init_already_launched")
+                logStep(1, "Quick launch (already initialized)...")
+                DispatchQueue.main.async {
+                    withAnimation(.easeIn(duration: 0.3)) {
+                        self.isLoading = false
+                    }
+                }
                 return
             }
 
             writeDiag("step=clean")
             logStep(1, "Cleaning stale 0-byte files...")
+            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+            UserDefaults.standard.synchronize()
             for stalePath in ["Box64/box64", "Wine/bin/wine64", "Wine/bin/wine", "Wine/bin/wineserver", "Wine/bin/wineboot"] {
                 let fullPath = docs.appendingPathComponent(stalePath).path
                 if fm.fileExists(atPath: fullPath),
@@ -237,8 +254,6 @@ struct GameHubApp: App {
 
             writeDiag("step=check")
             logStep(1, "Checking existing files...")
-            let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
-            let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
             logStep(1, "Box64 exists: \(box64Exists), Wine exists: \(wineExists)")
 
             if !box64Exists || !wineExists {
@@ -252,6 +267,11 @@ struct GameHubApp: App {
                 } catch {
                     writeDiag("extraction_failed=\(error)")
                     logStep(-1, "EXTRACTION FAILED: \(error)")
+                    UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+                    DispatchQueue.main.async {
+                        self.setupError = "Extraction error: \(error.localizedDescription)"
+                        self.readCdiagLog()
+                    }
                     return
                 }
             }
@@ -260,16 +280,25 @@ struct GameHubApp: App {
             logStep(3, "Initializing Wine...")
             WineBridge.shared.initialize()
             writeDiag("step=wine_init_done")
+            logStep(3, "Wine init complete")
 
             writeDiag("step=prefix")
             logStep(4, "Setting up prefix...")
             WinePrefixManager.shared.initializePrefix()
             writeDiag("step=prefix_done")
+            logStep(4, "Prefix init complete")
+
+            writeDiag("step=box64_deferred")
+            logStep(2, "Box64 will init on first game launch")
 
             writeDiag("step=all_done")
             logStep(5, "ALL DONE!")
             UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-            UserDefaults.standard.synchronize()
+            DispatchQueue.main.async {
+                withAnimation(.easeIn(duration: 0.3)) {
+                    self.isLoading = false
+                }
+            }
         }
     }
 }

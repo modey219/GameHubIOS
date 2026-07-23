@@ -239,6 +239,8 @@ struct GameHubApp: App {
 
             writeDiag("step=clean")
             logStep(1, "Cleaning stale 0-byte files...")
+            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+            UserDefaults.standard.synchronize()
             for stalePath in ["Box64/box64", "Wine/bin/wine64", "Wine/bin/wine", "Wine/bin/wineserver", "Wine/bin/wineboot"] {
                 let fullPath = docs.appendingPathComponent(stalePath).path
                 if fm.fileExists(atPath: fullPath),

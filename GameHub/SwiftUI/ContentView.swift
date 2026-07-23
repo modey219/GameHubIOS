@@ -8,13 +8,17 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            Text("Games Tab")
-                .tabItem { Label("Games", systemImage: "gamecontroller") }
-                .tag(0)
+            NavigationStack {
+                Text("Games Tab")
+            }
+            .tabItem { Label("Games", systemImage: "gamecontroller") }
+            .tag(0)
 
-            ContainerListView()
-                .tabItem { Label("Containers", systemImage: "cube") }
-                .tag(1)
+            NavigationStack {
+                Text("Containers Tab")
+            }
+            .tabItem { Label("Containers", systemImage: "cube") }
+            .tag(1)
 
             Text("JIT Tab")
                 .tabItem { Label("JIT", systemImage: "cpu") }

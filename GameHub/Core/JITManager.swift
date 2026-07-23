@@ -196,14 +196,13 @@ class JITManager: ObservableObject {
 
             let sysctlJIT = self.checkSysctlJIT()
             let taskInfoJIT = self.checkTaskInfoJIT()
-            let csopsJIT = self.checkCSOpsJIT()
 
             DispatchQueue.main.async {
                 if jitlessVal == "1" {
                     self.isJITEnabled = true
                     self.jitStatus = .enabled
                     self.statusMessage = "JIT-less mode active (no dynamic recompilation)"
-                } else if sysctlJIT || taskInfoJIT || csopsJIT {
+                } else if sysctlJIT || taskInfoJIT {
                     self.isJITEnabled = true
                     self.jitStatus = .enabled
                     self.statusMessage = "JIT enabled (interpreter mode - no DYNAREC on iOS)."
@@ -248,16 +247,6 @@ class JITManager: ObservableObject {
         return result == KERN_SUCCESS
     }
 
-    private func checkCSOpsJIT() -> Bool {
-        let csopsUnsafe = unsafeBitCast(dlsym(RTLD_DEFAULT, "csops"), to: (@convention(c) (pid_t, UInt32, UnsafeMutableRawPointer, UInt32) -> Int32).self)
-        var flags: UInt32 = 0
-        let result = csopsUnsafe(getpid(), 0, &flags, MemoryLayout<UInt32>.size)
-        if result == 0 {
-            let CS_GET_TASK_ALLOW = UInt32(0x04)
-            return (flags & CS_GET_TASK_ALLOW) != 0
-        }
-        return false
-    }
 
     func getJITInstructions() -> String {
         switch jitMethod {

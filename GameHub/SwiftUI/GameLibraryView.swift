@@ -13,18 +13,8 @@ struct GameLibraryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Group {
-                    if filteredGames.isEmpty {
-                        emptyState
-                    } else {
-                        gameGrid
-                    }
-                }
-                .navigationTitle("Game Library")
-            }
-        }
+        Text("Game Library")
+            .navigationTitle("Game Library")
     }
 
     private var emptyState: some View {

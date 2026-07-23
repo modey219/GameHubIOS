@@ -8,19 +8,19 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            GameLibraryView()
+            Text("Games Tab")
                 .tabItem { Label("Games", systemImage: "gamecontroller") }
                 .tag(0)
 
-            Text("Containers")
+            Text("Containers Tab")
                 .tabItem { Label("Containers", systemImage: "cube") }
                 .tag(1)
 
-            Text("JIT")
+            Text("JIT Tab")
                 .tabItem { Label("JIT", systemImage: "cpu") }
                 .tag(2)
 
-            Text("Settings")
+            Text("Settings Tab")
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(3)
 

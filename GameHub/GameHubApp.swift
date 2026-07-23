@@ -1,25 +1,35 @@
 import SwiftUI
 import UIKit
 
+func swiftLog(_ msg: String) {
+    let ts = ISO8601DateFormatter().string(from: Date())
+    let line = "[\(ts)] \(msg)\n"
+    guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+    let path = docs.appendingPathComponent("app_flow.log").path
+    if let fh = FileHandle(forWritingAtPath: path) {
+        fh.seekToEndOfFile()
+        if let data = line.data(using: .utf8) { fh.write(data) }
+        fh.closeFile()
+    } else {
+        FileManager.default.createFile(atPath: path, contents: line.data(using: .utf8))
+    }
+}
+
 func setupCrashHandler() {
     NSSetUncaughtExceptionHandler { exception in
         let crash = "[Crash] ObjC exception: \(exception.name) reason=\(exception.reason ?? "nil") callStack=\(exception.callStackSymbols.joined(separator: "\n"))"
         NSLog("%@", crash)
-        if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
-            let log = path + "/crash.log"
-            try? crash.write(toFile: log, atomically: true, encoding: .utf8)
-        }
-    }
-    if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
-        let crashLogPath = path + "/crash.log"
-        crashLogPath.withCString { install_crash_handler($0) }
-        safeSetenv("CRASH_LOG_PATH", crashLogPath)
+        swiftLog(crash)
     }
 }
 
 @main
 struct GameHubApp: App {
-    init() { setupCrashHandler() }
+    init() {
+        swiftLog("=== App init START ===")
+        setupCrashHandler()
+        swiftLog("=== App init DONE ===")
+    }
     @StateObject private var containerManager = ContainerManager()
     @StateObject private var jitManager = JITManager()
     @StateObject private var settingsManager = SettingsManager()
@@ -27,6 +37,7 @@ struct GameHubApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(containerManager: containerManager, jitManager: jitManager, settingsManager: settingsManager)
+                .onAppear { swiftLog("RootView appeared") }
         }
     }
 }
@@ -46,6 +57,7 @@ struct RootView: View {
                     .environmentObject(containerManager)
                     .environmentObject(jitManager)
                     .environmentObject(settingsManager)
+                    .onAppear { swiftLog("ContentView appeared inside RootView") }
             } else {
                 VStack(spacing: 16) {
                     Image(systemName: "gamecontroller.fill")
@@ -56,10 +68,13 @@ struct RootView: View {
                     Text("Created by @R_MOX").font(.caption).foregroundColor(.secondary)
                     ProgressView().scaleEffect(1.2)
                 }
+                .onAppear { swiftLog("Splash screen appeared") }
             }
         }
         .task {
+            swiftLog("RootView .task START")
             await performSetup()
+            swiftLog("RootView .task DONE, setting showContent=true")
             showContent = true
         }
     }

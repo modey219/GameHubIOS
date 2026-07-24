@@ -225,30 +225,11 @@ class JITManager: ObservableObject {
     }
 
     private func checkSysctlJIT() -> Bool {
-        var size: size_t = 0
-        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
-
-        let result = sysctl(&mib, UInt32(mib.count), nil, &size, nil, 0)
-        guard result == 0 else { return false }
-
-        var info = kinfo_proc()
-        let sysctlResult = sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0)
-        guard sysctlResult == 0 else { return false }
-
-        let flag = info.kp_proc.p_flag
-        let P_TRACED: Int32 = 0x00000800
-        return (flag & P_TRACED) != 0
+        return false
     }
 
     private func checkTaskInfoJIT() -> Bool {
-        var info = task_dyld_info()
-        var count = mach_msg_type_number_t(MemoryLayout<task_dyld_info>.size) / 4
-        let result = withUnsafeMutablePointer(to: &info) { ptr in
-            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
-                task_info(mach_task_self_, task_flavor_t(TASK_DYLD_INFO), intPtr, &count)
-            }
-        }
-        return result == KERN_SUCCESS
+        return false
     }
 
 
@@ -311,18 +292,6 @@ class JITManager: ObservableObject {
         let totalBytes = ProcessInfo.processInfo.physicalMemory
         info.totalMemoryMB = totalBytes / (1024 * 1024)
 
-        var taskInfo = mach_task_basic_info()
-        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
-        let result = withUnsafeMutablePointer(to: &taskInfo) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
-            }
-        }
-        if result == KERN_SUCCESS {
-            let usedMB = taskInfo.resident_size / (1024 * 1024)
-            info.availableMemoryMB = info.totalMemoryMB > usedMB ? info.totalMemoryMB - usedMB : 0
-        }
-
         #if arch(arm64)
         info.cpuType = "ARM64"
         #else
@@ -330,7 +299,7 @@ class JITManager: ObservableObject {
         #endif
 
         info.jailbreakDetected = checkJailbreak()
-        info.jitSupported = !info.jailbreakDetected || info.jailbreakDetected
+        info.jitSupported = true
 
         DispatchQueue.main.async {
             self.systemInfo = info

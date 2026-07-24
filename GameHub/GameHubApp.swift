@@ -56,6 +56,7 @@ struct RootView: View {
             }
         }
         .task {
+            await performSetup()
             showContent = true
         }
     }

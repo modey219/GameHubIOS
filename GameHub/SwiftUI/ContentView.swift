@@ -29,11 +29,6 @@ struct ContentView: View {
                 .tag(4)
         }
         .accentColor(.blue)
-        .onAppear {
-            swiftLog("ContentView onAppear start")
-            swiftLog("  gatherSystemInfo...")
-            jitManager.setupOnce()
-            swiftLog("  setupOnce done")
-        }
+        .onAppear { jitManager.gatherSystemInfoSafe() }
     }
 }

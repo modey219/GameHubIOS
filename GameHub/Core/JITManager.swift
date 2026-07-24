@@ -83,6 +83,32 @@ class JITManager: ObservableObject {
         swiftLog("setupOnce: done")
     }
 
+    func gatherSystemInfoSafe() {
+        guard systemInfo.deviceModel.isEmpty else { return }
+        swiftLog("gatherSystemInfoSafe: start")
+        var info = SystemInfo()
+        info.iosVersion = UIDevice.current.systemVersion
+        info.appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        info.buildVersion = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        var unameInfo = utsname()
+        uname(&unameInfo)
+        let machineMirror = Mirror(reflecting: unameInfo.machine)
+        info.deviceModel = machineMirror.children.reduce("") { identifier, element in
+            guard let value = element.value as? Int8, value != 0 else { return identifier }
+            return identifier + String(UnicodeScalar(UInt8(value)))
+        }
+        info.cpuCount = ProcessInfo.processInfo.processorCount
+        info.totalMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
+        #if arch(arm64)
+        info.cpuType = "ARM64"
+        #else
+        info.cpuType = "Unknown"
+        #endif
+        info.jitSupported = true
+        self.systemInfo = info
+        swiftLog("gatherSystemInfoSafe: done, model=\(info.deviceModel)")
+    }
+
     func selectMethod(_ method: JITMethod) {
         jitMethod = method
         saveMethod()

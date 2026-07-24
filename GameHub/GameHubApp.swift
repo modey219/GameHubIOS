@@ -57,7 +57,10 @@ struct RootView: View {
         }
         .task {
             await performSetup()
+            swiftLog("performSetup complete, waiting 1s before showing content...")
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             showContent = true
+            swiftLog("showContent set to true")
         }
     }
 

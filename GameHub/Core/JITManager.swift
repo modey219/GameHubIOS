@@ -69,6 +69,7 @@ class JITManager: ObservableObject {
 
     init() {
         loadMethod()
+        gatherSystemInfo()
     }
 
     func setupOnce() {

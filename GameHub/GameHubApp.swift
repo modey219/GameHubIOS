@@ -51,6 +51,20 @@ class SetupState: ObservableObject {
             self.setupError = msg
         }
     }
+
+    func readCdiagLog() {
+        guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
+        let cdiagPath = p + "/c_diag.log"
+        let diagPath = p + "/diag.log"
+        let cdiag = (try? String(contentsOfFile: cdiagPath, encoding: .utf8)) ?? ""
+        let diag = (try? String(contentsOfFile: diagPath, encoding: .utf8)) ?? ""
+        var combined = ""
+        if !cdiag.isEmpty { combined += "=== c_diag.log ===\n\(cdiag)\n" }
+        if !diag.isEmpty { combined += "=== diag.log ===\n\(diag)\n" }
+        DispatchQueue.main.async {
+            self.cDiagLog = combined.isEmpty ? "(no log files found)" : combined
+        }
+    }
 }
 
 @main
@@ -218,18 +232,6 @@ struct LaunchView: View {
                 try? line.write(toFile: path, atomically: true, encoding: .utf8)
             }
         }
-    }
-
-    private func readCdiagLog() {
-        guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
-        let cdiagPath = p + "/c_diag.log"
-        let diagPath = p + "/diag.log"
-        let cdiag = (try? String(contentsOfFile: cdiagPath, encoding: .utf8)) ?? ""
-        let diag = (try? String(contentsOfFile: diagPath, encoding: .utf8)) ?? ""
-        var combined = ""
-        if !cdiag.isEmpty { combined += "=== c_diag.log ===\n\(cdiag)\n" }
-        if !diag.isEmpty { combined += "=== diag.log ===\n\(diag)\n" }
-        setupState.cDiagLog = combined.isEmpty ? "(no log files found)" : combined
     }
 
     private func shareLogs() {

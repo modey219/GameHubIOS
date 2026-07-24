@@ -15,21 +15,8 @@ func swiftLog(_ msg: String) {
     }
 }
 
-func setupCrashHandler() {
-    NSSetUncaughtExceptionHandler { exception in
-        let crash = "[Crash] ObjC exception: \(exception.name) reason=\(exception.reason ?? "nil") callStack=\(exception.callStackSymbols.joined(separator: "\n"))"
-        NSLog("%@", crash)
-        swiftLog(crash)
-    }
-}
-
 @main
 struct GameHubApp: App {
-    init() {
-        swiftLog("=== App init START ===")
-        setupCrashHandler()
-        swiftLog("=== App init DONE ===")
-    }
     @StateObject private var containerManager = ContainerManager()
     @StateObject private var jitManager = JITManager()
     @StateObject private var settingsManager = SettingsManager()
@@ -37,7 +24,6 @@ struct GameHubApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(containerManager: containerManager, jitManager: jitManager, settingsManager: settingsManager)
-                .onAppear { swiftLog("RootView appeared") }
         }
     }
 }
@@ -57,7 +43,6 @@ struct RootView: View {
                     .environmentObject(containerManager)
                     .environmentObject(jitManager)
                     .environmentObject(settingsManager)
-                    .onAppear { swiftLog("ContentView appeared inside RootView") }
             } else {
                 VStack(spacing: 16) {
                     Image(systemName: "gamecontroller.fill")
@@ -68,67 +53,12 @@ struct RootView: View {
                     Text("Created by @R_MOX").font(.caption).foregroundColor(.secondary)
                     ProgressView().scaleEffect(1.2)
                 }
-                .onAppear { swiftLog("Splash screen appeared") }
+                .onAppear { swiftLog("Splash appeared") }
             }
         }
-        .task {
-            swiftLog("RootView .task START")
-            await performSetup()
-            swiftLog("RootView .task DONE, setting showContent=true")
+        .onAppear {
+            swiftLog("RootView.onAppear: setting showContent=true")
             showContent = true
-        }
-    }
-
-    @MainActor
-    private func performSetup() async {
-        let fm = FileManager.default
-        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-            return
-        }
-
-        let alreadyLaunched = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
-        let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
-        let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
-
-        if alreadyLaunched && box64Exists && wineExists {
-            return
-        }
-
-        UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-        UserDefaults.standard.synchronize()
-
-        for stalePath in ["Box64/box64", "Wine/bin/wine64"] {
-            let fullPath = docs.appendingPathComponent(stalePath).path
-            if fm.fileExists(atPath: fullPath),
-               let attrs = try? fm.attributesOfItem(atPath: fullPath),
-               let size = attrs[.size] as? NSNumber,
-               size.intValue == 0 {
-                try? fm.removeItem(atPath: fullPath)
-            }
-        }
-
-        if !box64Exists || !wineExists {
-            await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    do {
-                        try Box64Bridge.shared.setupAllBundledBinaries { _ in }
-                    } catch {
-                        NSLog("[RootView] extraction failed: \(error)")
-                    }
-                    continuation.resume()
-                }
-            }
-        }
-
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                WineBridge.shared.initialize()
-                WinePrefixManager.shared.initializePrefix()
-                UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-                UserDefaults.standard.synchronize()
-                continuation.resume()
-            }
         }
     }
 }

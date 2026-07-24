@@ -30,4 +30,5 @@ struct ContentView: View {
         }
         .accentColor(.blue)
         .onAppear { jitManager.setupOnce() }
+    }
 }

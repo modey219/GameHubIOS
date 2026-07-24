@@ -69,8 +69,6 @@ class JITManager: ObservableObject {
 
     init() {
         loadMethod()
-        gatherSystemInfo()
-        checkJITStatus()
     }
 
     func selectMethod(_ method: JITMethod) {

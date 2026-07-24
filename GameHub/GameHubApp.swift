@@ -29,7 +29,7 @@ class SetupState: ObservableObject {
         let ts = ISO8601DateFormatter().string(from: Date()) ?? "unknown"
         let line = "[\(ts)] STEP \(n): \(text)"
         NSLog("%@", line)
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.setupLog.append(line)
             if self.setupLog.count > 100 { self.setupLog.removeFirst(50) }
             self.currentStep = n
@@ -38,16 +38,17 @@ class SetupState: ObservableObject {
     }
 
     func finishLoading() {
-        DispatchQueue.main.async {
-            NSLog("[MNEmulator] finishLoading() called — dismissing splash")
-            withAnimation(.easeIn(duration: 0.3)) {
-                self.isLoading = false
-            }
+        NSLog("[MNEmulator] finishLoading() called — about to dispatch to main")
+        Task { @MainActor in
+            NSLog("[MNEmulator] finishLoading() executing on main thread — isLoading was \(self.isLoading)")
+            self.objectWillChange.send()
+            self.isLoading = false
+            NSLog("[MNEmulator] finishLoading() done — isLoading is now \(self.isLoading)")
         }
     }
 
     func showError(_ msg: String) {
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.setupError = msg
         }
     }
@@ -61,7 +62,7 @@ class SetupState: ObservableObject {
         var combined = ""
         if !cdiag.isEmpty { combined += "=== c_diag.log ===\n\(cdiag)\n" }
         if !diag.isEmpty { combined += "=== diag.log ===\n\(diag)\n" }
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.cDiagLog = combined.isEmpty ? "(no log files found)" : combined
         }
     }
@@ -322,6 +323,7 @@ struct LaunchView: View {
             writeDiag("step=settings")
             state.logStep(8, "ALL DONE!")
 
+            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
             writeDiag("step=all_done")
             state.finishLoading()
         }

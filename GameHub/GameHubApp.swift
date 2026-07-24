@@ -24,6 +24,21 @@ struct GameHubApp: App {
     @StateObject private var jitManager = JITManager()
     @StateObject private var settingsManager = SettingsManager()
 
+    var body: some Scene {
+        WindowGroup {
+            LaunchView(
+                containerManager: containerManager,
+                jitManager: jitManager,
+                settingsManager: settingsManager
+            )
+        }
+    }
+}
+
+struct LaunchView: View {
+    @ObservedObject var containerManager: ContainerManager
+    @ObservedObject var jitManager: JITManager
+    @ObservedObject var settingsManager: SettingsManager
     @State private var isLoading = true
     @State private var setupError: String?
     @State private var setupProgress = "Initializing..."
@@ -33,32 +48,30 @@ struct GameHubApp: App {
     @State private var showShareSheet = false
     @State private var shareText: String = ""
 
-    var body: some Scene {
-        WindowGroup {
-            ZStack {
-                Color(.systemBackground).ignoresSafeArea()
+    var body: some View {
+        ZStack {
+            Color(.systemBackground).ignoresSafeArea()
 
-                if isLoading {
-                    splashView
-                } else {
-                    ContentView()
-                        .environmentObject(containerManager)
-                        .environmentObject(jitManager)
-                        .environmentObject(settingsManager)
-                        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                            jitManager.checkJITStatus()
-                        }
-                }
+            if isLoading {
+                splashView
+            } else {
+                ContentView()
+                    .environmentObject(containerManager)
+                    .environmentObject(jitManager)
+                    .environmentObject(settingsManager)
+                    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                        jitManager.checkJITStatus()
+                    }
             }
-            .onAppear {
-                UserDefaults.standard.set(false, forKey: "_crash_sentinel")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    performSetup()
-                }
+        }
+        .onAppear {
+            UserDefaults.standard.set(false, forKey: "_crash_sentinel")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                performSetup()
             }
-            .sheet(isPresented: $showShareSheet) {
-                ShareSheet(activityItems: [shareText])
-            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(activityItems: [shareText])
         }
     }
 

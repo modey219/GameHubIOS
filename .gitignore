@@ -68,6 +68,10 @@ rootfs.tzst
 *.temp
 *.log
 
+# Large files
+base.apk
+ips/
+
 # IDE
 .idea/
 .vscode/

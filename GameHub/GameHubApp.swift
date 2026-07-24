@@ -66,6 +66,7 @@ struct RootView: View {
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
             UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+            swiftLog("performSetup: no docs dir, returning")
             return
         }
 
@@ -73,7 +74,10 @@ struct RootView: View {
         let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
         let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
 
+        swiftLog("performSetup: alreadyLaunched=\(alreadyLaunched) box64=\(box64Exists) wine=\(wineExists)")
+
         if alreadyLaunched && box64Exists && wineExists {
+            swiftLog("performSetup: binaries exist, returning early")
             return
         }
 
@@ -91,24 +95,34 @@ struct RootView: View {
         }
 
         if !box64Exists || !wineExists {
+            swiftLog("performSetup: starting extraction...")
             await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
+                    swiftLog("performSetup: extraction dispatch started")
                     do {
-                        try Box64Bridge.shared.setupAllBundledBinaries { _ in }
+                        try Box64Bridge.shared.setupAllBundledBinaries { msg in
+                            swiftLog("performSetup: extraction: \(msg)")
+                        }
+                        swiftLog("performSetup: extraction succeeded")
                     } catch {
-                        NSLog("[RootView] extraction failed: \(error)")
+                        swiftLog("performSetup: extraction FAILED: \(error)")
                     }
                     continuation.resume()
                 }
             }
         }
 
+        swiftLog("performSetup: starting WineBridge.initialize...")
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
+                swiftLog("performSetup: WineBridge dispatch")
                 WineBridge.shared.initialize()
+                swiftLog("performSetup: WinePrefixManager dispatch")
                 WinePrefixManager.shared.initializePrefix()
+                swiftLog("performSetup: saving hasLaunchedBefore")
                 UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
                 UserDefaults.standard.synchronize()
+                swiftLog("performSetup: DONE")
                 continuation.resume()
             }
         }

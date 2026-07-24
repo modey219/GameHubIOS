@@ -17,6 +17,42 @@ func setupCrashHandler() {
     }
 }
 
+class SetupState: ObservableObject {
+    @Published var isLoading = true
+    @Published var setupError: String?
+    @Published var setupProgress = "Initializing..."
+    @Published var setupLog: [String] = []
+    @Published var currentStep = 0
+    @Published var cDiagLog: String = ""
+
+    func logStep(_ n: Int, _ text: String) {
+        let ts = ISO8601DateFormatter().string(from: Date()) ?? "unknown"
+        let line = "[\(ts)] STEP \(n): \(text)"
+        NSLog("%@", line)
+        DispatchQueue.main.async {
+            self.setupLog.append(line)
+            if self.setupLog.count > 100 { self.setupLog.removeFirst(50) }
+            self.currentStep = n
+            self.setupProgress = text
+        }
+    }
+
+    func finishLoading() {
+        DispatchQueue.main.async {
+            NSLog("[MNEmulator] finishLoading() called — dismissing splash")
+            withAnimation(.easeIn(duration: 0.3)) {
+                self.isLoading = false
+            }
+        }
+    }
+
+    func showError(_ msg: String) {
+        DispatchQueue.main.async {
+            self.setupError = msg
+        }
+    }
+}
+
 @main
 struct GameHubApp: App {
     init() { setupCrashHandler() }
@@ -39,20 +75,16 @@ struct LaunchView: View {
     @ObservedObject var containerManager: ContainerManager
     @ObservedObject var jitManager: JITManager
     @ObservedObject var settingsManager: SettingsManager
-    @State private var isLoading = true
-    @State private var setupError: String?
-    @State private var setupProgress = "Initializing..."
-    @State private var setupLog: [String] = []
-    @State private var currentStep = 0
-    @State private var cDiagLog: String = ""
+    @StateObject private var setupState = SetupState()
     @State private var showShareSheet = false
     @State private var shareText: String = ""
+    @State private var safetyTimerFired = false
 
     var body: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
 
-            if isLoading {
+            if setupState.isLoading {
                 splashView
             } else {
                 ContentView()
@@ -68,6 +100,13 @@ struct LaunchView: View {
             UserDefaults.standard.set(false, forKey: "_crash_sentinel")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 performSetup()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
+                if self.setupState.isLoading && !self.safetyTimerFired {
+                    self.safetyTimerFired = true
+                    NSLog("[MNEmulator] SAFETY TIMER fired — forcing splash dismiss after 60s")
+                    self.setupState.finishLoading()
+                }
             }
         }
         .sheet(isPresented: $showShareSheet) {
@@ -90,7 +129,7 @@ struct LaunchView: View {
             Text("Created by @R_MOX")
                 .font(.caption).foregroundColor(.secondary)
 
-            if let error = setupError {
+            if let error = setupState.setupError {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
@@ -100,9 +139,9 @@ struct LaunchView: View {
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-                    if !cDiagLog.isEmpty {
+                    if !setupState.cDiagLog.isEmpty {
                         ScrollView {
-                            Text(verbatim: cDiagLog)
+                            Text(verbatim: setupState.cDiagLog)
                                 .font(.system(.caption2, design: .monospaced))
                                 .foregroundColor(.red)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -115,7 +154,7 @@ struct LaunchView: View {
                     }
                     HStack(spacing: 16) {
                         Button("Continue Anyway") {
-                            isLoading = false
+                            setupState.finishLoading()
                         }
                         .padding()
                         .background(Color.blue)
@@ -134,14 +173,14 @@ struct LaunchView: View {
                 VStack(spacing: 8) {
                     ProgressView()
                         .scaleEffect(1.2)
-                    Text(verbatim: setupProgress)
+                    Text(verbatim: setupState.setupProgress)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
 
                     ScrollViewReader { proxy in
                         ScrollView {
                             VStack(alignment: .leading, spacing: 2) {
-                                ForEach(Array(setupLog.enumerated()), id: \.offset) { idx, line in
+                                ForEach(Array(setupState.setupLog.enumerated()), id: \.offset) { idx, line in
                                     Text(verbatim: line)
                                         .font(.system(.caption2, design: .monospaced))
                                         .foregroundColor(.green)
@@ -155,9 +194,9 @@ struct LaunchView: View {
                         .background(Color.black.opacity(0.8))
                         .cornerRadius(8)
                         .padding(.horizontal, 24)
-                        .onChange(of: setupLog.count) { _ in
-                            if setupLog.count > 0 {
-                                withAnimation { proxy.scrollTo(setupLog.count - 1, anchor: .bottom) }
+                        .onChange(of: setupState.setupLog.count) { _ in
+                            if setupState.setupLog.count > 0 {
+                                withAnimation { proxy.scrollTo(setupState.setupLog.count - 1, anchor: .bottom) }
                             }
                         }
                     }
@@ -165,20 +204,6 @@ struct LaunchView: View {
             }
         }
         .padding()
-    }
-
-    private func logStep(_ n: Int, _ text: String) {
-        let ts = ISO8601DateFormatter().string(from: Date()) ?? "unknown"
-        let line = "[\(ts)] STEP \(n): \(text)"
-        NSLog("%@", line)
-        DispatchQueue.main.async {
-            self.setupLog.append(line)
-            if self.setupLog.count > 100 {
-                self.setupLog.removeFirst(50)
-            }
-            self.currentStep = n
-            self.setupProgress = text
-        }
     }
 
     private func writeDiag(_ s: String) {
@@ -204,7 +229,7 @@ struct LaunchView: View {
         var combined = ""
         if !cdiag.isEmpty { combined += "=== c_diag.log ===\n\(cdiag)\n" }
         if !diag.isEmpty { combined += "=== diag.log ===\n\(diag)\n" }
-        cDiagLog = combined.isEmpty ? "(no log files found)" : combined
+        setupState.cDiagLog = combined.isEmpty ? "(no log files found)" : combined
     }
 
     private func shareLogs() {
@@ -221,19 +246,13 @@ struct LaunchView: View {
     }
 
     private func performSetup() {
+        let state = self.setupState
         DispatchQueue.global(qos: .userInitiated).async {
-            defer {
-                DispatchQueue.main.async {
-                    withAnimation(.easeIn(duration: 0.3)) {
-                        self.isLoading = false
-                    }
-                }
-            }
-
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
                 writeDiag("FAIL: no docs dir")
                 UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+                state.finishLoading()
                 return
             }
 
@@ -243,12 +262,13 @@ struct LaunchView: View {
 
             if alreadyLaunched && box64Exists && wineExists {
                 writeDiag("step=skip_init_already_launched")
-                logStep(1, "Quick launch (already initialized)...")
+                state.logStep(1, "Quick launch (already initialized)...")
+                state.finishLoading()
                 return
             }
 
             writeDiag("step=clean")
-            logStep(1, "Cleaning stale 0-byte files...")
+            state.logStep(1, "Cleaning stale 0-byte files...")
             for stalePath in ["Box64/box64", "Wine/bin/wine64", "Wine/bin/wine", "Wine/bin/wineserver", "Wine/bin/wineboot"] {
                 let fullPath = docs.appendingPathComponent(stalePath).path
                 if fm.fileExists(atPath: fullPath),
@@ -256,13 +276,13 @@ struct LaunchView: View {
                    let size = attrs[.size] as? NSNumber,
                    size.intValue == 0 {
                     try? fm.removeItem(atPath: fullPath)
-                    logStep(1, "Removed stale 0-byte file: \(stalePath)")
+                    state.logStep(1, "Removed stale 0-byte file: \(stalePath)")
                 }
             }
 
             writeDiag("step=check")
-            logStep(1, "Checking existing files...")
-            logStep(1, "Box64 exists: \(box64Exists), Wine exists: \(wineExists)")
+            state.logStep(1, "Checking existing files...")
+            state.logStep(1, "Box64 exists: \(box64Exists), Wine exists: \(wineExists)")
 
             if !box64Exists || !wineExists {
                 writeDiag("step=extract")
@@ -270,39 +290,38 @@ struct LaunchView: View {
                 do {
                     try Box64Bridge.shared.setupAllBundledBinaries { detail in
                         stepCounter += 1
-                        self.logStep(stepCounter, detail)
+                        state.logStep(stepCounter, detail)
                     }
                 } catch {
                     writeDiag("extraction_failed=\(error)")
-                    logStep(-1, "EXTRACTION FAILED: \(error)")
+                    state.logStep(-1, "EXTRACTION FAILED: \(error)")
                     UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-                    DispatchQueue.main.async {
-                        self.setupError = "Extraction error: \(error.localizedDescription)"
-                        self.readCdiagLog()
-                    }
+                    state.showError("Extraction error: \(error.localizedDescription)")
+                    state.readCdiagLog()
                     return
                 }
             }
 
             writeDiag("step=wine_init")
-            logStep(5, "Initializing Wine...")
+            state.logStep(5, "Initializing Wine...")
             do { WineBridge.shared.initialize() }
             writeDiag("step=wine_init_done")
-            logStep(5, "Wine init complete")
+            state.logStep(5, "Wine init complete")
 
             writeDiag("step=prefix")
-            logStep(6, "Setting up prefix...")
+            state.logStep(6, "Setting up prefix...")
             do { WinePrefixManager.shared.initializePrefix() }
             writeDiag("step=prefix_done")
-            logStep(6, "Prefix init complete")
+            state.logStep(6, "Prefix init complete")
 
             writeDiag("step=box64_deferred")
-            logStep(7, "Box64 will init on first game launch")
+            state.logStep(7, "Box64 will init on first game launch")
 
             writeDiag("step=settings")
-            logStep(8, "ALL DONE!")
+            state.logStep(8, "ALL DONE!")
 
             writeDiag("step=all_done")
+            state.finishLoading()
         }
     }
 }

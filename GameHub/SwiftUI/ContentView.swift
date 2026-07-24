@@ -29,6 +29,10 @@ struct ContentView: View {
                 .tag(4)
         }
         .accentColor(.blue)
-        .onAppear { swiftLog("ContentView onAppear - no setupOnce"); /* jitManager.setupOnce() */ }
+        .onAppear {
+            swiftLog("ContentView onAppear start, calling setupOnce")
+            jitManager.setupOnce()
+            swiftLog("ContentView onAppear end")
+        }
     }
 }

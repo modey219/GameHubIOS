@@ -72,9 +72,15 @@ class JITManager: ObservableObject {
     }
 
     func setupOnce() {
-        guard systemInfo.deviceModel.isEmpty else { return }
+        guard systemInfo.deviceModel.isEmpty else {
+            swiftLog("setupOnce: already initialized, skipping")
+            return
+        }
+        swiftLog("setupOnce: calling gatherSystemInfo...")
         gatherSystemInfo()
+        swiftLog("setupOnce: calling checkJITStatus...")
         checkJITStatus()
+        swiftLog("setupOnce: done")
     }
 
     func selectMethod(_ method: JITMethod) {

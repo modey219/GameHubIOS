@@ -163,7 +163,12 @@ class Box64Bridge {
             group.leave()
         }
 
-        group.wait()
+        let groupResult = group.wait(timeout: .now() + 120)
+
+        if groupResult == .timedOut {
+            NSLog("[MNEmulator] WARNING: extraction group timed out after 120s")
+            progressCallback?("Extraction timed out, continuing...")
+        }
 
         if let err = box64Error { throw err }
         if let err = wineError { throw err }

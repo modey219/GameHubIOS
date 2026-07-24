@@ -13,6 +13,7 @@ class WinePrefixManager {
     }
 
     func initializePrefix() {
+        NSLog("[MNEmulator] initializePrefix() start, prefix=%@", winePrefix)
         let fm = fileManager
         let directories = [
             "drive_c",
@@ -46,13 +47,19 @@ class WinePrefixManager {
         for dir in directories {
             let fullPath = (winePrefix as NSString).appendingPathComponent(dir)
             if !fm.fileExists(atPath: fullPath) {
-                try? fm.createDirectory(atPath: fullPath, withIntermediateDirectories: true)
+                do {
+                    try fm.createDirectory(atPath: fullPath, withIntermediateDirectories: true)
+                } catch {
+                    NSLog("[MNEmulator] createDir failed: %@ error: %@", fullPath, error.localizedDescription)
+                }
             }
         }
+        NSLog("[MNEmulator] initializePrefix() dirs done, writing registry...")
         writeSystemRegistry()
         writeUserRegistry()
         writeDllOverrides()
         createStartMenuEntries()
+        NSLog("[MNEmulator] initializePrefix() complete")
     }
 
     private func writeSystemRegistry() {

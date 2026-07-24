@@ -28,13 +28,19 @@ class WineBridge {
     func initialize() {
         lock.lock()
         defer { lock.unlock() }
-        guard !isInitialized else { return }
+        guard !isInitialized else {
+            NSLog("[MNEmulator] WineBridge already initialized, skipping")
+            return
+        }
+        NSLog("[MNEmulator] WineBridge initialize() start")
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         winePrefix = docs.appendingPathComponent("Wine").path
         wineBinaryPath = docs.appendingPathComponent("Wine/bin/wine64").path
+        NSLog("[MNEmulator] WineBridge winePrefix=%@ wineBinaryPath=%@", winePrefix, wineBinaryPath)
         setupEnvironment()
         isInitialized = true
+        NSLog("[MNEmulator] WineBridge initialize() done")
     }
 
     private func setupEnvironment() {

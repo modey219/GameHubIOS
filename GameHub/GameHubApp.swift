@@ -269,26 +269,23 @@ struct GameHubApp: App {
                 }
             }
 
-            writeDiag("step=prefix_done")
-            logStep(4, "Prefix init complete")
-
             writeDiag("step=wine_init")
-            logStep(3, "Initializing Wine...")
+            logStep(5, "Initializing Wine...")
             WineBridge.shared.initialize()
             writeDiag("step=wine_init_done")
-            logStep(3, "Wine init complete")
+            logStep(5, "Wine init complete")
 
             writeDiag("step=prefix")
-            logStep(4, "Setting up prefix...")
+            logStep(6, "Setting up prefix...")
             WinePrefixManager.shared.initializePrefix()
             writeDiag("step=prefix_done")
-            logStep(4, "Prefix init complete")
+            logStep(6, "Prefix init complete")
 
             writeDiag("step=box64_deferred")
-            logStep(2, "Box64 will init on first game launch")
+            logStep(7, "Box64 will init on first game launch")
 
             writeDiag("step=settings")
-            logStep(5, "ALL DONE!")
+            logStep(8, "ALL DONE!")
 
             writeDiag("step=all_done")
             DispatchQueue.main.async {

@@ -62,8 +62,9 @@ class SetupState: ObservableObject {
         var combined = ""
         if !cdiag.isEmpty { combined += "=== c_diag.log ===\n\(cdiag)\n" }
         if !diag.isEmpty { combined += "=== diag.log ===\n\(diag)\n" }
+        let result = combined.isEmpty ? "(no log files found)" : combined
         Task { @MainActor in
-            self.cDiagLog = combined.isEmpty ? "(no log files found)" : combined
+            self.cDiagLog = result
         }
     }
 }

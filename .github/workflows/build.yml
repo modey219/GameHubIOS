@@ -1,0 +1,532 @@
+name: Build MN Emulator IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build IPA
+    runs-on: macos-14
+    timeout-minutes: 120
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.2'
+
+      - name: Install tools
+        run: |
+          brew install xcodegen cmake
+
+      # ==========================================
+      # Step 1: Build Box64 executable for iOS
+      # ==========================================
+      - name: Clone Box64
+        run: |
+          if [ ! -d "Box64Source/box64" ]; then
+            git clone --depth 1 https://github.com/ptitSeb/box64.git Box64Source/box64
+          fi
+
+      - name: Patch Box64 for iOS
+        run: |
+          BOX64_SRC="$PWD/Box64Source/box64"
+          cd "$BOX64_SRC"
+          echo "Patching Box64 for iOS..."
+
+          # Patch 1: Mark as forked process to skip loadProtectionFromEnv/cleanProtectionFromEnv
+          # These iterate mmap pages calling mprotect — unnecessary and slow on iOS
+          if [ -f src/box64.c ]; then
+            # Find the 'inited = 1' line and append forked_process setting after it
+            sed -i.bak '/inited = 1;/a\
+            if(my_context) my_context->forked_process = 1;' src/box64.c
+            echo "  Patched src/box64.c: set forked_process=1"
+          fi
+
+          # Patch 2: Ensure openFTrace doesn't crash on iOS (no writable tracer.txt)
+          if [ -f src/tools/dbg_getline.c ]; then
+            sed -i.bak 's/open("tracer.txt"/open("\/dev\/null"/g' src/tools/dbg_getline.c
+            echo "  Patched dbg_getline.c: redirect tracer.txt to /dev/null"
+          fi
+
+          # Patch 3: Use getauxval for HWCAP on iOS instead of /proc/cpuinfo when available
+          # Box64 already handles this on Android, but add safety for any raw /proc/cpuinfo fopen
+          find src/ -name "*.c" -exec grep -l 'fopen.*"/proc/cpuinfo"' {} \; 2>/dev/null | while read f; do
+            echo "  Found /proc/cpuinfo fopen in: $f (already handled by Box64)"
+          done
+
+          echo "Patching complete."
+
+      - name: Build Box64 for iOS
+        run: |
+          echo "=========================================="
+          echo "  Compiling Box64 for iOS ARM64"
+          echo "=========================================="
+          
+          BOX64_SRC="$PWD/Box64Source/box64"
+          OUTPUT_DIR="$PWD/GameHub/Native/Box64Lib"
+          mkdir -p "$OUTPUT_DIR/objects"
+          
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          CC=$(xcrun --sdk iphoneos --find clang)
+          AR=$(xcrun --sdk iphoneos --find ar)
+          
+          COMPAT_DIR="$PWD/GameHub/Native/Compat"
+          
+          # Build include flags: our compat dir FIRST to override system headers
+          INC_FLAGS="-I$COMPAT_DIR -I$BOX64_SRC/src/include -I$BOX64_SRC/src"
+          while IFS= read -r d; do
+              INC_FLAGS="$INC_FLAGS -I$d"
+          done < <(find "$BOX64_SRC/src" -type d)
+          
+          CFLAGS="-arch arm64 -mios-version-min=16.0 -isysroot $SDK -O2 -fembed-bitcode-marker"
+          CFLAGS="$CFLAGS -DARM64 -DNOGIT -D__IOS__=1 -DTARGET_IPHONE=1"
+          CFLAGS="$CFLAGS -DBAD_SIGNAL=1 -DBOX64_ENV=1 -D_XOPEN_SOURCE=600 -D_DARWIN_C_SOURCE"
+          CFLAGS="$CFLAGS $INC_FLAGS"
+          CFLAGS="$CFLAGS -Wno-unused-variable -Wno-unused-function -Wno-incompatible-pointer-types"
+          CFLAGS="$CFLAGS -Wno-int-conversion -Wno-pointer-sign -Wno-implicit-function-declaration"
+          CFLAGS="$CFLAGS -Wno-deprecated-declarations -Wno-missing-declarations"
+          CFLAGS="$CFLAGS -Wno-missing-prototypes -Wno-strict-prototypes"
+          CFLAGS="$CFLAGS -Wno-macro-redefined -Wno-error"
+          CFLAGS="$CFLAGS -include $COMPAT_DIR/ios_linux_compat.h"
+          CFLAGS="$CFLAGS -DSTEP=1 -DSTACKALIGN=16"
+          
+          # intercept exit() so Box64 doesn't kill the iOS app
+          BOX64_CFLAGS="$CFLAGS -Dexit(x)=box64_exit_intercept(x)"
+          
+          # Exclude files that cannot compile on Darwin
+          EXCLUDE="custommmap.c emit_signal_wine.c os_wine.c hostext_wine.c random_wine.c emit_signals_linux.c freq_linux.c hostext_linux.c os_linux.c obstack.c threads32.c dynacache.c signals.c signal32.c sigtools.c syscall_user_dispatch.c dynarec_arm64_arch.c elfhacks.c my_x11_xevent.c myalign64_32.c myalignxcb32.c sdl1rwops.c sdl2rwops.c libc_net32.c arm64_printer.c threads.c myalign32.c libdl.c symbolfuncs_linux.c mallochook.c elfload_dump.c elfload_dump32.c x86int3.c elfhash32.c box32stack.c globalsymbols32.c"
+          
+          # Find core .c files under src/ (excluding wrapped/ and wrapped32/ — Linux-only libs)
+          SOURCES=""
+          for dir in src src/emu src/custommem src/os src/tools src/libtools src/elfs src/librarian; do
+              if [ -d "$BOX64_SRC/$dir" ]; then
+                  for f in "$BOX64_SRC/$dir"/*.c; do
+                      [ -f "$f" ] || continue
+                      BASE=$(basename "$f")
+                      SKIP=0
+                      for ex in $EXCLUDE; do [ "$BASE" = "$ex" ] && SKIP=1 && break; done
+                      [ $SKIP -eq 0 ] && SOURCES="$SOURCES $f"
+                  done
+              fi
+          done
+          
+          # Skip ALL wrapped/ files — Linux-only library wrappers (GTK, X11, Wayland, PulseAudio, ICU etc.)
+          # Not needed for Wine on iOS. Only core libc/libm/libpthread would be needed but those are provided by system.
+          
+          # Skip ALL wrapped/ files and dynarec — use Box64 interpreter only (DYNAREC crashes on iOS due to JIT memory requirements)
+          
+          # Add our iOS stubs (without exit macro - stubs defines box64_exit_intercept)
+          STUB_SRC="$PWD/GameHub/Native/SyscallTranslation/ios_stubs.c"
+          
+          SRC_COUNT=$(echo $SOURCES | wc -w)
+          echo "Found $SRC_COUNT source files + ios_stubs.c"
+          
+          COMPILED=0
+          FAILED=0
+          
+          for src in $SOURCES; do
+              OBJ="$OUTPUT_DIR/objects/$(basename "$src" .c).o"
+              
+              if $CC $BOX64_CFLAGS -c "$src" -o "$OBJ" 2>/tmp/box64_err_$$; then
+                  COMPILED=$((COMPILED + 1))
+              else
+                  FAILED=$((FAILED + 1))
+                  LAST_ERR=$(cat /tmp/box64_err_$$ 2>/dev/null | grep -i "error:" | head -1)
+                  if [ -z "$LAST_ERR" ]; then
+                      LAST_ERR=$(cat /tmp/box64_err_$$ 2>/dev/null | tail -1)
+                  fi
+                  echo "FAIL: $(basename "$src"): $LAST_ERR"
+              fi
+              rm -f /tmp/box64_err_$$
+          done
+          
+          # Compile ios_stubs.c WITHOUT exit macro (it defines box64_exit_intercept)
+          echo "Compiling ios_stubs.c (without exit macro)..."
+          if $CC $CFLAGS -c "$STUB_SRC" -o "$OUTPUT_DIR/objects/ios_stubs.o" 2>/tmp/box64_err_$$; then
+              COMPILED=$((COMPILED + 1))
+              echo "ios_stubs.c: OK"
+          else
+              echo "ios_stubs.c: FAILED"
+              cat /tmp/box64_err_$$ 2>/dev/null | tail -3
+          fi
+          rm -f /tmp/box64_err_$$
+          
+          echo ""
+          echo "Compiled: $COMPILED / $SRC_COUNT (Failed: $FAILED)"
+          
+          if [ $COMPILED -gt 0 ]; then
+              # Create static library
+              cd "$OUTPUT_DIR/objects"
+              $AR rcs "$OUTPUT_DIR/libbox64.a" *.o
+              echo "Created libbox64.a: $(ls -lh "$OUTPUT_DIR/libbox64.a")"
+              
+              # Auto-generate stubs for all undefined symbols
+              echo "Generating stubs for undefined symbols..."
+              cd "$OUTPUT_DIR"
+              
+              # Find undefined symbols not defined in our objects
+              # Use robust approach: undefined = symbols with ' U ' in nm output
+              nm objects/*.o 2>/dev/null | grep ' U ' | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_undef.txt
+              
+              # Defined = everything else (T, D, B, A, R, C, c, S, s, t, d, b, a, r, g, G, W, w, etc.)
+              nm objects/*.o 2>/dev/null | grep -v ' U ' | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_def.txt
+              
+              # Missing = undefined in our objects, not defined in our objects
+              comm -23 /tmp/all_undef.txt /tmp/all_def.txt > /tmp/missing_syms.txt
+              
+              MISSING_COUNT=$(wc -l < /tmp/missing_syms.txt)
+              echo "Total missing symbols: $MISSING_COUNT"
+              head -20 /tmp/missing_syms.txt
+              
+              # Remove symbols that are already defined in our objects (prevent duplicates)
+              comm -12 /tmp/all_def.txt /tmp/missing_syms.txt > /tmp/dup_syms.txt
+              DUP_COUNT=$(wc -l < /tmp/dup_syms.txt)
+              if [ "$DUP_COUNT" -gt 0 ]; then
+                  echo "Removing $DUP_COUNT already-defined symbols from stubs"
+                  comm -23 /tmp/missing_syms.txt /tmp/all_def.txt > /tmp/missing_syms_final.txt
+              else
+                  cp /tmp/missing_syms.txt /tmp/missing_syms_final.txt
+              fi
+              
+              # Generate stubs C file — NO system headers at all to avoid macro conflicts
+              {
+                  echo '// Auto-generated stubs for missing Box64 symbols on iOS'
+                  echo '// No system headers to avoid macro expansion errors'
+                  echo ''
+                  while IFS= read -r sym; do
+                      [ -z "$sym" ] && continue
+                      # Don't skip underscore symbols — __libc_* etc. are real refs
+                      echo "void $sym(void) {}"
+                  done < /tmp/missing_syms_final.txt
+              } > auto_stubs.c
+              
+              STUB_LINES=$(wc -l < auto_stubs.c)
+              echo "Generated $STUB_LINES lines of stubs"
+              
+              # Compile stubs — no warnings, no system headers needed
+              $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
+                  -w -ffreestanding -nostdinc \
+                  -c auto_stubs.c -o auto_stubs.o
+              
+              # Post-compile: find any duplicate symbols between stubs and objects
+              # and remove them by filtering stubs
+              STUB_DEFS=$(nm auto_stubs.o 2>/dev/null | awk '{print $NF}' | sed 's/^_//' | sort -u)
+              OBJ_DEFS=$(nm objects/*.o 2>/dev/null | grep -v ' U ' | awk '{print $NF}' | sed 's/^_//' | sort -u)
+              DUPS=$(comm -12 <(echo "$STUB_DEFS") <(echo "$OBJ_DEFS"))
+              DUP_COUNT=$(echo "$DUPS" | grep -c . || true)
+              if [ "$DUP_COUNT" -gt 0 ]; then
+                  echo "Post-compile: filtering $DUP_COUNT duplicate symbols from stubs"
+                  # Re-generate stubs excluding duplicates
+                  {
+                      echo '// Auto-generated stubs (deduplicated)'
+                      while IFS= read -r sym; do
+                          [ -z "$sym" ] && continue
+                          echo "void $sym(void) {}"
+                      done < <(comm -23 <(echo "$STUB_DEFS") <(echo "$OBJ_DEFS"))
+                  } > auto_stubs_dedup.c
+                  $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
+                      -w -ffreestanding -nostdinc \
+                      -c auto_stubs_dedup.c -o auto_stubs.o
+                  echo "Recompiled deduplicated stubs"
+              fi
+              
+              # Add stubs to the static library so iOS app can link against them
+              $AR rcs "$OUTPUT_DIR/libbox64.a" objects/*.o auto_stubs.o
+              echo "Updated libbox64.a with stubs: $(ls -lh "$OUTPUT_DIR/libbox64.a")"
+              
+              # Link as executable with stubs
+              $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
+                  objects/*.o auto_stubs.o \
+                  -o box64 -lm
+              chmod 755 box64
+              echo "Created box64 executable: $(ls -la box64)"
+          else
+              echo "ERROR: No Box64 files compiled"
+              exit 1
+          fi
+
+      # ==========================================
+      # Step 2: Download Wine, MoltenVK, DXVK
+      # ==========================================
+      - name: Download Wine (x86_64 Linux for Box64)
+        run: |
+          echo "=========================================="
+          echo "  Downloading Wine for Box64"
+          echo "=========================================="
+          WINE_VERSION="9.21"
+          WINE_URL="https://github.com/Kron4ek/Wine-Builds/releases/download/${WINE_VERSION}/wine-${WINE_VERSION}-amd64.tar.xz"
+          echo "Downloading: $WINE_URL"
+          curl -L "$WINE_URL" -o wine-amd64.tar.xz
+          mkdir -p GameHub/Native/BundledBinaries/Wine
+          tar xf wine-amd64.tar.xz -C GameHub/Native/BundledBinaries/Wine --strip-components=1
+          rm -f wine-amd64.tar.xz
+          echo "Wine contents:"
+          ls -la GameHub/Native/BundledBinaries/Wine/
+          ls -la GameHub/Native/BundledBinaries/Wine/bin/ 2>/dev/null || true
+
+      - name: Download MoltenVK (iOS)
+        run: |
+          echo "=========================================="
+          echo "  Downloading MoltenVK for iOS"
+          echo "=========================================="
+          MVK_URL="https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.1/MoltenVK-ios.tar"
+          echo "Downloading: $MVK_URL"
+          curl -L "$MVK_URL" -o MoltenVK-ios.tar
+          echo "=== MoltenVK tar structure ==="
+          tar tf MoltenVK-ios.tar 2>/dev/null | head -30
+          mkdir -p GameHub/Native/BundledBinaries/MoltenVK
+          tar xf MoltenVK-ios.tar -C GameHub/Native/BundledBinaries/MoltenVK --strip-components=1 2>/dev/null || \
+          tar xf MoltenVK-ios.tar -C GameHub/Native/BundledBinaries/MoltenVK --strip-components=0
+          rm -f MoltenVK-ios.tar
+          echo "=== Removing broken symlinks ==="
+          find GameHub/Native/BundledBinaries/MoltenVK -type l ! -exec test -e {} \; -delete 2>/dev/null || true
+          echo "MoltenVK contents:"
+          find GameHub/Native/BundledBinaries/MoltenVK -type f -o -type l | head -30
+
+      - name: Download DXVK (Windows DLLs for Wine)
+        run: |
+          echo "=========================================="
+          echo "  Downloading DXVK"
+          echo "=========================================="
+          DXVK_URL="https://github.com/doitsujin/dxvk/releases/download/v2.6.1/dxvk-2.6.1.tar.gz"
+          echo "Downloading: $DXVK_URL"
+          curl -L "$DXVK_URL" -o dxvk.tar.gz
+          mkdir -p GameHub/Native/BundledBinaries/DXVK
+          tar xf dxvk.tar.gz -C GameHub/Native/BundledBinaries/DXVK --strip-components=1
+          rm -f dxvk.tar.gz
+          echo "DXVK contents:"
+          find GameHub/Native/BundledBinaries/DXVK -type f | head -20
+
+      - name: Bundle all binaries
+        run: |
+          echo "=========================================="
+          echo "  Bundling all binaries into BundledBinaries"
+          echo "=========================================="
+          BIN_DIR="GameHub/Native/BundledBinaries"
+          
+          # Copy box64 executable into BundledBinaries (both root for direct access and Box64/ for organization)
+          cp GameHub/Native/Box64Lib/box64 "$BIN_DIR/box64"
+          chmod 755 "$BIN_DIR/box64"
+          
+          # Verify everything is in place
+          echo "--- Box64 ---"
+          ls -lh "$BIN_DIR/box64"
+          echo "--- Wine ---"
+          ls -lh "$BIN_DIR/Wine/bin/wine64" 2>/dev/null || echo "wine64: MISSING"
+          echo "--- MoltenVK ---"
+          find "$BIN_DIR/MoltenVK" -name "*.dylib" -o -name "libvulkan*" | head -5 || echo "MoltenVK: MISSING"
+          echo "--- DXVK ---"
+          find "$BIN_DIR/DXVK" -name "*.dll" | head -10 || echo "DXVK: MISSING"
+          echo "--- Total size ---"
+          du -sh "$BIN_DIR"
+
+      # ==========================================
+      # Step 3: Build iOS App with bundled binaries
+      # ==========================================
+      - name: Generate app icons
+        run: |
+          ICONSET="GameHub/Resources/Assets.xcassets/AppIcon.appiconset"
+          mkdir -p "$ICONSET"
+          python3 -c "
+          import struct, zlib, os
+          iconset = os.environ.get('ICONSET', '.')
+          def make_png(w, h):
+              raw = b''
+              for y in range(h):
+                  raw += b'\\x00'
+                  for x in range(w):
+                      t = y / max(h-1, 1)
+                      r = int(25 + t*55)
+                      g = int(8 + t*15)
+                      b = int(160 - t*50)
+                      raw += struct.pack('BBBB', r, g, b, 255)
+              def chunk(ct, d):
+                  c = ct + d
+                  return struct.pack('>I', len(d)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+              ihdr = struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)
+              return b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', ihdr) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+          sizes = {
+              'icon-20.png': 20, 'icon-20@2x.png': 40, 'icon-20@3x.png': 60,
+              'icon-29.png': 29, 'icon-29@2x.png': 58, 'icon-29@3x.png': 87,
+              'icon-40.png': 40, 'icon-40@2x.png': 80, 'icon-40@3x.png': 120,
+              'icon-60.png': 60, 'icon-60@2x.png': 120, 'icon-60@3x.png': 180,
+              'icon-76.png': 76, 'icon-76@2x.png': 152,
+              'icon-83.5@2x.png': 167, 'icon-1024.png': 1024,
+          }
+          for name, size in sizes.items():
+              path = os.path.join(iconset, name)
+              with open(path, 'wb') as f:
+                  f.write(make_png(size, size))
+              print(f'  {name}: {os.path.getsize(path)} bytes')
+          print(f'Generated {len(sizes)} icons')
+          "
+          echo "=== Verify icons ==="
+          ls -la "$ICONSET/icon-1024.png"
+          file "$ICONSET/icon-1024.png"
+
+      - name: Remove old xcodeproj
+        run: |
+          rm -rf GameHub.xcodeproj MNEmulator.xcodeproj
+
+      - name: Generate Xcode project
+        run: |
+          xcodegen generate 2>&1
+          echo "Generated project:"
+          ls -la *.xcodeproj 2>/dev/null || echo "No xcodeproj found"
+
+      - name: Show targets
+        run: |
+          xcodebuild -project MNEmulator.xcodeproj -list
+
+      - name: Build iOS App
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project MNEmulator.xcodeproj \
+            -scheme MNEmulator \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ENABLE_BITCODE=NO \
+            DEVELOPMENT_TEAM="" \
+            2>&1 | tee build.log
+
+      - name: Dump build log on failure
+        if: failure()
+        run: |
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -300 build.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 5
+
+      - name: Inject bundled binaries into .app
+        run: |
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/MNEmulator.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH=$(find build/DerivedData -name "MNEmulator.app" -type d 2>/dev/null | head -1)
+          fi
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: MNEmulator.app not found!"
+            grep -i "error\|fatal\|cannot\|missing" build.log 2>/dev/null | head -30 || true
+            exit 1
+          fi
+          echo "Found app at: $APP_PATH"
+          
+          BIN_SRC="GameHub/Native/BundledBinaries"
+          BIN_DST="$APP_PATH/BundledBinaries"
+          rm -rf "$BIN_DST"
+          mkdir -p "$BIN_DST"
+          
+          echo "=== Copying box64 ==="
+          cp "$BIN_SRC/box64" "$BIN_DST/box64"
+          chmod 755 "$BIN_DST/box64"
+          
+          echo "=== Copying Wine ==="
+          cp -R "$BIN_SRC/Wine" "$BIN_DST/"
+          
+          echo "=== Copying MoltenVK ==="
+          find "$BIN_SRC/MoltenVK" -type f | head -10
+          cp -R "$BIN_SRC/MoltenVK" "$BIN_DST/"
+          
+          echo "=== Copying DXVK ==="
+          find "$BIN_SRC/DXVK" -type f -name "*.dll" | head -5
+          cp -R "$BIN_SRC/DXVK" "$BIN_DST/"
+          
+          echo "=== App size after injection ==="
+          du -sh "$APP_PATH"
+          echo "=== Bundled binaries in app ==="
+          find "$BIN_DST" -name "box64" -o -name "wine64" -o -name "*.dylib" -o -name "*.dll" 2>/dev/null | head -20
+          echo "=== All files in BundledBinaries ==="
+          find "$BIN_DST" -type f | wc -l
+
+      - name: Create IPA
+        run: |
+          APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/MNEmulator.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH=$(find build/DerivedData -name "MNEmulator.app" -type d | head -1)
+          fi
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: Cannot create IPA - MNEmulator.app not found"
+            exit 1
+          fi
+          rm -rf build/Payload
+          mkdir -p build/Payload
+          cp -r "$APP_PATH" build/Payload/MNEmulator.app
+          cd build
+          zip -r -y MNEmulator.ipa Payload/
+          echo "=== IPA info ==="
+          ls -lh MNEmulator.ipa
+          echo "=== IPA size ==="
+          du -sh MNEmulator.ipa
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MNEmulator-iOS
+          path: build/MNEmulator.ipa
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: success()
+        run: |
+          TAG="build-${{ github.run_number }}"
+          BODY="MN Emulator - PC Game Emulator for iPhone & iPad
+
+          **Installation:**
+          1. Download MNEmulator.ipa below
+          2. Install via LiveContainer, SideStore, AltStore, or TrollStore
+          3. For best performance: Use StikDebug to enable JIT
+
+          **All-in-one IPA (no downloads needed):**
+          - Box64 x86_64 to ARM64 translation (compiled from source)
+          - Wine 9.21 (x86_64 Linux, runs via Box64)
+          - MoltenVK 1.4.1 (Vulkan to Metal)
+          - DXVK 2.6.1 (DirectX 11 to Vulkan)
+
+          Supports iPhone & iPad (iOS 16+)
+
+          Created by: @R_MOX"
+
+          # Delete existing release/tag if present (from a retry)
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          git push origin --delete "$TAG" 2>/dev/null || true
+
+          # Create fresh release
+          gh release create "$TAG" build/MNEmulator.ipa \
+            --title "MN Emulator Build #${{ github.run_number }}" \
+            --notes "$BODY" \
+            --prerelease
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "========================================"
+          if [ -f build/MNEmulator.ipa ]; then
+            SIZE=$(ls -lh build/MNEmulator.ipa | awk '{print $5}')
+            echo "  BUILD SUCCESS!"
+            echo "  IPA size: $SIZE"
+          else
+            echo "  BUILD FAILED"
+            tail -40 build.log || true
+          fi
+          echo "========================================"

@@ -1,0 +1,67 @@
+name: MNEmulator
+options:
+  bundleIdPrefix: com.mnemulator
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+  generateSchemes: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    INFOPLIST_FILE: GameHub/Resources/Info.plist
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    ENABLE_BITCODE: "NO"
+    CODE_SIGN_STYLE: Manual
+    CLANG_C_LANGUAGE_STANDARD: "gnu17"
+    GCC_C_LANGUAGE_STANDARD: "gnu17"
+
+targets:
+  MNEmulator:
+    type: application
+    platform: iOS
+    sources:
+      - path: GameHub
+        excludes:
+          - "**/*.xcassets"
+          - "**/*.plist"
+          - "**/*.a"
+          - "**/*.o"
+          - "Native/Box64Lib/**"
+          - "Native/Compat/**"
+          - "Native/BundledBinaries/**"
+    resources:
+      - path: GameHub/Resources/Assets.xcassets
+      - path: GameHub/Native/BundledBinaries
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mnemulator.ios
+        PRODUCT_NAME: MNEmulator
+        INFOPLIST_FILE: GameHub/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/GameHub/Native/Include"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/GameHub/Native/Box64Lib"
+          - "$(SRCROOT)/GameHub/Native/Box64Lib/objects"
+        OTHER_LDFLAGS:
+          - "-lbox64"
+        OTHER_CFLAGS:
+          - "-I$(SRCROOT)/GameHub/Native/Include"
+          - "-Wno-unused-variable"
+          - "-Wno-unused-function"
+          - "-Wno-deprecated-declarations"
+          - "-Wno-shorten-64-to-32"
+        SWIFT_OBJC_BRIDGING_HEADER: "GameHub/GameHub-Bridging-Header.h"
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - "__IOS__=1"
+          - "MAP_JIT_WORKAROUND=1"

@@ -1,0 +1,147 @@
+{"app_name":"MNEmulator","timestamp":"2026-07-19 02:41:37.00 +0300","app_version":"1.0.0","slice_uuid":"55973580-5CC7-3646-BCA2-510F28492C5B","build_version":"1","bundleID":"com.mnemulator.ios.WLBA4LKYFH","duration_ms":"1162670","share_with_app_devs":1,"is_first_party":0,"bug_type":"145","os_version":"iPhone OS 27.0 (24A5380h)","roots_installed":0,"name":"MNEmulator","incident_id":"384362E3-27D1-4D45-856A-734122A87A45"}
+Date/Time:        2026-07-19 02:22:05.017 +0300
+End time:         2026-07-19 02:41:27.687 +0300
+OS Version:       iPhone OS 27.0 (Build 24A5380h)
+Architecture:     arm64e
+Report Version:   73
+Incident Identifier: 384362E3-27D1-4D45-856A-734122A87A45
+Share With Devs:  Yes
+
+Data Source:      Microstackshots
+Shared Cache:     442CF95D-A137-3136-A25A-10058C527C5D slid base address 0x19d06c000
+
+Command:          MNEmulator
+Path:             /private/var/containers/Bundle/Application/3D52C40C-B487-410C-9B7B-4391D3181865/App.app/MNEmulator
+Identifier:       com.mnemulator.ios.WLBA4LKYFH
+Version:          1.0.0 (1)
+Is First Party:   No
+Beta Identifier:  B6CE895D-CB17-475D-A99C-71A621051D80
+Resource Coalition: "com.mnemulator.ios.WLBA4LKYFH"(6571)
+Architecture:     arm64
+Parent:           UNKNOWN [1]
+PID:              60422
+
+Event:            disk writes
+Action taken:     none
+Writes:           1074.31 MB of file backed memory dirtied over 1163 seconds (924.00 KB per second average), exceeding limit of 12.43 KB per second over 86400 seconds
+Writes limit:     1073.74 MB
+Limit duration:   86400s
+Writes caused:    1074.31 MB
+Writes duration:  1163s
+Duration:         1162.67s
+Duration Sampled: 5.11s (event starts 1157.41s before samples)
+Steps:            37 (10.49 MB/step)
+
+Hardware model:   iPad12,1
+Active cpus:      6
+Memory size:      2.87 GB
+HW page size:     16384
+VM page size:     16384
+Shared cache residency: 5.64% (383.47 MB / 6794.25 MB)
+
+Time Since Boot:  914427s
+Time Awake Since Boot: 288911s
+Time Since Wake:  7776s
+
+Total CPU Time:   1.521s
+Advisory levels:  Battery -> 1, User -> 3, ThermalPressure -> 0, Combined -> 1
+Free disk space:  3059.66 MB/59.59 GB, low space threshold 150 MB
+Vnodes Available: 68.81% (13763/20000, 10000 allocated, 10000 soft limit)
+Models:           none
+
+Preferred User Language: ar-IQ, en-IQ
+Country Code:     IQ
+Keyboards:        en_GB QWERTY, ar Arabic
+OS Cryptex File Extents: 3934
+
+Heaviest stack for the target process:
+  37  ??? (dyld + 22064) [0x19d4f3630]
+  37  ??? (MNEmulator + 253320) [0x104d4dd88]
+  37  ??? (SwiftUI + 269660) [0x1a7715d5c]
+  37  ??? (SwiftUI + 269980) [0x1a7715e9c]
+  37  ??? (SwiftUI + 296720) [0x1a771c710]
+  37  ??? (UIKitCore + 755304) [0x1a1874668]
+  37  ??? (GraphicsServices + 3876) [0x245026f24]
+  37  ??? (CoreFoundation + 243036) [0x19d6a255c]
+  37  ??? (CoreFoundation + 239028) [0x19d6a15b4]
+  37  ??? (CoreFoundation + 300196) [0x19d6b04a4]
+  37  ??? (libdispatch.dylib + 69696) [0x1cbf7f040]
+  37  ??? (libdispatch.dylib + 70512) [0x1cbf7f370]
+  37  ??? (libdispatch.dylib + 114644) [0x1cbf89fd4]
+  37  ??? (libdispatch.dylib + 7372) [0x1cbf6fccc]
+  37  ??? (MNEmulator + 238080) [0x104d4a200]
+  37  ??? (MNEmulator + 256044) [0x104d4e82c]
+  37  ??? (MNEmulator + 250136) [0x104d4d118]
+  36  ??? (MNEmulator + 65360) [0x104d1ff50]
+  36  ??? (MNEmulator + 69720) [0x104d21058]
+  36  ??? (Foundation + 3945668) [0x19df0c4c4]
+  36  ??? (Foundation + 3035100) [0x19de2dfdc]
+  36  ??? (libcopyfile.dylib + 4832) [0x2dbfdc2e0]
+  36  ??? (libcopyfile.dylib + 10816) [0x2dbfdda40]
+  36  ??? (libsystem_kernel.dylib + 20528) [0x254764030]
+
+
+Powerstats for:   MNEmulator [60422]
+UUID:             55973580-5CC7-3646-BCA2-510F28492C5B
+Path:             /private/var/containers/Bundle/Application/3D52C40C-B487-410C-9B7B-4391D3181865/App.app/MNEmulator
+Identifier:       com.mnemulator.ios.WLBA4LKYFH
+Version:          1.0.0 (1)
+Is First Party:   No
+Beta Identifier:  B6CE895D-CB17-475D-A99C-71A621051D80
+Resource Coalition: 37 samples "com.mnemulator.ios.WLBA4LKYFH"(6571)
+Architecture:     arm64
+Parent:           UNKNOWN [1]
+UID:              501
+Footprint:        10.02 MB
+Pageins:          46 pages
+Start time:       2026-07-19 02:41:22.422 +0300
+End time:         2026-07-19 02:41:27.533 +0300
+Num samples:      37 (100%)
+Energy:           1237.79 uWh
+Num threads:      1
+Primary state:    37 samples Frontmost App, Non-Suppressed, Kernel mode, Effective Thread QoS User Interactive, Requested Thread QoS User Interactive, Override Thread QoS Unspecified, p-core
+User Activity:    0 samples Idle, 37 samples Active
+Power Source:     37 samples on Battery, 0 samples on AC
+  37  ??? (dyld + 22064) [0x19d4f3630]
+    37  ??? (MNEmulator + 253320) [0x104d4dd88]
+      37  ??? (SwiftUI + 269660) [0x1a7715d5c]
+        37  ??? (SwiftUI + 269980) [0x1a7715e9c]
+          37  ??? (SwiftUI + 296720) [0x1a771c710]
+            37  ??? (UIKitCore + 755304) [0x1a1874668]
+              37  ??? (GraphicsServices + 3876) [0x245026f24]
+                37  ??? (CoreFoundation + 243036) [0x19d6a255c]
+                  37  ??? (CoreFoundation + 239028) [0x19d6a15b4]
+                    37  ??? (CoreFoundation + 300196) [0x19d6b04a4]
+                      37  ??? (libdispatch.dylib + 69696) [0x1cbf7f040]
+                        37  ??? (libdispatch.dylib + 70512) [0x1cbf7f370]
+                          37  ??? (libdispatch.dylib + 114644) [0x1cbf89fd4]
+                            37  ??? (libdispatch.dylib + 7372) [0x1cbf6fccc]
+                              37  ??? (MNEmulator + 238080) [0x104d4a200]
+                                37  ??? (MNEmulator + 256044) [0x104d4e82c]
+                                  37  ??? (MNEmulator + 250136) [0x104d4d118]
+                                    36  ??? (MNEmulator + 65360) [0x104d1ff50]
+                                      36  ??? (MNEmulator + 69720) [0x104d21058]
+                                        36  ??? (Foundation + 3945668) [0x19df0c4c4]
+                                          36  ??? (Foundation + 3035100) [0x19de2dfdc]
+                                            36  ??? (libcopyfile.dylib + 4832) [0x2dbfdc2e0]
+                                              36  ??? (libcopyfile.dylib + 10816) [0x2dbfdda40]
+                                                36  ??? (libsystem_kernel.dylib + 20528) [0x254764030]
+                                    1   ??? (MNEmulator + 65308) [0x104d1ff1c]
+                                      1   ??? (MNEmulator + 66584) [0x104d20418]
+                                        1   ??? (Foundation + 3945668) [0x19df0c4c4]
+                                          1   ??? (Foundation + 3035100) [0x19de2dfdc]
+                                            1   ??? (libcopyfile.dylib + 4832) [0x2dbfdc2e0]
+                                              1   ??? (libcopyfile.dylib + 10816) [0x2dbfdda40]
+                                                1   ??? (libsystem_kernel.dylib + 20528) [0x254764030]
+
+  Binary Images:
+           0x104d10000 -                ???  com.mnemulator.ios.WLBA4LKYFH 1.0.0 (1) <55973580-5CC7-3646-BCA2-510F28492C5B>  /private/var/containers/Bundle/Application/3D52C40C-B487-410C-9B7B-4391D3181865/App.app/MNEmulator
+           0x19d4ee000 -        0x19d5a516b  dyld                                    <2BBF8731-FDC8-385D-918A-7E3BEAC2CF1B>  /usr/lib/dyld
+           0x19d667000 -        0x19db488b7  CoreFoundation                          <43092235-E272-3CAF-B9AE-76669EC5AE46>  /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation
+           0x19db49000 -        0x19eb8b18f  Foundation                              <E642F95D-61DA-3E8C-A2D2-CFEB7F7B688B>  /System/Library/Frameworks/Foundation.framework/Foundation
+           0x1a17bc000 -        0x1a37c106f  UIKitCore                               <8F9C17B9-0AF5-36A9-A5C4-29A53F00ED31>  /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore
+           0x1a76d4000 -        0x1a89c5273  SwiftUI                                 <1FA062F0-69E6-3C8A-962D-F3DEF020CB94>  /System/Library/Frameworks/SwiftUI.framework/SwiftUI
+           0x1cbf6e000 -        0x1cbfb4d5f  libdispatch.dylib                       <6DE5DC49-F6C5-3FAD-AB47-9835C63C50B9>  /usr/lib/system/libdispatch.dylib
+           0x245026000 -        0x24502dea3  GraphicsServices                        <5B236F0F-F162-331B-B2FC-266A28C746B3>  /System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices
+           0x25475f000 -        0x25479c1c3  libsystem_kernel.dylib                  <E3AE0279-A7DA-32A6-9273-E5180EFB94A7>  /usr/lib/system/libsystem_kernel.dylib
+           0x2dbfdb000 -        0x2dbfe5253  libcopyfile.dylib                       <7AE77FC3-9DB8-3CCE-BE53-A315B7EDBA8E>  /usr/lib/system/libcopyfile.dylib

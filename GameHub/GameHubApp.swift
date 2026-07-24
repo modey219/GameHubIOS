@@ -209,11 +209,18 @@ struct GameHubApp: App {
 
     private func performSetup() {
         DispatchQueue.global(qos: .userInitiated).async {
+            defer {
+                DispatchQueue.main.async {
+                    withAnimation(.easeIn(duration: 0.3)) {
+                        self.isLoading = false
+                    }
+                }
+            }
+
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
                 writeDiag("FAIL: no docs dir")
                 UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-                DispatchQueue.main.async { self.isLoading = false }
                 return
             }
 
@@ -224,11 +231,6 @@ struct GameHubApp: App {
             if alreadyLaunched && box64Exists && wineExists {
                 writeDiag("step=skip_init_already_launched")
                 logStep(1, "Quick launch (already initialized)...")
-                DispatchQueue.main.async {
-                    withAnimation(.easeIn(duration: 0.3)) {
-                        self.isLoading = false
-                    }
-                }
                 return
             }
 
@@ -271,13 +273,13 @@ struct GameHubApp: App {
 
             writeDiag("step=wine_init")
             logStep(5, "Initializing Wine...")
-            WineBridge.shared.initialize()
+            do { WineBridge.shared.initialize() }
             writeDiag("step=wine_init_done")
             logStep(5, "Wine init complete")
 
             writeDiag("step=prefix")
             logStep(6, "Setting up prefix...")
-            WinePrefixManager.shared.initializePrefix()
+            do { WinePrefixManager.shared.initializePrefix() }
             writeDiag("step=prefix_done")
             logStep(6, "Prefix init complete")
 
@@ -288,11 +290,6 @@ struct GameHubApp: App {
             logStep(8, "ALL DONE!")
 
             writeDiag("step=all_done")
-            DispatchQueue.main.async {
-                withAnimation(.easeIn(duration: 0.3)) {
-                    self.isLoading = false
-                }
-            }
         }
     }
 }

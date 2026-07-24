@@ -71,6 +71,12 @@ class JITManager: ObservableObject {
         loadMethod()
     }
 
+    func setupOnce() {
+        guard systemInfo.deviceModel.isEmpty else { return }
+        gatherSystemInfo()
+        checkJITStatus()
+    }
+
     func selectMethod(_ method: JITMethod) {
         jitMethod = method
         saveMethod()

@@ -216,6 +216,9 @@ struct LaunchView: View {
                     do {
                         try Box64Bridge.shared.setupAllBundledBinaries { detail in
                             NSLog("[MNEmulator] extraction: %@", detail)
+                            DispatchQueue.main.async {
+                                self.setupProgress = detail
+                            }
                         }
                         continuation.resume(returning: false)
                     } catch {

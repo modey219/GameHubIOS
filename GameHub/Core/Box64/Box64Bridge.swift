@@ -494,24 +494,73 @@ class Box64Bridge {
     private func extractWine() throws {
         let fm = FileManager.default
         let wine64Dest = (wineInstallPath as NSString).appendingPathComponent("bin/wine64")
-        if isNonEmptyFile(wine64Dest) { return }
-        if fm.fileExists(atPath: wineInstallPath) {
-            try? fm.removeItem(atPath: wineInstallPath)
-            Self.log("extractWine: removed stale Wine directory (wine64 missing or 0 bytes)")
+        if isNonEmptyFile(wine64Dest) {
+            Self.log("extractWine: wine64 already exists and non-empty, skipping")
+            Self.writeDiag("extractWine: already_done")
+            return
         }
 
         guard let bundledWineDir = findBundledResource("Wine", isDirectory: true) else {
+            Self.writeDiag("extractWine: bundled Wine directory NOT FOUND in app bundle")
             throw SetupError.wineMissing
         }
+        Self.writeDiag("extractWine: source=\(bundledWineDir)")
 
-        Self.log("extractWine: using fm.copyItem")
-        try fm.copyItem(atPath: bundledWineDir, toPath: wineInstallPath)
+        try fm.createDirectory(atPath: wineInstallPath, withIntermediateDirectories: true)
+
+        var copied = 0
+        var skipped = 0
+        var failed = 0
+        try copyDirectoryRecursive(src: bundledWineDir, dst: wineInstallPath, fm: fm, copied: &copied, skipped: &skipped, failed: &failed)
+        Self.writeDiag("extractWine: done copied=\(copied) skipped=\(skipped) failed=\(failed)")
 
         let binaries = ["bin/wine", "bin/wine64", "bin/wineserver", "bin/wineboot"]
         for bin in binaries {
             let binPath = (wineInstallPath as NSString).appendingPathComponent(bin)
             if fm.fileExists(atPath: binPath) {
                 try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binPath)
+            }
+        }
+    }
+
+    private func copyDirectoryRecursive(src: String, dst: String, fm: FileManager, copied: inout Int, skipped: inout Int, failed: inout Int) throws {
+        let srcURL = URL(fileURLWithPath: src)
+        let dstURL = URL(fileURLWithPath: dst)
+
+        let resourceKeys: [URLResourceKey] = [.isDirectoryKey]
+        guard let enumerator = fm.enumerator(at: srcURL, includingPropertiesForKeys: resourceKeys) else {
+            throw SetupError.copyFailed("Cannot enumerate \(src)")
+        }
+
+        while let fileURL = enumerator.nextObject() as? URL {
+            let relPath = fileURL.path.replacingOccurrences(of: src, with: "")
+            let dstFileURL = dstURL.appendingPathComponent(relPath)
+
+            let isDir = (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+
+            if isDir {
+                try? fm.createDirectory(at: dstFileURL, withIntermediateDirectories: true)
+                continue
+            }
+
+            if fm.fileExists(atPath: dstFileURL.path),
+               let attrs = try? fm.attributesOfItem(atPath: dstFileURL.path),
+               let size = attrs[.size] as? NSNumber, size.intValue > 0 {
+                skipped += 1
+                continue
+            }
+
+            do {
+                try fm.copyItem(at: fileURL, to: dstFileURL)
+                try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dstFileURL.path)
+                copied += 1
+                if copied % 50 == 0 {
+                    Self.log("extractWine: copied \(copied) files...")
+                    Self.writeDiag("extractWine_progress: \(copied) files")
+                }
+            } catch {
+                failed += 1
+                Self.log("extractWine: failed to copy \(fileURL.path): \(error)")
             }
         }
     }

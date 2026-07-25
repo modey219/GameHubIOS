@@ -231,12 +231,7 @@ struct LaunchView: View {
         writeDiag("step=prefix")
         setupProgress = "Setting up prefix..."
         setupStep = 6
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                defer { continuation.resume() }
-                WinePrefixManager.shared.initializePrefix()
-            }
-        }
+        WinePrefixManager.shared.initializePrefix()
         writeDiag("step=prefix_done")
 
         writeDiag("step=box64_deferred")

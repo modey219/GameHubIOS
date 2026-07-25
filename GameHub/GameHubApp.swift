@@ -17,6 +17,20 @@ func setupCrashHandler() {
     }
 }
 
+private func writeDiag(_ s: String) {
+    if let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
+        let line = "[\(Date().timeIntervalSince1970)] \(s)\n"
+        let path = p + "/diag.log"
+        if let fh = FileHandle(forWritingAtPath: path) {
+            fh.seekToEndOfFile()
+            fh.write(line.data(using: .utf8)!)
+            fh.closeFile()
+        } else {
+            try? line.write(toFile: path, atomically: true, encoding: .utf8)
+        }
+    }
+}
+
 @main
 struct GameHubApp: App {
     init() { setupCrashHandler() }
@@ -42,10 +56,10 @@ struct LaunchView: View {
     @State private var isLoading = true
     @State private var setupError: String?
     @State private var setupProgress = "Initializing..."
-    @State private var setupLog: [String] = []
-    @State private var cDiagLog: String = ""
+    @State private var setupStep = 0
     @State private var showShareSheet = false
     @State private var shareText: String = ""
+    @State private var safetyTimerFired = false
 
     var body: some View {
         ZStack {
@@ -66,6 +80,16 @@ struct LaunchView: View {
         .task {
             await performSetup()
         }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 300) {
+                if isLoading {
+                    NSLog("[MNEmulator] Safety timer fired — forcing dismiss of splash")
+                    writeDiag("step=safety_timer_force_dismiss")
+                    safetyTimerFired = true
+                    isLoading = false
+                }
+            }
+        }
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: [shareText])
         }
@@ -75,7 +99,7 @@ struct LaunchView: View {
         VStack(spacing: 16) {
             Image(systemName: "gamecontroller.fill")
                 .font(.system(size: 64))
-                .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .foregroundStyle(.blue)
 
             Text("MN emulator")
                 .font(.largeTitle).bold()
@@ -91,24 +115,11 @@ struct LaunchView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
                         .font(.title2)
-                    Text(verbatim: error)
+                    Text(error)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-                    if !cDiagLog.isEmpty {
-                        ScrollView {
-                            Text(verbatim: cDiagLog)
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundColor(.red)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(8)
-                        }
-                        .frame(maxHeight: 200)
-                        .background(Color.black.opacity(0.8))
-                        .cornerRadius(8)
-                        .padding(.horizontal, 24)
-                    }
                     HStack(spacing: 16) {
                         Button("Continue Anyway") {
                             isLoading = false
@@ -130,73 +141,16 @@ struct LaunchView: View {
                 VStack(spacing: 8) {
                     ProgressView()
                         .scaleEffect(1.2)
-                    Text(verbatim: setupProgress)
+                    Text(setupProgress)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 2) {
-                                ForEach(Array(setupLog.enumerated()), id: \.offset) { idx, line in
-                                    Text(verbatim: line)
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .foregroundColor(.green)
-                                        .id(idx)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                        }
-                        .frame(maxHeight: 120)
-                        .background(Color.black.opacity(0.8))
-                        .cornerRadius(8)
-                        .padding(.horizontal, 24)
-                        .onChange(of: setupLog.count) { _ in
-                            if setupLog.count > 0 {
-                                withAnimation { proxy.scrollTo(setupLog.count - 1, anchor: .bottom) }
-                            }
-                        }
-                    }
+                    Text("Step \(setupStep) of 8")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
         }
         .padding()
-    }
-
-    private func logStep(_ n: Int, _ text: String) {
-        let ts = ISO8601DateFormatter().string(from: Date()) ?? "unknown"
-        let line = "[\(ts)] STEP \(n): \(text)"
-        NSLog("%@", line)
-        setupLog.append(line)
-        if setupLog.count > 100 { setupLog.removeFirst(50) }
-        setupProgress = text
-    }
-
-    private func writeDiag(_ s: String) {
-        if let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
-            let line = "[\(Date().timeIntervalSince1970)] \(s)\n"
-            let path = p + "/diag.log"
-            if let fh = FileHandle(forWritingAtPath: path) {
-                fh.seekToEndOfFile()
-                fh.write(line.data(using: .utf8)!)
-                fh.closeFile()
-            } else {
-                try? line.write(toFile: path, atomically: true, encoding: .utf8)
-            }
-        }
-    }
-
-    private func shareLogs() {
-        guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
-        let diagPath = p + "/diag.log"
-        let cdiagPath = p + "/c_diag.log"
-        var text = "=== diag.log ===\n" + ((try? String(contentsOfFile: diagPath)) ?? "N/A") + "\n"
-        text += "=== c_diag.log ===\n" + ((try? String(contentsOfFile: cdiagPath)) ?? "N/A") + "\n"
-        text += "=== bridge.log ===\n" + ((try? String(contentsOfFile: p + "/bridge.log")) ?? "N/A") + "\n"
-        text += "=== crash.log ===\n" + ((try? String(contentsOfFile: p + "/crash.log")) ?? "N/A") + "\n"
-        UIPasteboard.general.string = text
-        shareText = text
-        showShareSheet = true
     }
 
     @MainActor
@@ -216,13 +170,15 @@ struct LaunchView: View {
 
         if alreadyLaunched && box64Exists && wineExists {
             writeDiag("step=skip_init_already_launched")
-            logStep(1, "Quick launch (already initialized)...")
+            setupProgress = "Quick launch..."
+            setupStep = 1
             isLoading = false
             return
         }
 
         writeDiag("step=clean")
-        logStep(1, "Cleaning stale 0-byte files...")
+        setupProgress = "Cleaning stale files..."
+        setupStep = 1
         for stalePath in ["Box64/box64", "Wine/bin/wine64", "Wine/bin/wine", "Wine/bin/wineserver", "Wine/bin/wineboot"] {
             let fullPath = docs.appendingPathComponent(stalePath).path
             if fm.fileExists(atPath: fullPath),
@@ -230,22 +186,21 @@ struct LaunchView: View {
                let size = attrs[.size] as? NSNumber,
                size.intValue == 0 {
                 try? fm.removeItem(atPath: fullPath)
-                logStep(1, "Removed stale 0-byte file: \(stalePath)")
             }
         }
 
         writeDiag("step=check")
-        logStep(1, "Checking existing files...")
-        logStep(1, "Box64 exists: \(box64Exists), Wine exists: \(wineExists)")
+        setupProgress = "Checking files..."
+        setupStep = 1
 
         if !box64Exists || !wineExists {
             writeDiag("step=extract")
-            var stepCounter = 2
+            setupProgress = "Extracting binaries..."
+            setupStep = 2
             let extractionFailed: Bool = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
                 DispatchQueue.global(qos: .userInitiated).async {
                     do {
                         try Box64Bridge.shared.setupAllBundledBinaries { detail in
-                            stepCounter += 1
                             NSLog("[MNEmulator] extraction: %@", detail)
                         }
                         continuation.resume(returning: false)
@@ -259,13 +214,13 @@ struct LaunchView: View {
             if extractionFailed {
                 UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
                 setupError = "Extraction failed"
-                readCdiagLog()
                 return
             }
         }
 
         writeDiag("step=wine_init")
-        logStep(5, "Initializing Wine...")
+        setupProgress = "Initializing Wine..."
+        setupStep = 5
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 WineBridge.shared.initialize()
@@ -273,10 +228,10 @@ struct LaunchView: View {
             }
         }
         writeDiag("step=wine_init_done")
-        logStep(5, "Wine init complete")
 
         writeDiag("step=prefix")
-        logStep(6, "Setting up prefix...")
+        setupProgress = "Setting up prefix..."
+        setupStep = 6
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 WinePrefixManager.shared.initializePrefix()
@@ -284,29 +239,32 @@ struct LaunchView: View {
             }
         }
         writeDiag("step=prefix_done")
-        logStep(6, "Prefix init complete")
 
         writeDiag("step=box64_deferred")
-        logStep(7, "Box64 will init on first game launch")
+        setupProgress = "Box64 deferred..."
+        setupStep = 7
 
         writeDiag("step=settings")
-        logStep(8, "ALL DONE!")
+        setupProgress = "Finalizing..."
+        setupStep = 8
 
         UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
         writeDiag("step=all_done")
+        setupProgress = "All done!"
         isLoading = false
     }
 
-    private func readCdiagLog() {
+    private func shareLogs() {
         guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
-        let cdiagPath = p + "/c_diag.log"
         let diagPath = p + "/diag.log"
-        let cdiag = (try? String(contentsOfFile: cdiagPath, encoding: .utf8)) ?? ""
-        let diag = (try? String(contentsOfFile: diagPath, encoding: .utf8)) ?? ""
-        var combined = ""
-        if !cdiag.isEmpty { combined += "=== c_diag.log ===\n\(cdiag)\n" }
-        if !diag.isEmpty { combined += "=== diag.log ===\n\(diag)\n" }
-        cDiagLog = combined.isEmpty ? "(no log files found)" : combined
+        let cdiagPath = p + "/c_diag.log"
+        var text = "=== diag.log ===\n" + ((try? String(contentsOfFile: diagPath)) ?? "N/A") + "\n"
+        text += "=== c_diag.log ===\n" + ((try? String(contentsOfFile: cdiagPath)) ?? "N/A") + "\n"
+        text += "=== bridge.log ===\n" + ((try? String(contentsOfFile: p + "/bridge.log")) ?? "N/A") + "\n"
+        text += "=== crash.log ===\n" + ((try? String(contentsOfFile: p + "/crash.log")) ?? "N/A") + "\n"
+        UIPasteboard.general.string = text
+        shareText = text
+        showShareSheet = true
     }
 }
 

@@ -121,27 +121,8 @@ class Box64Bridge {
         NSLog("[MNEmulator] extractWine done")
         Self.writeDiag("extractWine_done")
 
-        progressCallback?("Extracting MoltenVK...")
-        NSLog("[MNEmulator] extractMoltenVK start")
-        autoreleasepool {
-            do { try self.extractMoltenVK() }
-            catch { NSLog("[MNEmulator] extractMoltenVK skipped: \(error)") }
-        }
-        NSLog("[MNEmulator] extractMoltenVK done")
-
-        progressCallback?("Extracting DXVK...")
-        NSLog("[MNEmulator] extractDXVK start")
-        autoreleasepool {
-            let memMB = Self.memoryUsageMB()
-            NSLog("[MNEmulator] before DXVK: memory = \(memMB)MB")
-            if memMB > 350 {
-                NSLog("[MNEmulator] skipping DXVK — memory too high (\(memMB)MB)")
-            } else {
-                do { try self.extractDXVK() }
-                catch { NSLog("[MNEmulator] extractDXVK skipped: \(error)") }
-            }
-        }
-        NSLog("[MNEmulator] extractDXVK done")
+        progressCallback?("Skipping optional graphics (MoltenVK/DXVK)...")
+        NSLog("[MNEmulator] skipping MoltenVK + DXVK extraction (not needed for launch)")
 
         progressCallback?("All extractions complete")
         NSLog("[MNEmulator] all extraction done")

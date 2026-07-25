@@ -3,6 +3,7 @@ import SwiftUI
 struct GameLibraryView: View {
     @EnvironmentObject var containerManager: ContainerManager
     @State private var searchText = ""
+    @State private var showSearch = false
     @State private var showAddGame = false
     @State private var showImportSheet = false
     @State private var selectedGame: ContainerManager.Container?
@@ -12,8 +13,18 @@ struct GameLibraryView: View {
         return containerManager.containers.filter { $0.isEnabled && $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
+    // NOTE: intentionally NOT using NavigationStack/.searchable/.toolbar here.
+    // On some iOS versions (observed on iOS 27 beta) SwiftUI's NavigationStack
+    // relies on UINavigationController-backed layout that can enter a
+    // pathological/looping layout pass on first render, tripping the
+    // "scene-create" watchdog (0x8BADF00D) and getting the app killed before
+    // it ever appears (same underlying class of bug reported for TabView on
+    // recent iOS betas: dotnet/maui#32365). Using a plain manual layout
+    // avoids that code path entirely.
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            topBar
+            if showSearch { searchField }
             Group {
                 if filteredGames.isEmpty {
                     emptyState
@@ -21,26 +32,49 @@ struct GameLibraryView: View {
                     gameGrid
                 }
             }
-            .navigationTitle("Game Library")
-            .searchable(text: $searchText, prompt: "Search games...")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { showImportSheet = true }) {
-                        Image(systemName: "square.and.arrow.down")
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showAddGame = true }) {
-                        Image(systemName: "plus")
-                    }
-                }
+        }
+        .sheet(isPresented: $showAddGame) { AddGameView() }
+        .sheet(isPresented: $showImportSheet) { ImportGameView() }
+        .fullScreenCover(item: $selectedGame) { game in
+            GameContainerView(container: game)
+        }
+    }
+
+    private var topBar: some View {
+        HStack {
+            Button(action: { showImportSheet = true }) {
+                Image(systemName: "square.and.arrow.down")
             }
-            .sheet(isPresented: $showAddGame) { AddGameView() }
-            .sheet(isPresented: $showImportSheet) { ImportGameView() }
-            .fullScreenCover(item: $selectedGame) { game in
-                GameContainerView(container: game)
+            Spacer()
+            Text("Game Library").font(.headline)
+            Spacer()
+            HStack(spacing: 20) {
+                Button(action: { withAnimation { showSearch.toggle() } }) {
+                    Image(systemName: "magnifyingglass")
+                }
+                Button(action: { showAddGame = true }) {
+                    Image(systemName: "plus")
+                }
             }
         }
+        .padding()
+    }
+
+    private var searchField: some View {
+        HStack {
+            Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+            TextField("Search games...", text: $searchText)
+            if !searchText.isEmpty {
+                Button(action: { searchText = "" }) {
+                    Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(8)
+        .background(Color(.systemGray6))
+        .cornerRadius(10)
+        .padding(.horizontal)
+        .padding(.bottom, 8)
     }
 
     private var emptyState: some View {

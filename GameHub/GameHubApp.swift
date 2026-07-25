@@ -31,22 +31,16 @@ private func writeDiag(_ s: String) {
     }
 }
 
+// DIAGNOSTIC stage 7: stages 5+6 stripped GameLibraryView and LaunchView
+// to nothing, yet the watchdog still fires. Now stripping ALL
+// @StateObject inits + setupCrashHandler from the App itself, leaving
+// only a bare Text to confirm the crash is (or isn't) at the very
+// top level.
 @main
 struct GameHubApp: App {
-    init() { setupCrashHandler() }
-    @StateObject private var containerManager = ContainerManager()
-    @StateObject private var jitManager = JITManager()
-    @StateObject private var settingsManager = SettingsManager()
-    @StateObject private var setupManager = SetupManager()
-
     var body: some Scene {
         WindowGroup {
-            LaunchView(
-                containerManager: containerManager,
-                jitManager: jitManager,
-                settingsManager: settingsManager,
-                setupManager: setupManager
-            )
+            Text("Test")
         }
     }
 }

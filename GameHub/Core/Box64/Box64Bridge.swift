@@ -569,22 +569,34 @@ class Box64Bridge {
         let fm = FileManager.default
         let mvkDir = (graphicsInstallPath as NSString).appendingPathComponent("MoltenVK")
         let mvkDest = mvkDir + "/libMoltenVK.dylib"
-        if fm.fileExists(atPath: mvkDest) { return }
+        if fm.fileExists(atPath: mvkDest) {
+            let attrs = try? fm.attributesOfItem(atPath: mvkDest)
+            let size = (attrs?[.size] as? NSNumber)?.intValue ?? 0
+            if size > 0 { return }
+        }
 
         guard let bundledMVK = findBundledResource("MoltenVK", isDirectory: true) else { return }
-        if fm.fileExists(atPath: mvkDir) { try? fm.removeItem(atPath: mvkDir) }
-        Self.log("extractMoltenVK: using fm.copyItem")
-        try fm.copyItem(atPath: bundledMVK, toPath: mvkDir)
+        try fm.createDirectory(atPath: mvkDir, withIntermediateDirectories: true)
+        var copied = 0, skipped = 0, failed = 0
+        try copyDirectoryRecursive(src: bundledMVK, dst: mvkDir, fm: fm, copied: &copied, skipped: &skipped, failed: &failed)
+        Self.writeDiag("extractMoltenVK: done copied=\(copied) skipped=\(skipped) failed=\(failed)")
     }
 
     private func extractDXVK() throws {
         let fm = FileManager.default
         let dxvkDir = (graphicsInstallPath as NSString).appendingPathComponent("DXVK")
-        if let contents = try? fm.contentsOfDirectory(atPath: dxvkDir), !contents.isEmpty { return }
+        if let contents = try? fm.contentsOfDirectory(atPath: dxvkDir), !contents.isEmpty {
+            Self.writeDiag("extractDXVK: already_done \(contents.count) files")
+            return
+        }
 
-        guard let bundledDXVK = findBundledResource("DXVK", isDirectory: true) else { return }
-        if fm.fileExists(atPath: dxvkDir) { try? fm.removeItem(atPath: dxvkDir) }
-        Self.log("extractDXVK: using fm.copyItem")
-        try fm.copyItem(atPath: bundledDXVK, toPath: dxvkDir)
+        guard let bundledDXVK = findBundledResource("DXVK", isDirectory: true) else {
+            Self.writeDiag("extractDXVK: bundled DXVK NOT FOUND, skipping")
+            return
+        }
+        try fm.createDirectory(atPath: dxvkDir, withIntermediateDirectories: true)
+        var copied = 0, skipped = 0, failed = 0
+        try copyDirectoryRecursive(src: bundledDXVK, dst: dxvkDir, fm: fm, copied: &copied, skipped: &skipped, failed: &failed)
+        Self.writeDiag("extractDXVK: done copied=\(copied) skipped=\(skipped) failed=\(failed)")
     }
 }

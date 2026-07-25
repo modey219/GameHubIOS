@@ -39,19 +39,16 @@ struct GameLibraryView: View {
         }
     }
 
-    // DIAGNOSTIC stage 4: stage 3 (topBar + emptyState only, zero
-    // conditionals, zero sheets) STILL hit the exact same scene-create
-    // watchdog. The only other thing distinguishing this from the
-    // known-good bare Text() test is the SF Symbols (Image(systemName:)) -
-    // topBar had 3, emptyState had 1. SF Symbol resolution goes through a
-    // large system font/catalog lookup that could plausibly be broken or
-    // pathologically slow on a pre-release iOS beta. This stage replaces
-    // every Image(systemName:) with plain Text glyphs to isolate that.
-    private var topBar: some View {
-        HStack {
-            Button(action: { showImportSheet = true }) {
-                Text("Import")
-            }
+    // DIAGNOSTIC stage 5: stages 3 AND 4 (no conditionals, no sheets,
+    // no SF Symbols) STILL hit the scene-create watchdog. That rules out
+    // SF Symbols AND sub-component rendering entirely. The crash must
+    // come from something else in this view's context — most likely the
+    // @EnvironmentObject injection from GameHubApp or the @State
+    // properties themselves. This stage makes body completely empty
+    // to confirm.
+    var body: some View {
+        Text("")
+    }
             Spacer()
             Text("Game Library").font(.headline)
             Spacer()

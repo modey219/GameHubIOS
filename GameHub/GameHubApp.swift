@@ -51,73 +51,24 @@ struct GameHubApp: App {
     }
 }
 
+// DIAGNOSTIC stage 6: GameLibraryView body is already empty (Text("")),
+// yet the scene-create watchdog still fires. The crash must originate
+// ABOVE GameLibraryView. LaunchView has `if showSplash` - another
+// "dynamic view" conditional - plus SF Symbols in splashView and an
+// animated transition. This stage strips all of that: no splash, no
+// conditional, no SF Symbols, no animation. Just ContentView directly.
 struct LaunchView: View {
     @ObservedObject var containerManager: ContainerManager
     @ObservedObject var jitManager: JITManager
     @ObservedObject var settingsManager: SettingsManager
     @ObservedObject var setupManager: SetupManager
-    @State private var showSplash = true
 
     var body: some View {
-        ZStack {
-            Color(.systemBackground).ignoresSafeArea()
-
-            if showSplash {
-                splashView
-                    .transition(.opacity)
-            } else {
-                ContentView()
-                    .environmentObject(containerManager)
-                    .environmentObject(jitManager)
-                    .environmentObject(settingsManager)
-                    .environmentObject(setupManager)
-                    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                        jitManager.checkJITStatus()
-                    }
-            }
-        }
-        .onAppear {
-            performSetup()
-        }
-    }
-
-    private var splashView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "gamecontroller.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.blue)
-
-            Text("MN emulator")
-                .font(.largeTitle).bold()
-
-            Text("PC Game Emulator for iPhone & iPad")
-                .font(.subheadline).foregroundColor(.secondary)
-
-            Text("Created by @R_MOX")
-                .font(.caption).foregroundColor(.secondary)
-
-            VStack(spacing: 8) {
-                ProgressView()
-                    .scaleEffect(1.2)
-                Text("Loading...")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .padding()
-    }
-
-    private func performSetup() {
-        writeDiag("step=start")
-        UserDefaults.standard.set(false, forKey: "_crash_sentinel")
-        UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-        writeDiag("step=done")
-
-        setupManager.checkReady()
-
-        withAnimation(.easeInOut(duration: 0.5)) {
-            showSplash = false
-        }
+        ContentView()
+            .environmentObject(containerManager)
+            .environmentObject(jitManager)
+            .environmentObject(settingsManager)
+            .environmentObject(setupManager)
     }
 }
 

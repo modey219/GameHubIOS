@@ -99,7 +99,7 @@ struct LaunchView: View {
             VStack(spacing: 8) {
                 ProgressView()
                     .scaleEffect(1.2)
-                Text(setupManager.setupMessage)
+                Text("Loading...")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -113,11 +113,11 @@ struct LaunchView: View {
         UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
         writeDiag("step=done")
 
+        setupManager.checkReady()
+
         withAnimation(.easeInOut(duration: 0.5)) {
             showSplash = false
         }
-
-        setupManager.performSetup()
     }
 }
 

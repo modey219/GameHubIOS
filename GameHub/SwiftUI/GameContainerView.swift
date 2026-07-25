@@ -24,6 +24,8 @@ struct GameContainerView: View {
     @State private var confirmExit = false
     @State private var showCopiedToast = false
     @State private var logTimer: Timer?
+    @State private var isPreparing = false
+    @State private var preparingMessage = "Preparing..."
 
     var body: some View {
         GeometryReader { geo in
@@ -62,6 +64,7 @@ struct GameContainerView: View {
 
                 if showOverlay { overlayMenu }
                 if showError { errorOverlay }
+                if isPreparing { preparingOverlay }
             }
         }
         .ignoresSafeArea()
@@ -331,6 +334,22 @@ struct GameContainerView: View {
         .padding(32)
     }
 
+    private var preparingOverlay: some View {
+        VStack(spacing: 16) {
+            ProgressView(value: setupManager.setupProgress)
+                .progressViewStyle(.linear)
+                .frame(width: 200)
+            Text(setupManager.setupMessage.isEmpty ? preparingMessage : setupManager.setupMessage)
+                .font(.caption)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+        }
+        .padding(24)
+        .background(Color.black.opacity(0.85))
+        .cornerRadius(16)
+        .padding(32)
+    }
+
     private var virtualController: some View {
         VStack(spacing: 16) {
             HStack(spacing: 40) {
@@ -449,11 +468,23 @@ struct GameContainerView: View {
 
     private func startGame() {
         guard !isRunning else { return }
+        guard !isPreparing else { return }
+
         guard setupManager.isSetupComplete else {
-            errorMessage = "Setup is still in progress. Please wait a moment."
-            showError = true
+            isPreparing = true
+            preparingMessage = "Preparing..."
+            setupManager.ensureReady { success, message in
+                isPreparing = false
+                if success {
+                    startGame()
+                } else {
+                    errorMessage = message
+                    showError = true
+                }
+            }
             return
         }
+
         isRunning = true
         displayRenderer.startRendering()
         startTimeCounter()

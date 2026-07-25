@@ -2,7 +2,6 @@ import SwiftUI
 
 struct GameLibraryView: View {
     @EnvironmentObject var containerManager: ContainerManager
-    @EnvironmentObject var setupManager: SetupManager
     @State private var searchText = ""
     @State private var showAddGame = false
     @State private var showImportSheet = false
@@ -64,10 +63,9 @@ struct GameLibraryView: View {
                     GameCardView(game: game)
                         .onTapGesture { selectedGame = game }
                         .contextMenu {
-                            Button(action: { containerManager.launchGame(game) }) {
+                            Button(action: { selectedGame = game }) {
                                 Label("Play", systemImage: "play.fill")
                             }
-                            .disabled(!setupManager.isSetupComplete)
                             Button(role: .destructive, action: { containerManager.deleteContainer(game) }) {
                                 Label("Delete", systemImage: "trash")
                             }

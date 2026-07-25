@@ -105,30 +105,21 @@ class Box64Bridge {
         try fm.createDirectory(at: docs.appendingPathComponent("Graphics"), withIntermediateDirectories: true)
 
         Self.writeDiag("setup_start")
-        progressCallback?("Extracting Box64...")
         NSLog("[MNEmulator] extraction start")
 
         progressCallback?("Extracting Box64...")
         NSLog("[MNEmulator] extractBox64 start")
-        autoreleasepool {
-            do { try self.extractBox64() }
-            catch {
-                NSLog("[MNEmulator] extractBox64 FAILED: \(error)")
-                Self.writeDiag("extractBox64_failed=\(error)")
-            }
-        }
+        Self.writeDiag("extractBox64_start")
+        try autoreleasepool { try self.extractBox64() }
         NSLog("[MNEmulator] extractBox64 done")
+        Self.writeDiag("extractBox64_done")
 
         progressCallback?("Extracting Wine...")
         NSLog("[MNEmulator] extractWine start")
-        autoreleasepool {
-            do { try self.extractWine() }
-            catch {
-                NSLog("[MNEmulator] extractWine FAILED: \(error)")
-                Self.writeDiag("extractWine_failed=\(error)")
-            }
-        }
+        Self.writeDiag("extractWine_start")
+        try autoreleasepool { try self.extractWine() }
         NSLog("[MNEmulator] extractWine done")
+        Self.writeDiag("extractWine_done")
 
         progressCallback?("Extracting MoltenVK...")
         NSLog("[MNEmulator] extractMoltenVK start")

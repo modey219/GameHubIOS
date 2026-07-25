@@ -57,6 +57,7 @@ struct LaunchView: View {
     @State private var setupError: String?
     @State private var setupProgress = "Initializing..."
     @State private var setupStep = 0
+    @State private var cDiagLog: String = ""
     @State private var showShareSheet = false
     @State private var shareText: String = ""
     @State private var safetyTimerFired = false
@@ -120,6 +121,19 @@ struct LaunchView: View {
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
+                    if !cDiagLog.isEmpty {
+                        ScrollView {
+                            Text(cDiagLog)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundColor(.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                        }
+                        .frame(maxHeight: 200)
+                        .background(Color.black.opacity(0.8))
+                        .cornerRadius(8)
+                        .padding(.horizontal, 24)
+                    }
                     HStack(spacing: 16) {
                         Button("Continue Anyway") {
                             isLoading = false
@@ -195,6 +209,7 @@ struct LaunchView: View {
 
         if !box64Exists || !wineExists {
             writeDiag("step=extract")
+            setupProgress = "Extracting binaries..."
             setupStep = 2
             let extractionFailed: Bool = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
                 DispatchQueue.global(qos: .userInitiated).async {
@@ -211,8 +226,8 @@ struct LaunchView: View {
                 }
             }
             if extractionFailed {
-                UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-                setupError = "Extraction failed"
+                setupError = "Extraction failed. Box64 or Wine binaries may be missing from the app bundle."
+                readCdiagLog()
                 return
             }
         }
@@ -245,6 +260,18 @@ struct LaunchView: View {
         writeDiag("step=all_done")
         setupProgress = "All done!"
         isLoading = false
+    }
+
+    private func readCdiagLog() {
+        guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
+        let cdiagPath = p + "/c_diag.log"
+        let diagPath = p + "/diag.log"
+        let cdiag = (try? String(contentsOfFile: cdiagPath, encoding: .utf8)) ?? ""
+        let diag = (try? String(contentsOfFile: diagPath, encoding: .utf8)) ?? ""
+        var combined = ""
+        if !cdiag.isEmpty { combined += "=== c_diag.log ===\n\(cdiag)\n" }
+        if !diag.isEmpty { combined += "=== diag.log ===\n\(diag)\n" }
+        cDiagLog = combined.isEmpty ? "(no log files found)" : combined
     }
 
     private func shareLogs() {

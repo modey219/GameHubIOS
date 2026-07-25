@@ -135,51 +135,11 @@ struct LaunchView: View {
 
     @MainActor
     private func performSetup() async {
+        writeDiag("step=start")
         UserDefaults.standard.set(false, forKey: "_crash_sentinel")
-        let fm = FileManager.default
-        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            writeDiag("FAIL: no docs dir")
-            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-            isLoading = false
-            return
-        }
-
-        let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
-        let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
-
-        writeDiag("step=wine_init")
-        setupProgress = "Initializing Wine..."
-        setupStep = 1
-        WineBridge.shared.initialize()
-        writeDiag("step=wine_init_done")
-
-        writeDiag("step=prefix")
-        setupProgress = "Setting up prefix..."
-        setupStep = 2
-        WinePrefixManager.shared.initializePrefix()
-        writeDiag("step=prefix_done")
-
         UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-        writeDiag("step=all_done")
-        setupProgress = "All done!"
-        setupStep = 8
+        writeDiag("step=done")
         isLoading = false
-
-        if !box64Exists || !wineExists {
-            writeDiag("step=extract_background")
-            DispatchQueue.global(qos: .utility).async {
-                do {
-                    try Box64Bridge.shared.setupAllBundledBinaries { detail in
-                        NSLog("[MNEmulator] background extraction: %@", detail)
-                    }
-                    NSLog("[MNEmulator] background extraction complete")
-                    writeDiag("step=extract_background_done")
-                } catch {
-                    NSLog("[MNEmulator] background extraction failed: %@", "\(error)")
-                    writeDiag("step=extract_background_failed=\(error)")
-                }
-            }
-        }
     }
 
     private func shareLogs() {

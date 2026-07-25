@@ -117,7 +117,11 @@ class Box64Bridge {
         progressCallback?("Extracting Wine...")
         NSLog("[MNEmulator] extractWine start")
         Self.writeDiag("extractWine_start")
-        try autoreleasepool { try self.extractWine() }
+        try autoreleasepool {
+            try self.extractWine { detail in
+                progressCallback?(detail)
+            }
+        }
         NSLog("[MNEmulator] extractWine done")
         Self.writeDiag("extractWine_done")
 
@@ -472,7 +476,7 @@ class Box64Bridge {
         Self.log("extractBox64: OK (\(size.intValue) bytes)")
     }
 
-    private func extractWine() throws {
+    private func extractWine(progressCallback: ((String) -> Void)? = nil) throws {
         let fm = FileManager.default
         let wine64Dest = (wineInstallPath as NSString).appendingPathComponent("bin/wine64")
         if isNonEmptyFile(wine64Dest) {
@@ -492,7 +496,7 @@ class Box64Bridge {
         var copied = 0
         var skipped = 0
         var failed = 0
-        try copyDirectoryRecursive(src: bundledWineDir, dst: wineInstallPath, fm: fm, copied: &copied, skipped: &skipped, failed: &failed)
+        try copyDirectoryRecursive(src: bundledWineDir, dst: wineInstallPath, fm: fm, copied: &copied, skipped: &skipped, failed: &failed, progressCallback: progressCallback)
         Self.writeDiag("extractWine: done copied=\(copied) skipped=\(skipped) failed=\(failed)")
 
         let binaries = ["bin/wine", "bin/wine64", "bin/wineserver", "bin/wineboot"]
@@ -504,46 +508,48 @@ class Box64Bridge {
         }
     }
 
-    private func copyDirectoryRecursive(src: String, dst: String, fm: FileManager, copied: inout Int, skipped: inout Int, failed: inout Int) throws {
+    private func copyDirectoryRecursive(src: String, dst: String, fm: FileManager, copied: inout Int, skipped: inout Int, failed: inout Int, progressCallback: ((String) -> Void)? = nil) throws {
         let srcURL = URL(fileURLWithPath: src)
         let dstURL = URL(fileURLWithPath: dst)
 
-        let resourceKeys: [URLResourceKey] = [.isDirectoryKey]
-        guard let enumerator = fm.enumerator(at: srcURL, includingPropertiesForKeys: resourceKeys) else {
-            throw SetupError.copyFailed("Cannot enumerate \(src)")
-        }
+        let files = (try? fm.contentsOfDirectory(at: srcURL, includingPropertiesForKeys: nil, options: .includesDirectoriesPostOrder)) ?? []
+        let dirs = (try? fm.contentsOfDirectory(at: srcURL, includingPropertiesForKeys: [.isDirectoryKey], options: [])) ?? []
 
-        while let fileURL = enumerator.nextObject() as? URL {
-            let relPath = fileURL.path.replacingOccurrences(of: src, with: "")
-            let dstFileURL = dstURL.appendingPathComponent(relPath)
+        func copyItemRecursive(_ srcItem: URL, _ dstItem: URL) throws {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: srcItem.path, isDirectory: &isDir) else { return }
 
-            let isDir = (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-
-            if isDir {
-                try? fm.createDirectory(at: dstFileURL, withIntermediateDirectories: true)
-                continue
-            }
-
-            if fm.fileExists(atPath: dstFileURL.path),
-               let attrs = try? fm.attributesOfItem(atPath: dstFileURL.path),
-               let size = attrs[.size] as? NSNumber, size.intValue > 0 {
-                skipped += 1
-                continue
-            }
-
-            do {
-                try fm.copyItem(at: fileURL, to: dstFileURL)
-                try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dstFileURL.path)
-                copied += 1
-                if copied % 50 == 0 {
-                    Self.log("extractWine: copied \(copied) files...")
-                    Self.writeDiag("extractWine_progress: \(copied) files")
+            if isDir.boolValue {
+                try? fm.createDirectory(at: dstItem, withIntermediateDirectories: true)
+                let children = (try? fm.contentsOfDirectory(at: srcItem, includingPropertiesForKeys: nil)) ?? []
+                for child in children {
+                    let childDst = dstItem.appendingPathComponent(child.lastPathComponent)
+                    try copyItemRecursive(child, childDst)
                 }
-            } catch {
-                failed += 1
-                Self.log("extractWine: failed to copy \(fileURL.path): \(error)")
+            } else {
+                if fm.fileExists(atPath: dstItem.path),
+                   let attrs = try? fm.attributesOfItem(atPath: dstItem.path),
+                   let size = attrs[.size] as? NSNumber, size.intValue > 0 {
+                    skipped += 1
+                    return
+                }
+                do {
+                    try fm.copyItem(at: srcItem, to: dstItem)
+                    try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dstItem.path)
+                    copied += 1
+                    if copied % 10 == 0 {
+                        let msg = "Copying files: \(copied) done..."
+                        progressCallback?(msg)
+                        Self.log("extractWine: \(msg)")
+                    }
+                } catch {
+                    failed += 1
+                    Self.log("extractWine: failed to copy \(srcItem.path): \(error)")
+                }
             }
         }
+
+        try copyItemRecursive(srcURL, dstURL)
     }
 
     private func extractMoltenVK() throws {

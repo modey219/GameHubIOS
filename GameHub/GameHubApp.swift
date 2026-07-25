@@ -221,11 +221,10 @@ struct LaunchView: View {
         writeDiag("step=wine_init")
         setupProgress = "Initializing Wine..."
         setupStep = 5
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                WineBridge.shared.initialize()
-                continuation.resume()
-            }
+        do {
+            WineBridge.shared.initialize()
+        } catch {
+            writeDiag("wine_init_failed=\(error)")
         }
         writeDiag("step=wine_init_done")
 
@@ -234,8 +233,8 @@ struct LaunchView: View {
         setupStep = 6
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
+                defer { continuation.resume() }
                 WinePrefixManager.shared.initializePrefix()
-                continuation.resume()
             }
         }
         writeDiag("step=prefix_done")

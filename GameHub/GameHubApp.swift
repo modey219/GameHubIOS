@@ -57,10 +57,8 @@ struct LaunchView: View {
     @State private var setupError: String?
     @State private var setupProgress = "Initializing..."
     @State private var setupStep = 0
-    @State private var cDiagLog: String = ""
     @State private var showShareSheet = false
     @State private var shareText: String = ""
-    @State private var safetyTimerFired = false
 
     var body: some View {
         ZStack {
@@ -80,16 +78,6 @@ struct LaunchView: View {
         }
         .task {
             await performSetup()
-        }
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 300) {
-                if isLoading {
-                    NSLog("[MNEmulator] Safety timer fired — forcing dismiss of splash")
-                    writeDiag("step=safety_timer_force_dismiss")
-                    safetyTimerFired = true
-                    isLoading = false
-                }
-            }
         }
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: [shareText])
@@ -121,35 +109,13 @@ struct LaunchView: View {
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
-                    if !cDiagLog.isEmpty {
-                        ScrollView {
-                            Text(cDiagLog)
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundColor(.red)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(8)
-                        }
-                        .frame(maxHeight: 200)
-                        .background(Color.black.opacity(0.8))
-                        .cornerRadius(8)
-                        .padding(.horizontal, 24)
+                    Button("Continue Anyway") {
+                        isLoading = false
                     }
-                    HStack(spacing: 16) {
-                        Button("Continue Anyway") {
-                            isLoading = false
-                        }
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                        Button("Share Logs") {
-                            shareLogs()
-                        }
-                        .padding()
-                        .background(Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                    }
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
                 }
             } else {
                 VStack(spacing: 8) {
@@ -178,103 +144,42 @@ struct LaunchView: View {
             return
         }
 
-        let alreadyLaunched = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
         let box64Exists = fm.fileExists(atPath: docs.appendingPathComponent("Box64/box64").path)
         let wineExists = fm.fileExists(atPath: docs.appendingPathComponent("Wine/bin/wine64").path)
 
-        if alreadyLaunched && box64Exists && wineExists {
-            writeDiag("step=skip_init_already_launched")
-            setupProgress = "Quick launch..."
-            setupStep = 1
-            isLoading = false
-            return
-        }
-
-        writeDiag("step=clean")
-        setupProgress = "Cleaning stale files..."
-        setupStep = 1
-        for stalePath in ["Box64/box64", "Wine/bin/wine64", "Wine/bin/wine", "Wine/bin/wineserver", "Wine/bin/wineboot"] {
-            let fullPath = docs.appendingPathComponent(stalePath).path
-            if fm.fileExists(atPath: fullPath),
-               let attrs = try? fm.attributesOfItem(atPath: fullPath),
-               let size = attrs[.size] as? NSNumber,
-               size.intValue == 0 {
-                try? fm.removeItem(atPath: fullPath)
-            }
-        }
-
-        writeDiag("step=check")
-        setupProgress = "Checking files..."
-        setupStep = 1
-
-        if !box64Exists || !wineExists {
-            writeDiag("step=extract")
-            setupProgress = "Extracting binaries..."
-            setupStep = 2
-            let extractionFailed: Bool = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    do {
-                        try Box64Bridge.shared.setupAllBundledBinaries { detail in
-                            NSLog("[MNEmulator] extraction: %@", detail)
-                            DispatchQueue.main.async {
-                                self.setupProgress = detail
-                            }
-                        }
-                        continuation.resume(returning: false)
-                    } catch {
-                        NSLog("[MNEmulator] extraction FAILED: %@", "\(error)")
-                        writeDiag("extraction_failed=\(error)")
-                        continuation.resume(returning: true)
-                    }
-                }
-            }
-            if extractionFailed {
-                setupError = "Extraction failed. Box64 or Wine binaries may be missing from the app bundle."
-                readCdiagLog()
-                return
-            }
-        }
-
         writeDiag("step=wine_init")
         setupProgress = "Initializing Wine..."
-        setupStep = 5
-        do {
-            WineBridge.shared.initialize()
-        } catch {
-            writeDiag("wine_init_failed=\(error)")
-        }
+        setupStep = 1
+        WineBridge.shared.initialize()
         writeDiag("step=wine_init_done")
 
         writeDiag("step=prefix")
         setupProgress = "Setting up prefix..."
-        setupStep = 6
+        setupStep = 2
         WinePrefixManager.shared.initializePrefix()
         writeDiag("step=prefix_done")
-
-        writeDiag("step=box64_deferred")
-        setupProgress = "Box64 deferred..."
-        setupStep = 7
-
-        writeDiag("step=settings")
-        setupProgress = "Finalizing..."
-        setupStep = 8
 
         UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
         writeDiag("step=all_done")
         setupProgress = "All done!"
+        setupStep = 8
         isLoading = false
-    }
 
-    private func readCdiagLog() {
-        guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
-        let cdiagPath = p + "/c_diag.log"
-        let diagPath = p + "/diag.log"
-        let cdiag = (try? String(contentsOfFile: cdiagPath, encoding: .utf8)) ?? ""
-        let diag = (try? String(contentsOfFile: diagPath, encoding: .utf8)) ?? ""
-        var combined = ""
-        if !cdiag.isEmpty { combined += "=== c_diag.log ===\n\(cdiag)\n" }
-        if !diag.isEmpty { combined += "=== diag.log ===\n\(diag)\n" }
-        cDiagLog = combined.isEmpty ? "(no log files found)" : combined
+        if !box64Exists || !wineExists {
+            writeDiag("step=extract_background")
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    try Box64Bridge.shared.setupAllBundledBinaries { detail in
+                        NSLog("[MNEmulator] background extraction: %@", detail)
+                    }
+                    NSLog("[MNEmulator] background extraction complete")
+                    writeDiag("step=extract_background_done")
+                } catch {
+                    NSLog("[MNEmulator] background extraction failed: %@", "\(error)")
+                    writeDiag("step=extract_background_failed=\(error)")
+                }
+            }
+        }
     }
 
     private func shareLogs() {

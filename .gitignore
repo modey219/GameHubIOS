@@ -71,6 +71,7 @@ rootfs.tzst
 # Large files
 base.apk
 ips/
+/p/
 
 # IDE
 .idea/

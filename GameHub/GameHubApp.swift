@@ -195,7 +195,6 @@ struct LaunchView: View {
 
         if !box64Exists || !wineExists {
             writeDiag("step=extract")
-            setupProgress = "Extracting binaries..."
             setupStep = 2
             let extractionFailed: Bool = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
                 DispatchQueue.global(qos: .userInitiated).async {

@@ -104,76 +104,57 @@ class Box64Bridge {
 
         try fm.createDirectory(at: docs.appendingPathComponent("Graphics"), withIntermediateDirectories: true)
 
-        progressCallback?("Extracting Box64 + Wine (parallel)...")
-        NSLog("[MNEmulator] parallel extraction start")
+        Self.writeDiag("setup_start")
+        progressCallback?("Extracting Box64...")
+        NSLog("[MNEmulator] extraction start")
 
-        let box64Queue = DispatchQueue(label: "extract.box64", qos: .userInitiated)
-        let mvkQueue = DispatchQueue(label: "extract.mvk", qos: .utility)
-        let dxvkQueue = DispatchQueue(label: "extract.dxvk", qos: .utility)
-
-        var box64Error: Error?
-        var wineError: Error?
-
-        let group = DispatchGroup()
-
-        group.enter()
-        box64Queue.async {
-            NSLog("[MNEmulator] extractBox64 start")
-            do { try autoreleasepool { try self.extractBox64() } }
-            catch { box64Error = error }
-            NSLog("[MNEmulator] extractBox64 done")
-            group.leave()
-        }
-
-        group.enter()
-        box64Queue.async {
-            NSLog("[MNEmulator] extractWine start")
-            do { try autoreleasepool { try self.extractWine() } }
-            catch { wineError = error }
-            NSLog("[MNEmulator] extractWine done")
-            group.leave()
-        }
-
-        group.enter()
-        mvkQueue.async {
-            NSLog("[MNEmulator] extractMoltenVK start")
-            autoreleasepool {
-                do { try self.extractMoltenVK() }
-                catch { NSLog("[MNEmulator] extractMoltenVK skipped: \(error)") }
+        progressCallback?("Extracting Box64...")
+        NSLog("[MNEmulator] extractBox64 start")
+        autoreleasepool {
+            do { try self.extractBox64() }
+            catch {
+                NSLog("[MNEmulator] extractBox64 FAILED: \(error)")
+                Self.writeDiag("extractBox64_failed=\(error)")
             }
-            NSLog("[MNEmulator] extractMoltenVK done")
-            group.leave()
         }
+        NSLog("[MNEmulator] extractBox64 done")
 
-        group.enter()
-        dxvkQueue.async {
-            NSLog("[MNEmulator] extractDXVK start")
-            let skip = autoreleasepool { () -> Bool in
-                let memMB = Self.memoryUsageMB()
-                NSLog("[MNEmulator] before DXVK: memory = \(memMB)MB")
-                if memMB > 350 {
-                    NSLog("[MNEmulator] skipping DXVK — memory too high (\(memMB)MB)")
-                    return true
-                }
+        progressCallback?("Extracting Wine...")
+        NSLog("[MNEmulator] extractWine start")
+        autoreleasepool {
+            do { try self.extractWine() }
+            catch {
+                NSLog("[MNEmulator] extractWine FAILED: \(error)")
+                Self.writeDiag("extractWine_failed=\(error)")
+            }
+        }
+        NSLog("[MNEmulator] extractWine done")
+
+        progressCallback?("Extracting MoltenVK...")
+        NSLog("[MNEmulator] extractMoltenVK start")
+        autoreleasepool {
+            do { try self.extractMoltenVK() }
+            catch { NSLog("[MNEmulator] extractMoltenVK skipped: \(error)") }
+        }
+        NSLog("[MNEmulator] extractMoltenVK done")
+
+        progressCallback?("Extracting DXVK...")
+        NSLog("[MNEmulator] extractDXVK start")
+        autoreleasepool {
+            let memMB = Self.memoryUsageMB()
+            NSLog("[MNEmulator] before DXVK: memory = \(memMB)MB")
+            if memMB > 350 {
+                NSLog("[MNEmulator] skipping DXVK — memory too high (\(memMB)MB)")
+            } else {
                 do { try self.extractDXVK() }
                 catch { NSLog("[MNEmulator] extractDXVK skipped: \(error)") }
-                return false
             }
-            if !skip { NSLog("[MNEmulator] extractDXVK done") }
-            group.leave()
         }
+        NSLog("[MNEmulator] extractDXVK done")
 
-        let groupResult = group.wait(timeout: .now() + 120)
-
-        if groupResult == .timedOut {
-            NSLog("[MNEmulator] WARNING: extraction group timed out after 120s")
-            progressCallback?("Extraction timed out, continuing...")
-        }
-
-        if let err = box64Error { throw err }
-        if let err = wineError { throw err }
         progressCallback?("All extractions complete")
         NSLog("[MNEmulator] all extraction done")
+        Self.writeDiag("setup_done")
     }
 
     func initialize() {

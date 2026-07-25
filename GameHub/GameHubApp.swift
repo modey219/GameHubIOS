@@ -37,13 +37,15 @@ struct GameHubApp: App {
     @StateObject private var containerManager = ContainerManager()
     @StateObject private var jitManager = JITManager()
     @StateObject private var settingsManager = SettingsManager()
+    @StateObject private var setupManager = SetupManager()
 
     var body: some Scene {
         WindowGroup {
             LaunchView(
                 containerManager: containerManager,
                 jitManager: jitManager,
-                settingsManager: settingsManager
+                settingsManager: settingsManager,
+                setupManager: setupManager
             )
         }
     }
@@ -53,34 +55,29 @@ struct LaunchView: View {
     @ObservedObject var containerManager: ContainerManager
     @ObservedObject var jitManager: JITManager
     @ObservedObject var settingsManager: SettingsManager
-    @State private var isLoading = true
-    @State private var setupError: String?
-    @State private var setupProgress = "Initializing..."
-    @State private var setupStep = 0
-    @State private var showShareSheet = false
-    @State private var shareText: String = ""
+    @ObservedObject var setupManager: SetupManager
+    @State private var showSplash = true
 
     var body: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
 
-            if isLoading {
+            if showSplash {
                 splashView
+                    .transition(.opacity)
             } else {
                 ContentView()
                     .environmentObject(containerManager)
                     .environmentObject(jitManager)
                     .environmentObject(settingsManager)
+                    .environmentObject(setupManager)
                     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                         jitManager.checkJITStatus()
                     }
             }
         }
-        .task {
-            await performSetup()
-        }
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheet(activityItems: [shareText])
+        .onAppear {
+            performSetup()
         }
     }
 
@@ -99,60 +96,28 @@ struct LaunchView: View {
             Text("Created by @R_MOX")
                 .font(.caption).foregroundColor(.secondary)
 
-            if let error = setupError {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                        .font(.title2)
-                    Text(error)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                    Button("Continue Anyway") {
-                        isLoading = false
-                    }
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
-                }
-            } else {
-                VStack(spacing: 8) {
-                    ProgressView()
-                        .scaleEffect(1.2)
-                    Text(setupProgress)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    Text("Step \(setupStep) of 8")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+            VStack(spacing: 8) {
+                ProgressView()
+                    .scaleEffect(1.2)
+                Text(setupManager.setupMessage)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
             }
         }
         .padding()
     }
 
-    @MainActor
-    private func performSetup() async {
+    private func performSetup() {
         writeDiag("step=start")
         UserDefaults.standard.set(false, forKey: "_crash_sentinel")
         UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
         writeDiag("step=done")
-        isLoading = false
-    }
 
-    private func shareLogs() {
-        guard let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else { return }
-        let diagPath = p + "/diag.log"
-        let cdiagPath = p + "/c_diag.log"
-        var text = "=== diag.log ===\n" + ((try? String(contentsOfFile: diagPath)) ?? "N/A") + "\n"
-        text += "=== c_diag.log ===\n" + ((try? String(contentsOfFile: cdiagPath)) ?? "N/A") + "\n"
-        text += "=== bridge.log ===\n" + ((try? String(contentsOfFile: p + "/bridge.log")) ?? "N/A") + "\n"
-        text += "=== crash.log ===\n" + ((try? String(contentsOfFile: p + "/crash.log")) ?? "N/A") + "\n"
-        UIPasteboard.general.string = text
-        shareText = text
-        showShareSheet = true
+        withAnimation(.easeInOut(duration: 0.5)) {
+            showSplash = false
+        }
+
+        setupManager.performSetup()
     }
 }
 

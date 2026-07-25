@@ -7,6 +7,7 @@ struct GameContainerView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var jitManager: JITManager
     @EnvironmentObject var settingsManager: SettingsManager
+    @EnvironmentObject var setupManager: SetupManager
     @StateObject private var displayRenderer = DisplayRenderer()
     @State private var isRunning = false
     @State private var isPaused = false
@@ -448,6 +449,11 @@ struct GameContainerView: View {
 
     private func startGame() {
         guard !isRunning else { return }
+        guard setupManager.isSetupComplete else {
+            errorMessage = "Setup is still in progress. Please wait a moment."
+            showError = true
+            return
+        }
         isRunning = true
         displayRenderer.startRendering()
         startTimeCounter()

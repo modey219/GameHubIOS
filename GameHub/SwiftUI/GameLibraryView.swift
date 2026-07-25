@@ -25,13 +25,12 @@ struct GameLibraryView: View {
         VStack(spacing: 0) {
             topBar
             if showSearch { searchField }
-            Group {
-                if filteredGames.isEmpty {
-                    emptyState
-                } else {
-                    gameGrid
-                }
-            }
+            // DIAGNOSTIC: temporarily forcing emptyState unconditionally,
+            // bypassing the `if filteredGames.isEmpty {...} else {...}`
+            // conditional and the ForEach/gameGrid entirely, to isolate
+            // whether SwiftUI's dynamic-view diffing machinery is the
+            // source of the scene-create watchdog crash.
+            emptyState
         }
         .sheet(isPresented: $showAddGame) { AddGameView() }
         .sheet(isPresented: $showImportSheet) { ImportGameView() }

@@ -21,21 +21,21 @@ struct GameLibraryView: View {
     // it ever appears (same underlying class of bug reported for TabView on
     // recent iOS betas: dotnet/maui#32365). Using a plain manual layout
     // avoids that code path entirely.
+    // DIAGNOSTIC stage 3: stage 2 (removing the games if/else + ForEach) did
+    // NOT fix the scene-create watchdog crash - the exact same
+    // DynamicViewList/DynamicContainerInfo stack trace appeared again. That
+    // means the "if filteredGames.isEmpty" conditional wasn't the (only)
+    // trigger - other dynamic-content constructs remained: `if showSearch {...}`
+    // and 3 presentation modifiers (.sheet x2, .fullScreenCover) which are
+    // ALSO inherently "dynamic view" constructs in SwiftUI (they need to
+    // decide whether to host their content based on a binding). This stage
+    // removes ALL of them, leaving only topBar + emptyState (no conditionals,
+    // no sheets, no fullScreenCover) to see if that's enough to avoid the
+    // watchdog entirely.
     var body: some View {
         VStack(spacing: 0) {
             topBar
-            if showSearch { searchField }
-            // DIAGNOSTIC: temporarily forcing emptyState unconditionally,
-            // bypassing the `if filteredGames.isEmpty {...} else {...}`
-            // conditional and the ForEach/gameGrid entirely, to isolate
-            // whether SwiftUI's dynamic-view diffing machinery is the
-            // source of the scene-create watchdog crash.
             emptyState
-        }
-        .sheet(isPresented: $showAddGame) { AddGameView() }
-        .sheet(isPresented: $showImportSheet) { ImportGameView() }
-        .fullScreenCover(item: $selectedGame) { game in
-            GameContainerView(container: game)
         }
     }
 

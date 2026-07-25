@@ -39,20 +39,28 @@ struct GameLibraryView: View {
         }
     }
 
+    // DIAGNOSTIC stage 4: stage 3 (topBar + emptyState only, zero
+    // conditionals, zero sheets) STILL hit the exact same scene-create
+    // watchdog. The only other thing distinguishing this from the
+    // known-good bare Text() test is the SF Symbols (Image(systemName:)) -
+    // topBar had 3, emptyState had 1. SF Symbol resolution goes through a
+    // large system font/catalog lookup that could plausibly be broken or
+    // pathologically slow on a pre-release iOS beta. This stage replaces
+    // every Image(systemName:) with plain Text glyphs to isolate that.
     private var topBar: some View {
         HStack {
             Button(action: { showImportSheet = true }) {
-                Image(systemName: "square.and.arrow.down")
+                Text("Import")
             }
             Spacer()
             Text("Game Library").font(.headline)
             Spacer()
             HStack(spacing: 20) {
                 Button(action: { withAnimation { showSearch.toggle() } }) {
-                    Image(systemName: "magnifyingglass")
+                    Text("Search")
                 }
                 Button(action: { showAddGame = true }) {
-                    Image(systemName: "plus")
+                    Text("+")
                 }
             }
         }
@@ -78,12 +86,13 @@ struct GameLibraryView: View {
 
     private var emptyState: some View {
         VStack(spacing: 20) {
-            Image(systemName: "gamecontroller")
-                .font(.system(size: 60)).foregroundColor(.gray)
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.gray)
+                .frame(width: 60, height: 60)
             Text("No Games Yet").font(.title2).bold()
             Text("Import or add PC games to start playing").foregroundColor(.secondary)
             Button(action: { showAddGame = true }) {
-                Label("Add Game", systemImage: "plus")
+                Text("Add Game")
                     .padding().background(Color.blue).foregroundColor(.white).cornerRadius(10)
             }
         }

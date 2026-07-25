@@ -6,15 +6,22 @@ struct ContentView: View {
     @EnvironmentObject var settingsManager: SettingsManager
     @EnvironmentObject var setupManager: SetupManager
 
+    // TEMPORARY DIAGNOSTIC BUILD:
+    // We've hit the same 0x8BADF00D "scene-create watchdog" crash 3 times in a
+    // row, each time with a DIFFERENT SwiftUI internal at the top of the stack
+    // (TabView, then NavigationStack, then generic DynamicViewList/
+    // DynamicContainerInfo) while CPU time/percentage stayed nearly identical
+    // (~20s, ~17%) every time. That pattern means it's very unlikely to be one
+    // specific "buggy" view - the watchdog is just catching AttributeGraph
+    // wherever it happens to be at kill time. This minimal view removes ALL
+    // of our custom view hierarchy (GameLibraryView, sheets, grids, etc.) to
+    // determine whether the hang is in our SwiftUI code at all, or something
+    // more fundamental (device/iOS 27 beta/LiveContainer). Once we know the
+    // answer we'll restore the real UI.
     var body: some View {
-        // NOTE: intentionally not using TabView here. On some iOS versions
-        // (observed on iOS 27 beta) TabView's internal body computation
-        // (DefaultTabViewStyle/SystemTabViewStyle) can take 19+ seconds on
-        // first render, tripping the "scene-create" watchdog and causing
-        // the OS to kill the app (0x8BADF00D) before it ever appears.
-        // Since we only have a single destination anyway, render it
-        // directly instead of wrapping it in a TabView.
-        GameLibraryView()
-            .accentColor(.blue)
+        Text("Diagnostic build - if you see this, tap has worked")
+            .font(.title2)
+            .multilineTextAlignment(.center)
+            .padding()
     }
 }

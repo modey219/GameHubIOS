@@ -13,55 +13,15 @@ struct GameLibraryView: View {
         return containerManager.containers.filter { $0.isEnabled && $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
-    // NOTE: intentionally NOT using NavigationStack/.searchable/.toolbar here.
-    // On some iOS versions (observed on iOS 27 beta) SwiftUI's NavigationStack
-    // relies on UINavigationController-backed layout that can enter a
-    // pathological/looping layout pass on first render, tripping the
-    // "scene-create" watchdog (0x8BADF00D) and getting the app killed before
-    // it ever appears (same underlying class of bug reported for TabView on
-    // recent iOS betas: dotnet/maui#32365). Using a plain manual layout
-    // avoids that code path entirely.
-    // DIAGNOSTIC stage 3: stage 2 (removing the games if/else + ForEach) did
-    // NOT fix the scene-create watchdog crash - the exact same
-    // DynamicViewList/DynamicContainerInfo stack trace appeared again. That
-    // means the "if filteredGames.isEmpty" conditional wasn't the (only)
-    // trigger - other dynamic-content constructs remained: `if showSearch {...}`
-    // and 3 presentation modifiers (.sheet x2, .fullScreenCover) which are
-    // ALSO inherently "dynamic view" constructs in SwiftUI (they need to
-    // decide whether to host their content based on a binding). This stage
-    // removes ALL of them, leaving only topBar + emptyState (no conditionals,
-    // no sheets, no fullScreenCover) to see if that's enough to avoid the
-    // watchdog entirely.
-    var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            emptyState
-        }
-    }
-
     // DIAGNOSTIC stage 5: stages 3 AND 4 (no conditionals, no sheets,
     // no SF Symbols) STILL hit the scene-create watchdog. That rules out
     // SF Symbols AND sub-component rendering entirely. The crash must
-    // come from something else in this view's context — most likely the
+    // come from something else in this view's context - most likely the
     // @EnvironmentObject injection from GameHubApp or the @State
     // properties themselves. This stage makes body completely empty
     // to confirm.
     var body: some View {
         Text("")
-    }
-            Spacer()
-            Text("Game Library").font(.headline)
-            Spacer()
-            HStack(spacing: 20) {
-                Button(action: { withAnimation { showSearch.toggle() } }) {
-                    Text("Search")
-                }
-                Button(action: { showAddGame = true }) {
-                    Text("+")
-                }
-            }
-        }
-        .padding()
     }
 
     private var searchField: some View {

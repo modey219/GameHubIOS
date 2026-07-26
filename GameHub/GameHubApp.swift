@@ -31,13 +31,13 @@ private func writeDiag(_ s: String) {
     }
 }
 
-// DIAGNOSTIC stage 7: stages 5+6 stripped GameLibraryView and LaunchView
-// to nothing, yet the watchdog still fires. Now stripping ALL
-// @StateObject inits + setupCrashHandler from the App itself, leaving
-// only a bare Text to confirm the crash is (or isn't) at the very
-// top level.
+// DIAGNOSTIC stage 8: bare Text("Test") works. Now adding back ONLY
+// setupCrashHandler() (which calls install_crash_handler C function via
+// bridging header + safeSetenv) to isolate whether the C-side init is
+// the culprit.
 @main
 struct GameHubApp: App {
+    init() { setupCrashHandler() }
     var body: some Scene {
         WindowGroup {
             Text("Test")

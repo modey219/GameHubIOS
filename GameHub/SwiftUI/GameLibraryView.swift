@@ -1,17 +1,23 @@
 import SwiftUI
 
+enum SheetContent: Identifiable {
+    case addGame
+    case gameContainer(ContainerManager.Container)
+
+    var id: String {
+        switch self {
+        case .addGame: return "addGame"
+        case .gameContainer(let game): return game.id.uuidString
+        }
+    }
+}
+
 struct GameLibraryView: View {
     @EnvironmentObject var containerManager: ContainerManager
     @State private var searchText = ""
     @State private var showSearch = false
-    @State private var showAddGame = false
     @State private var showImportSheet = false
-    @State private var selectedGameID: UUID?
-
-    var selectedGame: ContainerManager.Container? {
-        guard let id = selectedGameID else { return nil }
-        return containerManager.containers.first { $0.id == id }
-    }
+    @State private var activeSheet: SheetContent?
 
     var filteredGames: [ContainerManager.Container] {
         if searchText.isEmpty { return containerManager.containers.filter { $0.isEnabled } }
@@ -30,14 +36,14 @@ struct GameLibraryView: View {
                 gameGrid
             }
         }
-        .sheet(isPresented: .init(get: { selectedGameID != nil }, set: { if !$0 { selectedGameID = nil } })) {
-            if let game = selectedGame {
+        .sheet(item: $activeSheet) { content in
+            switch content {
+            case .addGame:
+                AddGameView()
+                    .environmentObject(containerManager)
+            case .gameContainer(let game):
                 GameContainerView(container: game)
             }
-        }
-        .sheet(isPresented: $showAddGame) {
-            AddGameView()
-                .environmentObject(containerManager)
         }
         .fullScreenCover(isPresented: $showImportSheet) {
             ImportGameView()
@@ -56,7 +62,7 @@ struct GameLibraryView: View {
                 Button(action: { withAnimation { showSearch.toggle() } }) {
                     Image(systemName: "magnifyingglass")
                 }
-                Button(action: { showAddGame = true }) {
+                Button(action: { activeSheet = .addGame }) {
                     Image(systemName: "plus")
                 }
             }
@@ -87,7 +93,7 @@ struct GameLibraryView: View {
                 .font(.system(size: 60)).foregroundColor(.gray)
             Text("No Games Yet").font(.title2).bold()
             Text("Import or add PC games to start playing").foregroundColor(.secondary)
-            Button(action: { showAddGame = true }) {
+            Button(action: { activeSheet = .addGame }) {
                 Label("Add Game", systemImage: "plus")
                     .padding().background(Color.blue).foregroundColor(.white).cornerRadius(10)
             }
@@ -99,9 +105,9 @@ struct GameLibraryView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 20)], spacing: 20) {
                 ForEach(filteredGames) { game in
                     GameCardView(game: game)
-                        .onTapGesture { selectedGameID = game.id }
+                        .onTapGesture { activeSheet = .gameContainer(game) }
                         .contextMenu {
-                            Button(action: { selectedGameID = game.id }) {
+                            Button(action: { activeSheet = .gameContainer(game) }) {
                                 Label("Play", systemImage: "play.fill")
                             }
                             Button(role: .destructive, action: { containerManager.deleteContainer(game) }) {

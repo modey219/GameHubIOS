@@ -10,7 +10,18 @@ struct AddGameView: View {
     @State private var selectedFiles: [URL] = []
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            HStack {
+                Button("Cancel") { dismiss() }
+                Spacer()
+                Text("Add Game").font(.headline)
+                Spacer()
+                Button("Add") { addGame() }
+                    .disabled(gameName.isEmpty || executablePath.isEmpty)
+            }
+            .padding()
+            .background(Color(.systemGray6))
+
             Form {
                 Section("Game Info") {
                     TextField("Game Name", text: $gameName)
@@ -44,18 +55,13 @@ struct AddGameView: View {
                     .disabled(gameName.isEmpty || executablePath.isEmpty)
                 }
             }
-            .navigationTitle("Add Game")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) { Button("Cancel") { dismiss() } }
-            }
-            .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.data, .folder], allowsMultipleSelection: true) { result in
-                if case .success(let urls) = result {
-                    selectedFiles = urls
-                    if let first = urls.first {
-                        executablePath = "C:\\games\\\(first.deletingPathExtension().lastPathComponent)\\\(first.lastPathComponent)"
-                        if gameName.isEmpty { gameName = first.deletingPathExtension().lastPathComponent }
-                    }
+        }
+        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.data, .folder], allowsMultipleSelection: true) { result in
+            if case .success(let urls) = result {
+                selectedFiles = urls
+                if let first = urls.first {
+                    executablePath = "C:\\games\\\(first.deletingPathExtension().lastPathComponent)\\\(first.lastPathComponent)"
+                    if gameName.isEmpty { gameName = first.deletingPathExtension().lastPathComponent }
                 }
             }
         }

@@ -37,6 +37,7 @@ struct GameLibraryView: View {
         }
         .sheet(isPresented: $showAddGame) {
             AddGameView()
+                .environmentObject(containerManager)
         }
         .fullScreenCover(isPresented: $showImportSheet) {
             ImportGameView()

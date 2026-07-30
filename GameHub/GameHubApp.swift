@@ -31,10 +31,10 @@ private func writeDiag(_ s: String) {
     }
 }
 
-// DIAGNOSTIC stage 10: all 4 StateObjects init without issue when not
-// injected into a view hierarchy. Now adding back ContentView + its
-// .environmentObject injection to test if the environment resolution
-// chain triggers the watchdog.
+// DIAGNOSTIC stage 10b: ContentView with @EnvironmentObject + bare
+// Text("Test") body. Testing if the environment object resolution chain
+// itself triggers the watchdog, or if it's something deeper in the view
+// hierarchy.
 @main
 struct GameHubApp: App {
     init() { setupCrashHandler() }
@@ -51,27 +51,6 @@ struct GameHubApp: App {
                 .environmentObject(settingsManager)
                 .environmentObject(setupManager)
         }
-    }
-}
-
-// DIAGNOSTIC stage 6: GameLibraryView body is already empty (Text("")),
-// yet the scene-create watchdog still fires. The crash must originate
-// ABOVE GameLibraryView. LaunchView has `if showSplash` - another
-// "dynamic view" conditional - plus SF Symbols in splashView and an
-// animated transition. This stage strips all of that: no splash, no
-// conditional, no SF Symbols, no animation. Just ContentView directly.
-struct LaunchView: View {
-    @ObservedObject var containerManager: ContainerManager
-    @ObservedObject var jitManager: JITManager
-    @ObservedObject var settingsManager: SettingsManager
-    @ObservedObject var setupManager: SetupManager
-
-    var body: some View {
-        ContentView()
-            .environmentObject(containerManager)
-            .environmentObject(jitManager)
-            .environmentObject(settingsManager)
-            .environmentObject(setupManager)
     }
 }
 

@@ -1,3 +1,5 @@
+import SwiftUI
+
 // DIAGNOSTIC stage 10b: ContentView + environment objects + GameLibraryView
 // (with Text("") body) shows black screen then crashes. Isolating whether
 // the issue is ContentView's own environment object resolution or

@@ -31,13 +31,17 @@ private func writeDiag(_ s: String) {
     }
 }
 
-// DIAGNOSTIC stage 8: bare Text("Test") works. Now adding back ONLY
-// setupCrashHandler() (which calls install_crash_handler C function via
-// bridging header + safeSetenv) to isolate whether the C-side init is
-// the culprit.
+// DIAGNOSTIC stage 9: setupCrashHandler is innocent. Now testing
+// whether the @StateObject initializations themselves are the culprit.
+// Keep body as bare Text("Test") so no views consume these objects.
 @main
 struct GameHubApp: App {
     init() { setupCrashHandler() }
+    @StateObject private var containerManager = ContainerManager()
+    @StateObject private var jitManager = JITManager()
+    @StateObject private var settingsManager = SettingsManager()
+    @StateObject private var setupManager = SetupManager()
+
     var body: some Scene {
         WindowGroup {
             Text("Test")

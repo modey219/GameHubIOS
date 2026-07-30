@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct AddGameView: View {
-    @EnvironmentObject var containerManager: ContainerManager
+    let containerManager: ContainerManager
     @Environment(\.dismiss) var dismiss
     @State private var gameName = ""
     @State private var executablePath = ""
@@ -15,14 +15,14 @@ struct AddGameView: View {
                 Button("Cancel") { dismiss() }
                     .padding(.leading)
                 Spacer()
-                Text("Add Game").font(.headline)
+                Text("Add Game").font(.headline).foregroundColor(.primary)
                 Spacer()
                 Button("Add") { addGame() }
                     .disabled(gameName.isEmpty || executablePath.isEmpty)
                     .padding(.trailing)
             }
             .padding(.vertical)
-            .background(Color(.systemGray6))
+            .background(Color.gray.opacity(0.2))
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -69,6 +69,7 @@ struct AddGameView: View {
                 .padding()
             }
         }
+        .background(Color(.systemBackground))
         .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.data, .folder], allowsMultipleSelection: true) { result in
             if case .success(let urls) = result {
                 selectedFiles = urls

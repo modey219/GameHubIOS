@@ -19,27 +19,36 @@ struct GameLibraryView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            if showSearch {
-                searchField
+        ZStack {
+            VStack(spacing: 0) {
+                topBar
+                if showSearch {
+                    searchField
+                }
+                if filteredGames.isEmpty {
+                    emptyState
+                } else {
+                    gameGrid
+                }
             }
-            if filteredGames.isEmpty {
-                emptyState
-            } else {
-                gameGrid
+
+            if showAddGame {
+                AddGameView(containerManager: containerManager)
+                    .transition(.move(edge: .bottom))
+                    .zIndex(1)
             }
-        }
-        .fullScreenCover(isPresented: .init(get: { selectedGameID != nil }, set: { if !$0 { selectedGameID = nil } })) {
+
             if let game = selectedGame {
                 GameContainerView(container: game)
+                    .transition(.move(edge: .bottom))
+                    .zIndex(1)
             }
-        }
-        .fullScreenCover(isPresented: $showAddGame) {
-            AddGameView(containerManager: containerManager)
-        }
-        .fullScreenCover(isPresented: $showImportSheet) {
-            ImportGameView()
+
+            if showImportSheet {
+                ImportGameView()
+                    .transition(.move(edge: .bottom))
+                    .zIndex(1)
+            }
         }
     }
 

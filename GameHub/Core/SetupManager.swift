@@ -5,6 +5,7 @@ class SetupManager: ObservableObject {
     @Published var isSetupComplete = false
     @Published var setupMessage = ""
     @Published var setupProgress: Double = 0
+    @Published var statusText = "Initializing..."
 
     private let box64Bridge = Box64Bridge.shared
 

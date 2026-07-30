@@ -5,8 +5,15 @@ struct ContentView: View {
     @EnvironmentObject var jitManager: JITManager
     @EnvironmentObject var settingsManager: SettingsManager
     @EnvironmentObject var setupManager: SetupManager
+    @AppStorage("hasLaunchedBefore") private var hasLaunchedBefore = false
 
     var body: some View {
-        GameLibraryView()
+        Group {
+            if hasLaunchedBefore {
+                GameLibraryView()
+            } else {
+                SetupView()
+            }
+        }
     }
 }

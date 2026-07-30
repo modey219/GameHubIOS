@@ -30,9 +30,9 @@ struct GameLibraryView: View {
                 gameGrid
             }
         }
-        .sheet(item: $selectedGameID) { id in
-            if let game = containerManager.containers.first(where: { $0.id == id }) {
-                GameContainerView(game: game)
+        .sheet(isPresented: .init(get: { selectedGameID != nil }, set: { if !$0 { selectedGameID = nil } })) {
+            if let game = selectedGame {
+                GameContainerView(container: game)
             }
         }
         .sheet(isPresented: $showAddGame) {

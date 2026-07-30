@@ -31,9 +31,10 @@ private func writeDiag(_ s: String) {
     }
 }
 
-// DIAGNOSTIC stage 9: setupCrashHandler is innocent. Now testing
-// whether the @StateObject initializations themselves are the culprit.
-// Keep body as bare Text("Test") so no views consume these objects.
+// DIAGNOSTIC stage 10: all 4 StateObjects init without issue when not
+// injected into a view hierarchy. Now adding back ContentView + its
+// .environmentObject injection to test if the environment resolution
+// chain triggers the watchdog.
 @main
 struct GameHubApp: App {
     init() { setupCrashHandler() }
@@ -44,7 +45,11 @@ struct GameHubApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Text("Test")
+            ContentView()
+                .environmentObject(containerManager)
+                .environmentObject(jitManager)
+                .environmentObject(settingsManager)
+                .environmentObject(setupManager)
         }
     }
 }

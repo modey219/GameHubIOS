@@ -1,9 +1,8 @@
 import SwiftUI
 
-// DIAGNOSTIC stage 10b: ContentView + environment objects + GameLibraryView
-// (with Text("") body) shows black screen then crashes. Isolating whether
-// the issue is ContentView's own environment object resolution or
-// GameLibraryView's.
+// DIAGNOSTIC stage 10c: GameLibraryView had @EnvironmentObject removed,
+// body is still Text(""). Testing if the act of creating a child view
+// with @EnvironmentObject was the trigger, vs any child view at all.
 struct ContentView: View {
     @EnvironmentObject var containerManager: ContainerManager
     @EnvironmentObject var jitManager: JITManager
@@ -11,6 +10,6 @@ struct ContentView: View {
     @EnvironmentObject var setupManager: SetupManager
 
     var body: some View {
-        Text("Test")
+        GameLibraryView()
     }
 }

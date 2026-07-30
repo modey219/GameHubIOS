@@ -1,7 +1,9 @@
 import SwiftUI
 
+// DIAGNOSTIC stage 10c: removing @EnvironmentObject from GameLibraryView
+// to test if @EnvironmentObject resolution in child views (vs parent)
+// triggers the watchdog.
 struct GameLibraryView: View {
-    @EnvironmentObject var containerManager: ContainerManager
     @State private var searchText = ""
     @State private var showSearch = false
     @State private var showAddGame = false
@@ -9,8 +11,7 @@ struct GameLibraryView: View {
     @State private var selectedGame: ContainerManager.Container?
 
     var filteredGames: [ContainerManager.Container] {
-        if searchText.isEmpty { return containerManager.containers.filter { $0.isEnabled } }
-        return containerManager.containers.filter { $0.isEnabled && $0.name.localizedCaseInsensitiveContains(searchText) }
+        return []
     }
 
     // DIAGNOSTIC stage 5: stages 3 AND 4 (no conditionals, no sheets,
@@ -65,7 +66,7 @@ struct GameLibraryView: View {
                             Button(action: { selectedGame = game }) {
                                 Label("Play", systemImage: "play.fill")
                             }
-                            Button(role: .destructive, action: { containerManager.deleteContainer(game) }) {
+                            Button(role: .destructive, action: {}) {
                                 Label("Delete", systemImage: "trash")
                             }
                         }

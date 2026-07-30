@@ -86,8 +86,9 @@ struct AddGameView: View {
                 }
                 selectedFiles = copiedURLs
                 if let first = urls.first {
-                    executablePath = "C:\\games\\\(first.deletingPathExtension().lastPathComponent)\\\(first.lastPathComponent)"
-                    if gameName.isEmpty { gameName = first.deletingPathExtension().lastPathComponent }
+                    let name = first.deletingPathExtension().lastPathComponent
+                    if gameName.isEmpty { gameName = name }
+                    executablePath = "C:\\games\\\(gameName)\\\(first.lastPathComponent)"
                 }
             }
         }

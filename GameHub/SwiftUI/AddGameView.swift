@@ -72,7 +72,19 @@ struct AddGameView: View {
         .background(Color(.systemBackground))
         .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.data, .folder], allowsMultipleSelection: true) { result in
             if case .success(let urls) = result {
-                selectedFiles = urls
+                var copiedURLs: [URL] = []
+                let fm = FileManager.default
+                let tempDir = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                try? fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
+                for url in urls {
+                    let dest = tempDir.appendingPathComponent(url.lastPathComponent)
+                    let didStart = url.startAccessingSecurityScopedResource()
+                    defer { if didStart { url.stopAccessingSecurityScopedResource() } }
+                    if (try? fm.copyItem(at: url, to: dest)) != nil {
+                        copiedURLs.append(dest)
+                    }
+                }
+                selectedFiles = copiedURLs
                 if let first = urls.first {
                     executablePath = "C:\\games\\\(first.deletingPathExtension().lastPathComponent)\\\(first.lastPathComponent)"
                     if gameName.isEmpty { gameName = first.deletingPathExtension().lastPathComponent }

@@ -13,31 +13,43 @@ struct AddGameView: View {
         VStack(spacing: 0) {
             HStack {
                 Button("Cancel") { dismiss() }
+                    .padding(.leading)
                 Spacer()
                 Text("Add Game").font(.headline)
                 Spacer()
                 Button("Add") { addGame() }
                     .disabled(gameName.isEmpty || executablePath.isEmpty)
+                    .padding(.trailing)
             }
-            .padding()
+            .padding(.vertical)
             .background(Color(.systemGray6))
 
-            Form {
-                Section("Game Info") {
-                    TextField("Game Name", text: $gameName)
-                    TextField("Executable Path (.exe)", text: $executablePath)
-                        .autocapitalization(.none)
-                        .textInputAutocapitalization(.never)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Group {
+                        Text("Game Name").font(.subheadline).bold()
+                        TextField("Game Name", text: $gameName)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    Group {
+                        Text("Executable Path (.exe)").font(.subheadline).bold()
+                        TextField("Executable Path (.exe)", text: $executablePath)
+                            .textFieldStyle(.roundedBorder)
+                            .autocapitalization(.none)
+                            .textInputAutocapitalization(.never)
+                    }
+
                     if executablePath.isEmpty && !gameName.isEmpty {
                         Button("Auto-fill path") {
                             executablePath = "C:\\games\\\(gameName)\\\(gameName).exe"
                         }
                     }
-                }
-                Section("Import Files") {
+
                     Button(action: { showFilePicker = true }) {
                         Label("Select Game Files", systemImage: "doc.badge.plus")
                     }
+
                     if !selectedFiles.isEmpty {
                         ForEach(selectedFiles, id: \.self) { file in
                             HStack {
@@ -47,13 +59,14 @@ struct AddGameView: View {
                             }
                         }
                     }
-                }
-                Section {
+
                     Button(action: addGame) {
                         Text("Add Game").fontWeight(.bold).frame(maxWidth: .infinity)
                     }
                     .disabled(gameName.isEmpty || executablePath.isEmpty)
+                    .buttonStyle(.borderedProminent)
                 }
+                .padding()
             }
         }
         .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.data, .folder], allowsMultipleSelection: true) { result in

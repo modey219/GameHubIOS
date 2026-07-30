@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 import Network
 
 struct ImportGameView: View {
-    @Environment(\.dismiss) var dismiss
+    let onDismiss: () -> Void
     @State private var selectedMethod: ImportMethod = .files
     @State private var webServerRunning = false
     @State private var webServerPort: UInt16 = 8080
@@ -39,7 +39,7 @@ struct ImportGameView: View {
                     webServer?.stop()
                     webServer = nil
                     webServerRunning = false
-                    dismiss()
+                    onDismiss()
                 } }
             }
         }

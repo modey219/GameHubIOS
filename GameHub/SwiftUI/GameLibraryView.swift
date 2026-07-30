@@ -19,35 +19,28 @@ struct GameLibraryView: View {
     }
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                topBar
-                if showSearch {
-                    searchField
-                }
-                if filteredGames.isEmpty {
-                    emptyState
-                } else {
-                    gameGrid
-                }
+        VStack(spacing: 0) {
+            topBar
+            if showSearch {
+                searchField
             }
-
+            if filteredGames.isEmpty {
+                emptyState
+            } else {
+                gameGrid
+            }
+        }
+        .sheet(isPresented: .init(get: { selectedGameID != nil }, set: { if !$0 { selectedGameID = nil } })) {
+            if let game = selectedGame {
+                GameContainerView(container: game, onDismiss: { selectedGameID = nil })
+            }
+        }
+        .overlay {
             if showAddGame {
                 AddGameView(containerManager: containerManager, onDismiss: { showAddGame = false })
-                    .transition(.move(edge: .bottom))
-                    .zIndex(1)
             }
-
-            if let game = selectedGame {
-                GameContainerView(container: game)
-                    .transition(.move(edge: .bottom))
-                    .zIndex(1)
-            }
-
             if showImportSheet {
-                ImportGameView()
-                    .transition(.move(edge: .bottom))
-                    .zIndex(1)
+                ImportGameView(onDismiss: { showImportSheet = false })
             }
         }
     }

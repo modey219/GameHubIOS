@@ -4,7 +4,7 @@ import UIKit
 
 struct GameContainerView: View {
     let container: ContainerManager.Container
-    @Environment(\.dismiss) var dismiss
+    let onDismiss: () -> Void
     @EnvironmentObject var jitManager: JITManager
     @EnvironmentObject var settingsManager: SettingsManager
     @EnvironmentObject var setupManager: SetupManager
@@ -211,7 +211,9 @@ struct GameContainerView: View {
                 Button("Exit") {
                     withAnimation { confirmExit = false }
                     stopGame()
-                    dismiss()
+                    onDismiss()
+
+
                 }
                 .frame(maxWidth: .infinity).padding()
                 .background(Color.red).cornerRadius(10)
@@ -323,7 +325,7 @@ struct GameContainerView: View {
             HStack {
                 Button("Retry") { showError = false; launchGame() }
                     .buttonStyle(.bordered)
-                Button("Dismiss") { showError = false; dismiss() }
+                Button("Dismiss") { showError = false; onDismiss() }
                     .buttonStyle(.borderedProminent).tint(.red)
             }
         }

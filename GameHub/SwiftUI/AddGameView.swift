@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 struct AddGameView: View {
     let containerManager: ContainerManager
-    @Environment(\.dismiss) var dismiss
+    let onDismiss: () -> Void
     @State private var gameName = ""
     @State private var executablePath = ""
     @State private var showFilePicker = false
@@ -12,7 +12,7 @@ struct AddGameView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { onDismiss() }
                     .padding(.leading)
                 Spacer()
                 Text("Add Game").font(.headline).foregroundColor(.primary)
@@ -100,6 +100,6 @@ struct AddGameView: View {
             let files = selectedFiles.map { (source: $0, destination: "drive_c/games/\(gameName)/\($0.lastPathComponent)" ) }
             containerManager.installGameFiles(containerID: container.id, files: files)
         }
-        dismiss()
+        onDismiss()
     }
 }

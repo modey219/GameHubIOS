@@ -33,7 +33,7 @@ struct GameLibraryView: View {
             }
 
             if showAddGame {
-                AddGameView(containerManager: containerManager)
+                AddGameView(containerManager: containerManager, onDismiss: { showAddGame = false })
                     .transition(.move(edge: .bottom))
                     .zIndex(1)
             }

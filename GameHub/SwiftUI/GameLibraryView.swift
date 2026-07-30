@@ -30,12 +30,12 @@ struct GameLibraryView: View {
                 gameGrid
             }
         }
-        .sheet(isPresented: .init(get: { selectedGameID != nil }, set: { if !$0 { selectedGameID = nil } })) {
+        .fullScreenCover(isPresented: .init(get: { selectedGameID != nil }, set: { if !$0 { selectedGameID = nil } })) {
             if let game = selectedGame {
                 GameContainerView(container: game)
             }
         }
-        .sheet(isPresented: $showAddGame) {
+        .fullScreenCover(isPresented: $showAddGame) {
             AddGameView(containerManager: containerManager)
         }
         .fullScreenCover(isPresented: $showImportSheet) {

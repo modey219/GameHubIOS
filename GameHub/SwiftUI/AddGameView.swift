@@ -9,6 +9,8 @@ struct AddGameView: View {
     @State private var isImporting = false
     @State private var isInstalling = false
     @State private var errorMessage: String?
+    @State private var showDocBrowser = false
+    @State private var docItems: [URL] = []
 
     private var safeFolderName: String {
         let invalid = CharacterSet(charactersIn: "/\\:*?\"<>|")
@@ -61,6 +63,38 @@ struct AddGameView: View {
                     } else {
                         Button(action: presentFilePicker) {
                             Label("Select Game Files", systemImage: "doc.badge.plus")
+                        }
+                        Button(action: scanDocuments) {
+                            Label("Browse Files in App", systemImage: "folder")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    if showDocBrowser {
+                        if docItems.isEmpty {
+                            Text("No game files found. Put your .exe in:\nFiles App → On My iPhone → MN emulator\nThen tap Browse again.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .textSelection(.enabled)
+                        } else {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Files in app (tap to select):").font(.caption).bold()
+                                ForEach(docItems, id: \.self) { item in
+                                    Button(action: { selectDocument(item) }) {
+                                        HStack {
+                                            Image(systemName: item.hasDirectoryPath ? "folder" : "doc")
+                                                .foregroundColor(item.hasDirectoryPath ? .orange : .blue)
+                                            Text(item.lastPathComponent).font(.caption).lineLimit(1)
+                                            Spacer()
+                                        }
+                                        .padding(.vertical, 4)
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
+                            .padding(8)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
                         }
                     }
 
@@ -153,6 +187,28 @@ struct AddGameView: View {
             if gameName.isEmpty { gameName = name }
             executablePath = "C:\\games\\\(safeFolderName)\\\(first.lastPathComponent)"
         }
+    }
+
+    private func scanDocuments() {
+        docItems = DocumentScanner.contents()
+        showDocBrowser = true
+        errorMessage = nil
+    }
+
+    private func selectDocument(_ url: URL) {
+        selectedFiles = [url]
+        errorMessage = nil
+        var name = url.deletingPathExtension().lastPathComponent
+        var fileName = url.lastPathComponent
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue,
+           let entries = try? FileManager.default.contentsOfDirectory(atPath: url.path),
+           let exe = entries.first(where: { $0.lowercased().hasSuffix(".exe") }) {
+            fileName = exe
+            name = (exe as NSString).deletingPathExtension
+        }
+        if gameName.isEmpty { gameName = name }
+        executablePath = "C:\\games\\\(safeFolderName)\\\(fileName)"
     }
 
     private func addGame() {

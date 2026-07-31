@@ -374,7 +374,7 @@ jobs:
 
       - name: Remove old xcodeproj
         run: |
-          rm -rf MNEmulator.xcodeproj MNEmulator.xcodeproj
+          rm -rf MNEmulator.xcodeproj
 
       - name: Generate Xcode project
         run: |

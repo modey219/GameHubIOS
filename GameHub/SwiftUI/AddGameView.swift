@@ -9,8 +9,9 @@ struct AddGameView: View {
     @State private var isImporting = false
     @State private var isInstalling = false
     @State private var errorMessage: String?
-    @State private var showDocBrowser = false
+    @State private var showDocBrowser = true
     @State private var docItems: [URL] = []
+    @State private var didInitialScan = false
 
     private var safeFolderName: String {
         let invalid = CharacterSet(charactersIn: "/\\:*?\"<>|")
@@ -61,24 +62,36 @@ struct AddGameView: View {
                     } else if isInstalling {
                         ProgressView("Installing game...")
                     } else {
-                        Button(action: presentFilePicker) {
-                            Label("Select Game Files", systemImage: "doc.badge.plus")
-                        }
                         Button(action: scanDocuments) {
                             Label("Browse Files in App", systemImage: "folder")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button(action: presentFilePicker) {
+                            Label("Open Files Picker (may not work)", systemImage: "doc.badge.plus")
                         }
                         .buttonStyle(.bordered)
                     }
 
                     if showDocBrowser {
                         if docItems.isEmpty {
-                            Text("No game files found. Put your .exe in:\nFiles App → On My iPhone → MN emulator\nThen tap Browse again.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .textSelection(.enabled)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("No game files found.")
+                                    .font(.subheadline).bold()
+                                Text("Put your game files (.exe or folder) in the app's 'games' folder:\nFiles App → On My iPhone → MN emulator → games\n\nThen tap 'Refresh' below.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .textSelection(.enabled)
+                                Button("Refresh") { scanDocuments() }
+                                    .buttonStyle(.bordered).controlSize(.small)
+                            }
                         } else {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Files in app (tap to select):").font(.caption).bold()
+                                HStack {
+                                    Text("Files in app (tap to select):").font(.caption).bold()
+                                    Spacer()
+                                    Button("Refresh") { scanDocuments() }
+                                        .buttonStyle(.borderless).controlSize(.mini)
+                                }
                                 ForEach(docItems, id: \.self) { item in
                                     Button(action: { selectDocument(item) }) {
                                         HStack {
@@ -128,6 +141,12 @@ struct AddGameView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+        .onAppear {
+            if !didInitialScan {
+                didInitialScan = true
+                scanDocuments()
+            }
+        }
     }
 
     private func presentFilePicker() {

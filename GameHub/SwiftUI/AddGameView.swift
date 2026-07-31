@@ -168,12 +168,11 @@ struct AddGameView: View {
             (source: $0, destination: "drive_c/games/\(safeFolderName)/\($0.lastPathComponent)")
         }
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            self.containerManager.installGameFiles(containerID: containerID, files: files)
+        DispatchQueue.global(qos: .userInitiated).async {
+            containerManager.installGameFiles(containerID: containerID, files: files)
             DispatchQueue.main.async {
-                self.isInstalling = false
-                self.onDismiss()
+                isInstalling = false
+                onDismiss()
             }
         }
     }

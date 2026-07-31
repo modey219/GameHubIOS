@@ -34,7 +34,7 @@ class Box64Bridge {
         }
     }
 
-    private static func writeDiag(_ s: String) {
+    static func writeDiag(_ s: String) {
         if let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
             let line = "[\(Date().timeIntervalSince1970)] \(s)\n"
             let path = p + "/diag.log"
@@ -233,18 +233,24 @@ class Box64Bridge {
         Self.log("wine64Path=\(wine64Path) container=\(containerPath)")
         var result = LaunchResult()
 
+        Self.writeDiag("launchWine_start")
         lock.lock()
         if !isInitialized || ctx == nil {
             lock.unlock()
             Self.log("Box64 not initialized yet, initializing now...")
+            Self.writeDiag("launchWine_calling_initialize")
             initialize()
+            Self.writeDiag("launchWine_init_done isInitialized=\(isInitialized)")
             lock.lock()
             guard isInitialized else {
                 lock.unlock()
                 Self.log("ERROR: Box64 auto-init failed")
+                Self.writeDiag("launchWine_init_failed")
                 result.error = "Box64 initialization failed. Please restart the app."
                 return result
             }
+        } else {
+            Self.writeDiag("launchWine_already_initialized")
         }
 
         safeSetenv("WINEPREFIX", containerPath, 1)
@@ -262,12 +268,15 @@ class Box64Bridge {
             safeSetenv(key, value, 1)
         }
 
+        Self.writeDiag("launchWine_env_set")
         Self.log("calling box64_set_wine_path/set_prefix/set_game...")
         box64_set_wine_path(ctx, wine64Path)
         box64_set_prefix(ctx, containerPath)
         box64_set_game(ctx, executablePath)
         Self.log("calling box64_launch_wine(), memory = \(Self.memoryUsageMB())MB...")
+        Self.writeDiag("box64_launch_enter")
         let rc: Int32 = autoreleasepool { box64_launch_wine(ctx, executablePath, nil) }
+        Self.writeDiag("box64_launch_exit rc=\(rc)")
         Self.log("box64_launch_wine returned \(rc), memory = \(Self.memoryUsageMB())MB")
         if rc != 0 {
             let cError = box64_get_wine_error()
@@ -288,6 +297,7 @@ class Box64Bridge {
         Self.log("launchWine SUCCESS")
         _isRunning = true
         lock.unlock()
+        Self.writeDiag("launchWine_success")
         result.wineLaunched = true
         result.box64Output = "Wine launched via box64 bridge (thread-based)"
 

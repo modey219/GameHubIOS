@@ -35,16 +35,25 @@ struct SetupView: View {
         await MainActor.run { setupManager.statusText = "Extracting Wine..." }
         try? await Task.sleep(nanoseconds: 100_000_000)
 
-        do {
-            try Box64Bridge.shared.setupAllBundledBinaries { detail in
-                Task { @MainActor in
-                    setupManager.statusText = detail
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    try Box64Bridge.shared.setupAllBundledBinaries { detail in
+                        Task { @MainActor in
+                            setupManager.statusText = detail
+                        }
+                    }
+                    DispatchQueue.main.async {
+                        setupManager.statusText = "Ready"
+                        hasLaunchedBefore = true
+                        continuation.resume()
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        setupManager.statusText = "Setup failed: \(error.localizedDescription)"
+                        continuation.resume()
+                    }
                 }
-            }
-            await MainActor.run { hasLaunchedBefore = true }
-        } catch {
-            await MainActor.run {
-                setupManager.statusText = "Setup failed: \(error.localizedDescription)"
             }
         }
     }

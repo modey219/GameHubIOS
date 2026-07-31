@@ -634,6 +634,7 @@ struct GameContainerView: View {
 
         settingsManager.applySettings()
         logMsg("Settings applied")
+        Box64Bridge.writeDiag("launchGame_settings_applied")
 
         let fm = FileManager.default
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -643,65 +644,79 @@ struct GameContainerView: View {
         let box64Path = docs.appendingPathComponent("Box64/box64").path
         let wine64Path = docs.appendingPathComponent("Wine/bin/wine64").path
 
-        logMsg("box64Path: \(box64Path) exists=\(fm.fileExists(atPath: box64Path))")
-        logMsg("wine64Path: \(wine64Path) exists=\(fm.fileExists(atPath: wine64Path))")
-        logMsg("containerPath: \(containerPath)")
-        flushLog()
-
-        guard fm.fileExists(atPath: box64Path) else {
-            errorMessage = "Box64 binary not found at:\n\(box64Path)\n\nPlease restart the app to extract bundled binaries."
-            showError = true
-            flushLog()
-            return
-        }
-        guard fm.fileExists(atPath: wine64Path) else {
-            errorMessage = "Wine binary not found at:\n\(wine64Path)\n\nPlease restart the app to extract bundled binaries."
-            showError = true
-            flushLog()
-            return
-        }
-
-        WinePrefixManager.shared.setupDXVKForContainer(containerPath)
-        WinePrefixManager.shared.setupVKD3DForContainer(containerPath)
-        WinePrefixManager.shared.setupContainerRegistry(containerPath)
-        logMsg("Wine prefix setup done")
-        flushLog()
-
-        let driveCPath = containerPath + "/drive_c"
-        let gameDir = driveCPath + "/games/\(container.name)"
-        let gameExeInDriveC = gameDir + "/" + (container.executablePath as NSString).lastPathComponent
-
-        if !fm.fileExists(atPath: gameDir) {
-            try? fm.createDirectory(atPath: gameDir, withIntermediateDirectories: true)
-        }
-
-        let sourceExe = container.executablePath
-        if fm.fileExists(atPath: sourceExe) && !fm.fileExists(atPath: gameExeInDriveC) {
-            try? fm.copyItem(atPath: sourceExe, toPath: gameExeInDriveC)
-        }
-
-        let finalExePath: String
-        if fm.fileExists(atPath: gameExeInDriveC) {
-            finalExePath = "C:\\games\\\(container.name)\\\((container.executablePath as NSString).lastPathComponent)"
-        } else {
-            finalExePath = container.executablePath
-        }
-        logMsg("finalExePath: \(finalExePath)")
-
         jitManager.enableJIT()
         logMsg("JIT enabled: \(jitManager.isJITEnabled)")
         flushLog()
+        Box64Bridge.writeDiag("launchGame_jit_done method=\(jitManager.jitMethod.rawValue)")
 
         let capturedContainer = container
         DispatchQueue.global(qos: .userInitiated).async {
+            Box64Bridge.writeDiag("launchGame_bg_start")
+
+            guard fm.fileExists(atPath: box64Path) else {
+                Box64Bridge.writeDiag("launchGame_bg_box64_missing")
+                DispatchQueue.main.async {
+                    self.errorMessage = "Box64 binary not found at:\n\(box64Path)\n\nPlease restart the app to extract bundled binaries."
+                    self.showError = true
+                    self.stopPrepWatch()
+                    self.isPreparing = false
+                    self.isRunning = false
+                }
+                flushLog()
+                return
+            }
+            guard fm.fileExists(atPath: wine64Path) else {
+                Box64Bridge.writeDiag("launchGame_bg_wine_missing")
+                DispatchQueue.main.async {
+                    self.errorMessage = "Wine binary not found at:\n\(wine64Path)\n\nPlease restart the app to extract bundled binaries."
+                    self.showError = true
+                    self.stopPrepWatch()
+                    self.isPreparing = false
+                    self.isRunning = false
+                }
+                flushLog()
+                return
+            }
+
+            WinePrefixManager.shared.setupDXVKForContainer(containerPath)
+            WinePrefixManager.shared.setupVKD3DForContainer(containerPath)
+            WinePrefixManager.shared.setupContainerRegistry(containerPath)
+            logMsg("Wine prefix setup done")
+            Box64Bridge.writeDiag("launchGame_prefix_setup_done")
+
+            let driveCPath = containerPath + "/drive_c"
+            let gameDir = driveCPath + "/games/\(capturedContainer.name)"
+            let gameExeInDriveC = gameDir + "/" + (capturedContainer.executablePath as NSString).lastPathComponent
+
+            if !fm.fileExists(atPath: gameDir) {
+                try? fm.createDirectory(atPath: gameDir, withIntermediateDirectories: true)
+            }
+
+            let sourceExe = capturedContainer.executablePath
+            if fm.fileExists(atPath: sourceExe) && !fm.fileExists(atPath: gameExeInDriveC) {
+                try? fm.copyItem(atPath: sourceExe, toPath: gameExeInDriveC)
+            }
+            Box64Bridge.writeDiag("launchGame_exe_copy_done")
+
+            let finalExePath: String
+            if fm.fileExists(atPath: gameExeInDriveC) {
+                finalExePath = "C:\\games\\\(capturedContainer.name)\\\((capturedContainer.executablePath as NSString).lastPathComponent)"
+            } else {
+                finalExePath = capturedContainer.executablePath
+            }
+            logMsg("finalExePath: \(finalExePath)")
+            Box64Bridge.writeDiag("launchGame_finalExePath=\(finalExePath)")
+
             logMsg("Calling Box64Bridge.shared.launchWine()...")
             flushLog()
+            Box64Bridge.writeDiag("launchGame_bg_calling_launchWine")
             let launchResult = Box64Bridge.shared.launchWine(
                 wine64Path: wine64Path,
                 executablePath: finalExePath,
                 containerPath: containerPath,
                 environment: capturedContainer.environment
             )
+            Box64Bridge.writeDiag("launchGame_bg_launchWine_returned wineLaunched=\(launchResult.wineLaunched)")
 
             DispatchQueue.main.async {
                 if launchResult.wineLaunched {

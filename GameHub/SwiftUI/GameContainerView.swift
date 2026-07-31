@@ -31,6 +31,7 @@ struct GameContainerView: View {
     @State private var prepLogTail: String = ""
     @State private var lastLogMtime: TimeInterval = 0
     @State private var showStuckWarning = false
+    @State private var prepStartTime: Date = Date()
 
     var body: some View {
         GeometryReader { geo in
@@ -564,11 +565,12 @@ struct GameContainerView: View {
     private func startPrepWatch() {
         prepWatchTimer?.invalidate()
         prepElapsed = 0
+        prepStartTime = Date()
         lastLogMtime = 0
         showStuckWarning = false
         refreshRunnerLog()
-        prepWatchTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
-            prepElapsed += 2
+        prepWatchTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            prepElapsed = Int(Date().timeIntervalSince(prepStartTime))
             if displayRenderer.hasFirstFrame {
                 stopPrepWatch()
                 isPreparing = false
@@ -758,8 +760,9 @@ struct GameContainerView: View {
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
                 ?? URL(fileURLWithPath: NSTemporaryDirectory())
             let wineLog = docs.appendingPathComponent("Wine/box64_runner.log").path
+            let wineLogAlt = docs.appendingPathComponent("Wine/Documents/box64_runner.log").path
             let logFiles = [
-                wineLog, "launch.log", "swift_box64.log", "box64_runner.log"
+                wineLog, wineLogAlt, "launch.log", "swift_box64.log", "box64_runner.log"
             ]
             for name in logFiles {
                 autoreleasepool {
@@ -805,7 +808,7 @@ struct MetalGameView: UIViewRepresentable {
         let v = MTKView(frame: .zero, device: device)
         v.preferredFramesPerSecond = 60
         v.enableSetNeedsDisplay = false
-        v.isPaused = false
+        v.isPaused = true
         v.colorPixelFormat = .bgra8Unorm
         v.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         v.delegate = context.coordinator
@@ -813,6 +816,9 @@ struct MetalGameView: UIViewRepresentable {
     }
     func updateUIView(_ uiView: MTKView, context: Context) {
         context.coordinator.updateTexture(from: renderer)
+        if renderer.hasFirstFrame && uiView.isPaused {
+            uiView.isPaused = false
+        }
     }
     func makeCoordinator() -> MetalGameCoordinator { MetalGameCoordinator(device: renderer.device) }
 }

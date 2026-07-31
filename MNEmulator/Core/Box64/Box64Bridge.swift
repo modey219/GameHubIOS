@@ -161,6 +161,11 @@ class Box64Bridge {
         Self.writeDiag("probe_magic=\(box64_probe_magic())")
         let homePath = NSHomeDirectory()
         Self.writeDiag("NSHomeDirectory=\(homePath)")
+        box64_set_probe_log_cb { msg in
+            if let msg = msg {
+                NSLog("[probe] %@", String(cString: msg))
+            }
+        }
         var probeBuf = [CChar](repeating: 0, count: 32768)
         probeBuf.withUnsafeMutableBufferPointer { bufPtr in
             docsPath.withCString { d in

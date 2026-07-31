@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/stat.h>
@@ -20,6 +21,19 @@ static char g_wine_error[1024] = {0};
 
 static char g_crash_log_path[1024] = {0};
 static char g_docs_path[1024] = {0};
+
+static box64_log_callback g_probe_log_cb = NULL;
+void box64_set_probe_log_cb(box64_log_callback cb) { g_probe_log_cb = cb; }
+
+static void plog(const char *fmt, ...) {
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (g_probe_log_cb) g_probe_log_cb(buf);
+    fprintf(stderr, "[probe] %s\n", buf);
+}
 
 static const char *g_signal_names[32] = {
     NULL, "SIGHUP", "SIGINT", "SIGQUIT", "SIGILL", "SIGTRAP",
@@ -405,6 +419,7 @@ static void probe_emit(char *out, size_t *used, size_t cap, const char *line) {
 
 static void probe_one(char *out, size_t *used, size_t cap, const char *label, const char *path) {
     char line[1400];
+    plog("probe_one[%s]: stat(%s)", label, path ? path : "(null)");
     if (!path || !path[0]) {
         snprintf(line, sizeof(line), "PROBE %s | (empty path)", label);
         probe_emit(out, used, cap, line);
@@ -414,18 +429,25 @@ static void probe_one(char *out, size_t *used, size_t cap, const char *label, co
     errno = 0;
     int st = stat(path, &s);
     int st_errno = errno;
+    plog("probe_one[%s]: stat done st=%d errno=%d", label, st, st_errno);
     char rp[1100];
+    plog("probe_one[%s]: realpath(%s)", label, path);
     const char *rpstr = realpath(path, rp);
+    plog("probe_one[%s]: realpath done=%s", label, rpstr ? rpstr : "(null)");
     char access_kind[32] = "n/a";
     if (st == 0) {
         if (S_ISDIR(s.st_mode)) {
             char tp[1400];
             snprintf(tp, sizeof(tp), "%s/.__mn_probe", path);
+            plog("probe_one[%s]: open-write-test %s", label, tp);
             int fd = open(tp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            plog("probe_one[%s]: open done fd=%d errno=%d", label, fd, errno);
             if (fd >= 0) { close(fd); unlink(tp); strcpy(access_kind, "dir-writable"); }
             else { snprintf(access_kind, sizeof(access_kind), "dir-readonly(errno=%d)", errno); }
         } else if (S_ISREG(s.st_mode)) {
+            plog("probe_one[%s]: open-read %s", label, path);
             int fd = open(path, O_RDONLY);
+            plog("probe_one[%s]: open-read done fd=%d errno=%d", label, fd, errno);
             if (fd >= 0) { close(fd); strcpy(access_kind, "file-readable"); }
             else { snprintf(access_kind, sizeof(access_kind), "file-openfail(errno=%d)", errno); }
         } else {
@@ -436,6 +458,7 @@ static void probe_one(char *out, size_t *used, size_t cap, const char *label, co
              label, st == 0 ? "yes" : "no", st_errno, access_kind,
              rpstr ? rpstr : "(null)");
     probe_emit(out, used, cap, line);
+    plog("probe_one[%s]: done", label);
 }
 
 static void probe_walk_up(char *out, size_t *used, size_t cap, const char *path) {
@@ -444,12 +467,15 @@ static void probe_walk_up(char *out, size_t *used, size_t cap, const char *path)
     for (int i = 0; i < 14; i++) {
         struct stat s;
         errno = 0;
+        plog("walk_up[%d]: stat(%s)", i, cur);
         if (stat(cur, &s) == 0) {
             char line[1200];
             snprintf(line, sizeof(line), "WALK-UP level %d ACCESSIBLE: '%s'", i, cur);
             probe_emit(out, used, cap, line);
+            plog("walk_up[%d]: ACCESSIBLE", i);
             return;
         }
+        plog("walk_up[%d]: not found errno=%d", i, errno);
         char *slash = strrchr(cur, '/');
         if (!slash || slash == cur) return;
         *slash = 0;
@@ -470,10 +496,14 @@ static void probe_write_file(const char *base_path, const char *fname, const cha
     full[blen] = '/';
     memcpy(full + blen + 1, fname, flen);
     full[blen + 1 + flen] = '\0';
+    plog("write_file: open(%s)", full);
     int fd = open(full, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    plog("write_file: open done fd=%d errno=%d", fd, errno);
     if (fd >= 0) {
+        plog("write_file: write %zu bytes", strlen(content));
         write(fd, content, strlen(content));
         close(fd);
+        plog("write_file: closed");
     }
 }
 
@@ -481,28 +511,40 @@ static void probe_root(char *out, size_t *used, size_t cap, int idx, const char 
     char line[1600];
     struct stat s;
     errno = 0;
+    plog("probe_root[%d]: stat(%s)", idx, path ? path : "(null)");
     int st = stat(path, &s);
     int st_errno = errno;
+    plog("probe_root[%d]: stat done st=%d errno=%d", idx, st, st_errno);
     char rp[1300];
+    plog("probe_root[%d]: realpath(%s)", idx, path);
     const char *rpstr = realpath(path, rp);
+    plog("probe_root[%d]: realpath done=%s", idx, rpstr ? rpstr : "(null)");
     char acc[96] = "n/a";
     if (st == 0 && S_ISDIR(s.st_mode)) {
         char tp[1400];
         snprintf(tp, sizeof(tp), "%s/.wtest", path);
+        plog("probe_root[%d]: open-write %s", idx, tp);
         int fd = open(tp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        plog("probe_root[%d]: open done fd=%d errno=%d", idx, fd, errno);
         if (fd >= 0) { close(fd); unlink(tp); snprintf(acc, sizeof(acc), "DIR-WRITABLE"); }
         else { snprintf(acc, sizeof(acc), "DIR-readonly(errno=%d)", errno); }
     } else if (st == 0 && S_ISREG(s.st_mode)) {
+        plog("probe_root[%d]: open-read %s", idx, path);
         int fd = open(path, O_RDONLY);
+        plog("probe_root[%d]: open-read done fd=%d errno=%d", idx, fd, errno);
         if (fd >= 0) { close(fd); snprintf(acc, sizeof(acc), "FILE-readable"); }
         else { snprintf(acc, sizeof(acc), "FILE-openfail(errno=%d)", errno); }
     }
     snprintf(line, sizeof(line), "ROOT %d stat=%s(errno=%d) access=%s realpath=%s | '%s'",
              idx, st == 0 ? "yes" : "no", st_errno, acc, rpstr ? rpstr : "(null)", path);
     probe_emit(out, used, cap, line);
+    plog("probe_root[%d]: done", idx);
 }
 
 void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir, const char *home, char *out, size_t out_len) {
+    plog("box64_probe_paths ENTER docs=%s bundle=%s tmpdir=%s home=%s",
+         docs ? docs : "(null)", bundle ? bundle : "(null)",
+         tmpdir ? tmpdir : "(null)", home ? home : "(null)");
     if (!out || out_len < 64) return;
     out[0] = 0;
     size_t used = 0;
@@ -510,6 +552,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     probe_emit(out, &used, out_len, "==== box64_probe_paths v346 (weak-stubs) ====");
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
+    plog("env HOME=%s TMPDIR=%s", env_home ? env_home : "(null)", td ? td : "(null)");
 
     char l1[1400];
     snprintf(l1, sizeof(l1), "ARG docs=%s", docs ? docs : "(null)");
@@ -525,7 +568,9 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     snprintf(l1, sizeof(l1), "ENV TMPDIR=%s", td ? td : "(null)");
     probe_emit(out, &used, out_len, l1);
     char cwd_buf[1024];
+    plog("getcwd...");
     const char *cwd = getcwd(cwd_buf, sizeof(cwd_buf));
+    plog("getcwd=%s", cwd ? cwd : "(null)");
     snprintf(l1, sizeof(l1), "getcwd=%s", cwd ? cwd : "(null)");
     probe_emit(out, &used, out_len, l1);
 
@@ -544,10 +589,13 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     if (env_home && env_home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/..", env_home); cands[nc] = candb[nc]; nc++; }
 
     for (int i = 0; i < nc; i++) {
+        plog("candidate[%d]='%s'", i, cands[i]);
         probe_root(out, &used, out_len, i, cands[i]);
+        plog("candidate[%d] done", i);
     }
 
     /* Specific file checks */
+    plog("specific file checks start");
     if (docs && docs[0]) {
         char w64[1400], bx[1400];
         snprintf(w64, sizeof(w64), "%s/Wine/bin/wine64", docs);
@@ -573,8 +621,10 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
         probe_one(out, &used, out_len, "realdocs(td/../../Documents)", realdocs);
         probe_walk_up(out, &used, out_len, realdocs);
     }
+    plog("specific file checks done");
 
     /* File-write self-tests: append result, then flush buffer to each candidate file */
+    plog("file-write self-tests start");
     probe_emit(out, &used, out_len, "---- file-write self-tests ----");
     if (docs && docs[0]) {
         probe_emit(out, &used, out_len, "FILE-WRITE docs/box64_probe.log attempting...");
@@ -600,4 +650,5 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
         probe_emit(out, &used, out_len, "FILE-WRITE envHOME/box64_probe.log done (fd tried)");
     }
     probe_emit(out, &used, out_len, "==== box64_probe_paths END ====");
+    plog("box64_probe_paths END used=%zu", used);
 }

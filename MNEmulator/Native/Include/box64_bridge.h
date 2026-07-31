@@ -58,6 +58,7 @@ void install_crash_handler(const char *log_path);
 void set_c_diag_docs_path(const char *path);
 int box64_probe_magic(void);
 void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir, const char *home, char *out, size_t out_len);
+void box64_set_probe_log_cb(box64_log_callback cb);
 
 int box64_runner_start(const char *wine64_path, const char *game_exe, const char *prefix_path);
 int box64_runner_stop(void);

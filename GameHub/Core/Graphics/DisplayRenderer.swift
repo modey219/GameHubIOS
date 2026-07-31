@@ -12,6 +12,7 @@ class DisplayRenderer: NSObject, ObservableObject {
     @Published var fps: Double = 0
     @Published var isRendering = false
     @Published var resolution: CGSize = .zero
+    @Published var hasFirstFrame = false
 
     private var _currentTexture: MTLTexture?
     private var textureLock = NSLock()
@@ -142,6 +143,7 @@ class DisplayRenderer: NSObject, ObservableObject {
 
         DispatchQueue.main.async {
             self.resolution = CGSize(width: width, height: height)
+            self.hasFirstFrame = true
         }
     }
 }

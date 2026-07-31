@@ -30,12 +30,11 @@ struct GameLibraryView: View {
                 gameGrid
             }
         }
-        .sheet(isPresented: .init(get: { selectedGameID != nil }, set: { if !$0 { selectedGameID = nil } })) {
+        .overlay {
             if let game = selectedGame {
                 GameContainerView(container: game, onDismiss: { selectedGameID = nil })
+                    .transition(.opacity)
             }
-        }
-        .overlay {
             if showAddGame {
                 AddGameView(containerManager: containerManager, onDismiss: { showAddGame = false })
             }

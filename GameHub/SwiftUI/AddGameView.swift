@@ -66,10 +66,6 @@ struct AddGameView: View {
                             Label("Browse Files in App", systemImage: "folder")
                         }
                         .buttonStyle(.borderedProminent)
-                        Button(action: presentFilePicker) {
-                            Label("Open Files Picker (may not work)", systemImage: "doc.badge.plus")
-                        }
-                        .buttonStyle(.bordered)
                     }
 
                     if showDocBrowser {
@@ -146,65 +142,6 @@ struct AddGameView: View {
                 didInitialScan = true
                 scanDocuments()
             }
-        }
-    }
-
-    private func presentFilePicker() {
-        DocumentPickerPresenter.present(
-            types: [.data, .folder],
-            allowsMultiple: true,
-            onPick: { [self] urls in
-                self.handlePickedURLs(urls)
-            }
-        )
-    }
-
-    private func handlePickedURLs(_ urls: [URL]) {
-        guard !urls.isEmpty else { return }
-        isImporting = true
-        errorMessage = nil
-
-        let fm = FileManager.default
-        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            errorMessage = "Cannot access Documents directory"
-            isImporting = false
-            return
-        }
-
-        let stagingBase = docs.appendingPathComponent("Staging")
-        try? fm.createDirectory(at: stagingBase, withIntermediateDirectories: true)
-        let stagingDir = stagingBase.appendingPathComponent(UUID().uuidString)
-        try? fm.createDirectory(at: stagingDir, withIntermediateDirectories: true)
-
-        var copied: [URL] = []
-        var copyError: String?
-
-        for url in urls {
-            let access = url.startAccessingSecurityScopedResource()
-            defer { if access { url.stopAccessingSecurityScopedResource() } }
-            let dest = stagingDir.appendingPathComponent(url.lastPathComponent)
-            do {
-                try fm.copyItem(at: url, to: dest)
-                copied.append(dest)
-                NSLog("[MNEmulator] staged \(url.lastPathComponent) -> \(dest.path)")
-            } catch {
-                NSLog("[MNEmulator] copy failed for \(url.lastPathComponent): \(error)")
-                copyError = copyError == nil
-                    ? "Couldn't copy '\(url.lastPathComponent)': \(error.localizedDescription)"
-                    : "\(copyError!)\nCouldn't copy '\(url.lastPathComponent)': \(error.localizedDescription)"
-            }
-        }
-
-        if let copyError {
-            errorMessage = copyError
-        }
-        selectedFiles = copied
-        isImporting = false
-
-        if let first = urls.first, copied.contains(where: { $0.lastPathComponent == first.lastPathComponent }) {
-            let name = first.deletingPathExtension().lastPathComponent
-            if gameName.isEmpty { gameName = name }
-            executablePath = "C:\\games\\\(safeFolderName)\\\(first.lastPathComponent)"
         }
     }
 

@@ -26,6 +26,11 @@ struct GameContainerView: View {
     @State private var logTimer: Timer?
     @State private var isPreparing = false
     @State private var preparingMessage = "Preparing..."
+    @State private var prepWatchTimer: Timer?
+    @State private var prepElapsed: Int = 0
+    @State private var prepLogTail: String = ""
+    @State private var lastLogMtime: TimeInterval = 0
+    @State private var showStuckWarning = false
 
     var body: some View {
         GeometryReader { geo in
@@ -337,19 +342,68 @@ struct GameContainerView: View {
     }
 
     private var preparingOverlay: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             ProgressView(value: setupManager.setupProgress)
                 .progressViewStyle(.linear)
-                .frame(width: 200)
+                .frame(width: 220)
             Text(setupManager.setupMessage.isEmpty ? preparingMessage : setupManager.setupMessage)
-                .font(.caption)
+                .font(.subheadline)
+                .fontWeight(.semibold)
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
+            Text("Elapsed: \(formatTime(TimeInterval(prepElapsed)))")
+                .font(.caption)
+                .foregroundColor(.orange)
+            if !prepLogTail.isEmpty {
+                ScrollView {
+                    Text(prepLogTail)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(Color.green.opacity(0.9))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(6)
+                }
+                .frame(maxHeight: 220)
+                .background(Color.black.opacity(0.6))
+                .cornerRadius(8)
+            }
+            Text("First launch initializes Wine — this can take several minutes. Keep the app open.")
+                .font(.caption2)
+                .foregroundColor(.gray)
+                .multilineTextAlignment(.center)
+            if showStuckWarning {
+                VStack(spacing: 8) {
+                    Text("⚠️ No Wine output for over 2 minutes. It may be stuck.")
+                        .font(.caption).bold()
+                        .foregroundColor(.orange)
+                        .multilineTextAlignment(.center)
+                    HStack(spacing: 12) {
+                        Button("Keep Waiting") { showStuckWarning = false }
+                            .buttonStyle(.bordered)
+                            .tint(.orange)
+                        Button("Exit") {
+                            showStuckWarning = false
+                            stopGame()
+                            onDismiss()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                    }
+                }
+                .padding(.top, 4)
+            } else {
+                Button("Continue in background") {
+                    stopPrepWatch()
+                    isPreparing = false
+                }
+                .font(.caption)
+                .buttonStyle(.borderless)
+                .tint(.blue)
+            }
         }
-        .padding(24)
+        .padding(20)
         .background(Color.black.opacity(0.85))
         .cornerRadius(16)
-        .padding(32)
+        .padding(24)
     }
 
     private var virtualController: some View {
@@ -475,13 +529,19 @@ struct GameContainerView: View {
         guard setupManager.isSetupComplete else {
             isPreparing = true
             preparingMessage = "Preparing..."
+            prepElapsed = 0
+            startPrepWatch()
             setupManager.ensureReady { success, message in
-                isPreparing = false
                 if success {
-                    startGame()
+                    self.isRunning = true
+                    self.displayRenderer.startRendering()
+                    self.startTimeCounter()
+                    self.prepareAndLaunchGame()
                 } else {
-                    errorMessage = message
-                    showError = true
+                    self.isPreparing = false
+                    self.stopPrepWatch()
+                    self.errorMessage = message
+                    self.showError = true
                 }
             }
             return
@@ -490,7 +550,37 @@ struct GameContainerView: View {
         isRunning = true
         displayRenderer.startRendering()
         startTimeCounter()
+        prepareAndLaunchGame()
+    }
+
+    private func prepareAndLaunchGame() {
+        isPreparing = true
+        preparingMessage = "Starting Wine (first launch initializes prefix)..."
+        prepElapsed = 0
+        startPrepWatch()
         launchGame()
+    }
+
+    private func startPrepWatch() {
+        prepWatchTimer?.invalidate()
+        prepElapsed = 0
+        lastLogMtime = 0
+        showStuckWarning = false
+        refreshRunnerLog()
+        prepWatchTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+            prepElapsed += 2
+            if displayRenderer.hasFirstFrame {
+                stopPrepWatch()
+                isPreparing = false
+                return
+            }
+            refreshRunnerLog()
+        }
+    }
+
+    private func stopPrepWatch() {
+        prepWatchTimer?.invalidate()
+        prepWatchTimer = nil
     }
 
     private func stopGame() {
@@ -501,6 +591,7 @@ struct GameContainerView: View {
         timer = nil
         logTimer?.invalidate()
         logTimer = nil
+        stopPrepWatch()
         UnixSocketBridge.shared.stopServer()
         AudioBridge.shared.stopAudio()
         Box64Bridge.shared.stopWine()
@@ -616,9 +707,13 @@ struct GameContainerView: View {
                     self.isRunning = true
                     UnixSocketBridge.shared.startServer()
                     AudioBridge.shared.startAudioServer()
+                    self.stopPrepWatch()
+                    self.isPreparing = false
                 } else {
                     let detail = launchResult.error ?? "Unknown error"
                     logMsg("launchWine FAILED: \(detail)")
+                    self.stopPrepWatch()
+                    self.isPreparing = false
                     self.errorMessage = detail
                     self.showError = true
                     self.isRunning = false
@@ -662,22 +757,43 @@ struct GameContainerView: View {
             var parts: [String] = []
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
                 ?? URL(fileURLWithPath: NSTemporaryDirectory())
+            let wineLog = docs.appendingPathComponent("Wine/box64_runner.log").path
             let logFiles = [
-                "launch.log", "swift_box64.log", "box64_runner.log"
+                wineLog, "launch.log", "swift_box64.log", "box64_runner.log"
             ]
             for name in logFiles {
                 autoreleasepool {
-                    let path = docs.appendingPathComponent(name).path
+                    let path = (name.hasPrefix(docs.path)) ? name
+                        : docs.appendingPathComponent(name).path
                     if let data = FileManager.default.contents(atPath: path),
                        let content = String(data: data, encoding: .utf8), !content.isEmpty {
                         let lines = content.components(separatedBy: "\n")
                         let trimmed = lines.count > 100 ? Array(lines.suffix(100)) : lines
-                        parts.append("=== \(name) ===\n\(trimmed.joined(separator: "\n"))")
+                        let label = (path as NSString).lastPathComponent
+                        parts.append("=== \(label) ===\n\(trimmed.joined(separator: "\n"))")
                     }
                 }
             }
             let output = parts.isEmpty ? "No logs found. Run a game first." : parts.joined(separator: "\n\n")
-            DispatchQueue.main.async { self.wineOutput = output }
+            let wineLogPath = docs.appendingPathComponent("Wine/box64_runner.log").path
+            let mtime = (try? FileManager.default.attributesOfItem(atPath: wineLogPath))?[.modificationDate] as? Date
+            let mtimeVal = mtime?.timeIntervalSince1970 ?? 0
+            DispatchQueue.main.async {
+                self.wineOutput = output
+                if self.isPreparing {
+                    self.prepLogTail = output
+                }
+                if self.isPreparing && mtimeVal > self.lastLogMtime {
+                    self.lastLogMtime = mtimeVal
+                    self.showStuckWarning = false
+                }
+                if self.isPreparing && self.prepElapsed >= 300 && self.showStuckWarning == false && self.lastLogMtime > 0 {
+                    let age = mtimeVal > 0 ? (Date().timeIntervalSince1970 - mtimeVal) : 0
+                    if age > 120 {
+                        self.showStuckWarning = true
+                    }
+                }
+            }
         }
     }
 }

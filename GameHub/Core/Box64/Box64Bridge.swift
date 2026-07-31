@@ -324,6 +324,7 @@ class Box64Bridge {
         }
 
         let candidates = [
+            docs.appendingPathComponent("Wine/box64_runner.log").path,
             docs.appendingPathComponent("launch.log").path,
             docs.appendingPathComponent("box64_runner.log").path,
             docs.appendingPathComponent("bridge.log").path,

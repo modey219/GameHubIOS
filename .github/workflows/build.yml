@@ -478,11 +478,13 @@ jobs:
           du -sh MNEmulator.ipa
 
       - name: Upload IPA Artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: MNEmulator-iOS
           path: build/MNEmulator.ipa
           retention-days: 30
+          compression-level: 0
 
       - name: Create GitHub Release
         if: success()

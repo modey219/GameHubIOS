@@ -44,7 +44,10 @@ private func writeDiag(_ s: String) {
 // hierarchy.
 @main
 struct GameHubApp: App {
-    init() { setupCrashHandler() }
+    init() {
+        setupCrashHandler()
+        Box64Bridge.writeDiag("APP_BUILD launch-all-off-main-341")
+    }
     @StateObject private var containerManager = ContainerManager()
     @StateObject private var jitManager = JITManager()
     @StateObject private var settingsManager = SettingsManager()

@@ -618,25 +618,6 @@ struct GameContainerView: View {
     private func launchGame() {
         PrepWatchdog.shared.setStage("launchGame_entered")
         Box64Bridge.writeDiag("launchGame_entered")
-        var log: [String] = []
-        func logMsg(_ msg: String) {
-            let ts = ISO8601DateFormatter().string(from: Date())
-            let line = "[\(ts)] \(msg)"
-            log.append(line)
-        }
-
-        func flushLog() {
-            let full = log.joined(separator: "\n")
-            let fm = FileManager.default
-            let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
-                ?? URL(fileURLWithPath: NSTemporaryDirectory())
-            let logPath = docs.appendingPathComponent("launch.log").path
-            let data = full.data(using: .utf8)
-            if let d = data {
-                fm.createFile(atPath: logPath, contents: d)
-            }
-            UserDefaults.standard.set(full, forKey: "last_launch_log")
-        }
 
         guard !container.executablePath.isEmpty else {
             PrepWatchdog.shared.stop()
@@ -649,38 +630,61 @@ struct GameContainerView: View {
         PrepWatchdog.shared.setStage("launchGame_guard_passed")
         Box64Bridge.writeDiag("launchGame_guard_passed exe=\(container.executablePath)")
 
-        logMsg("launchGame() called")
-        logMsg("executablePath: \(container.executablePath)")
-        logMsg("Box64Bridge initialized: \(Box64Bridge.shared.isSetupComplete)")
-        flushLog()
-        Box64Bridge.writeDiag("launchGame_logs_flushed")
-
-        PrepWatchdog.shared.setStage("launchGame_before_applySettings")
-        Box64Bridge.writeDiag("launchGame_before_applySettings")
-        settingsManager.applySettings()
-        PrepWatchdog.shared.setStage("launchGame_after_applySettings")
-        logMsg("Settings applied")
-        Box64Bridge.writeDiag("launchGame_settings_applied")
-
-        let fm = FileManager.default
-        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        let containerPath = docs.appendingPathComponent("Containers/\(container.id.uuidString)").path
-
-        let box64Path = docs.appendingPathComponent("Box64/box64").path
-        let wine64Path = docs.appendingPathComponent("Wine/bin/wine64").path
-
-        PrepWatchdog.shared.setStage("launchGame_before_jit")
-        Box64Bridge.writeDiag("launchGame_before_jit")
-        jitManager.enableJIT()
-        PrepWatchdog.shared.setStage("launchGame_after_jit")
-        logMsg("JIT enabled: \(jitManager.isJITEnabled)")
-        flushLog()
-        Box64Bridge.writeDiag("launchGame_jit_done method=\(jitManager.jitMethod.rawValue)")
-
         let capturedContainer = container
+        let capturedSettings = settingsManager
+        let capturedJIT = jitManager
+
         DispatchQueue.global(qos: .userInitiated).async {
-            Box64Bridge.writeDiag("launchGame_bg_start")
+            var log: [String] = []
+            func logMsg(_ msg: String) {
+                let ts = ISO8601DateFormatter().string(from: Date())
+                let line = "[\(ts)] \(msg)"
+                log.append(line)
+            }
+
+            func flushLog() {
+                let full = log.joined(separator: "\n")
+                let fm = FileManager.default
+                let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+                    ?? URL(fileURLWithPath: NSTemporaryDirectory())
+                let logPath = docs.appendingPathComponent("launch.log").path
+                let data = full.data(using: .utf8)
+                if let d = data {
+                    fm.createFile(atPath: logPath, contents: d)
+                }
+                UserDefaults.standard.set(full, forKey: "last_launch_log")
+            }
+
+            PrepWatchdog.shared.setStage("launchGame_bg_logs")
+            Box64Bridge.writeDiag("launchGame_bg_entered")
+            logMsg("launchGame() called")
+            logMsg("executablePath: \(capturedContainer.executablePath)")
+            logMsg("Box64Bridge initialized: \(Box64Bridge.shared.isSetupComplete)")
+            flushLog()
+            Box64Bridge.writeDiag("launchGame_bg_logs_flushed")
+
+            PrepWatchdog.shared.setStage("launchGame_bg_applySettings")
+            Box64Bridge.writeDiag("launchGame_bg_before_applySettings")
+            capturedSettings.applySettings()
+            PrepWatchdog.shared.setStage("launchGame_bg_after_applySettings")
+            Box64Bridge.writeDiag("launchGame_bg_after_applySettings")
+            logMsg("Settings applied")
+
+            let fm = FileManager.default
+            let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSTemporaryDirectory())
+            let containerPath = docs.appendingPathComponent("Containers/\(capturedContainer.id.uuidString)").path
+
+            let box64Path = docs.appendingPathComponent("Box64/box64").path
+            let wine64Path = docs.appendingPathComponent("Wine/bin/wine64").path
+
+            PrepWatchdog.shared.setStage("launchGame_bg_jit")
+            Box64Bridge.writeDiag("launchGame_bg_before_jit")
+            capturedJIT.enableJIT()
+            PrepWatchdog.shared.setStage("launchGame_bg_after_jit")
+            Box64Bridge.writeDiag("launchGame_bg_after_jit method=\(capturedJIT.jitMethod.rawValue)")
+            logMsg("JIT enabled: \(capturedJIT.isJITEnabled)")
+            flushLog()
 
             guard fm.fileExists(atPath: box64Path) else {
                 Box64Bridge.writeDiag("launchGame_bg_box64_missing")

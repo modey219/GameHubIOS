@@ -1,12 +1,10 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct AddGameView: View {
     let containerManager: ContainerManager
     let onDismiss: () -> Void
     @State private var gameName = ""
     @State private var executablePath = ""
-    @State private var showFilePicker = false
     @State private var selectedFiles: [URL] = []
     @State private var isImporting = false
     @State private var isInstalling = false
@@ -61,7 +59,7 @@ struct AddGameView: View {
                     } else if isInstalling {
                         ProgressView("Installing game...")
                     } else {
-                        Button(action: { showFilePicker = true }) {
+                        Button(action: presentFilePicker) {
                             Label("Select Game Files", systemImage: "doc.badge.plus")
                         }
                     }
@@ -96,13 +94,20 @@ struct AddGameView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
-        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.data, .folder], allowsMultipleSelection: true) { result in
-            handleFilePicker(result)
-        }
     }
 
-    private func handleFilePicker(_ result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, !urls.isEmpty else { return }
+    private func presentFilePicker() {
+        DocumentPickerPresenter.present(
+            types: [.data, .folder],
+            allowsMultiple: true,
+            onPick: { [self] urls in
+                self.handlePickedURLs(urls)
+            }
+        )
+    }
+
+    private func handlePickedURLs(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
         isImporting = true
         errorMessage = nil
 

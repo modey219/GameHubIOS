@@ -53,6 +53,8 @@ struct GameLibraryView: View {
             Spacer()
             Text("Game Library").font(.headline)
             Spacer()
+            Text("\(containerManager.containers.count)").font(.caption).bold()
+                .padding(6).background(Color.orange).cornerRadius(8)
             HStack(spacing: 20) {
                 Button(action: { withAnimation { showSearch.toggle() } }) {
                     Image(systemName: "magnifyingglass")

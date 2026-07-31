@@ -507,7 +507,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     out[0] = 0;
     size_t used = 0;
 
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v345 ====");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v346 (weak-stubs) ====");
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
 

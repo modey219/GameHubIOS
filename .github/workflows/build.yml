@@ -204,7 +204,9 @@ jobs:
                   while IFS= read -r sym; do
                       [ -z "$sym" ] && continue
                       # Don't skip underscore symbols — __libc_* etc. are real refs
-                      echo "void $sym(void) {}"
+                      # WEAK stubs: libc symbols (open/stat/write/...) must resolve to
+                      # the real libSystem definitions, not these empty stubs.
+                      echo "__attribute__((weak)) void $sym(void) {}"
                   done < /tmp/missing_syms_final.txt
               } > auto_stubs.c
               
@@ -229,7 +231,7 @@ jobs:
                       echo '// Auto-generated stubs (deduplicated)'
                       while IFS= read -r sym; do
                           [ -z "$sym" ] && continue
-                          echo "void $sym(void) {}"
+                          echo "__attribute__((weak)) void $sym(void) {}"
                       done < <(comm -23 <(echo "$STUB_DEFS") <(echo "$OBJ_DEFS"))
                   } > auto_stubs_dedup.c
                   $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \

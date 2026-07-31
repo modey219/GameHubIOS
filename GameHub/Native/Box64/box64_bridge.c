@@ -456,50 +456,148 @@ static void probe_walk_up(char *out, size_t *used, size_t cap, const char *path)
     }
 }
 
-void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir, char *out, size_t out_len) {
+int box64_probe_magic(void) {
+    return 0xB0C0;
+}
+
+static void probe_write_file(const char *base_path, const char *fname, const char *content) {
+    char full[1100];
+    if (!base_path || !base_path[0] || !content) return;
+    size_t blen = strlen(base_path);
+    size_t flen = strlen(fname);
+    if (blen + flen + 2 > sizeof(full)) return;
+    memcpy(full, base_path, blen);
+    full[blen] = '/';
+    memcpy(full + blen + 1, fname, flen);
+    full[blen + 1 + flen] = '\0';
+    int fd = open(full, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) {
+        write(fd, content, strlen(content));
+        close(fd);
+    }
+}
+
+static void probe_root(char *out, size_t *used, size_t cap, int idx, const char *path) {
+    char line[1600];
+    struct stat s;
+    errno = 0;
+    int st = stat(path, &s);
+    int st_errno = errno;
+    char rp[1300];
+    const char *rpstr = realpath(path, rp);
+    char acc[96] = "n/a";
+    if (st == 0 && S_ISDIR(s.st_mode)) {
+        char tp[1400];
+        snprintf(tp, sizeof(tp), "%s/.wtest", path);
+        int fd = open(tp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd >= 0) { close(fd); unlink(tp); snprintf(acc, sizeof(acc), "DIR-WRITABLE"); }
+        else { snprintf(acc, sizeof(acc), "DIR-readonly(errno=%d)", errno); }
+    } else if (st == 0 && S_ISREG(s.st_mode)) {
+        int fd = open(path, O_RDONLY);
+        if (fd >= 0) { close(fd); snprintf(acc, sizeof(acc), "FILE-readable"); }
+        else { snprintf(acc, sizeof(acc), "FILE-openfail(errno=%d)", errno); }
+    }
+    snprintf(line, sizeof(line), "ROOT %d stat=%s(errno=%d) access=%s realpath=%s | '%s'",
+             idx, st == 0 ? "yes" : "no", st_errno, acc, rpstr ? rpstr : "(null)", path);
+    probe_emit(out, used, cap, line);
+}
+
+void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir, const char *home, char *out, size_t out_len) {
     if (!out || out_len < 64) return;
     out[0] = 0;
     size_t used = 0;
 
-    probe_emit(out, &used, out_len, "==== box64_probe_paths ====");
-    const char *home = getenv("HOME");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v345 ====");
+    const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
 
-    char l1[1200];
-    snprintf(l1, sizeof(l1), "HOME=%s", home ? home : "(null)");
+    char l1[1400];
+    snprintf(l1, sizeof(l1), "ARG docs=%s", docs ? docs : "(null)");
     probe_emit(out, &used, out_len, l1);
-    snprintf(l1, sizeof(l1), "TMPDIR=%s", td ? td : "(null)");
+    snprintf(l1, sizeof(l1), "ARG bundle=%s", bundle ? bundle : "(null)");
+    probe_emit(out, &used, out_len, l1);
+    snprintf(l1, sizeof(l1), "ARG tmpdir=%s", tmpdir ? tmpdir : "(null)");
+    probe_emit(out, &used, out_len, l1);
+    snprintf(l1, sizeof(l1), "ARG home=%s", home ? home : "(null)");
+    probe_emit(out, &used, out_len, l1);
+    snprintf(l1, sizeof(l1), "ENV HOME=%s", env_home ? env_home : "(null)");
+    probe_emit(out, &used, out_len, l1);
+    snprintf(l1, sizeof(l1), "ENV TMPDIR=%s", td ? td : "(null)");
     probe_emit(out, &used, out_len, l1);
     char cwd_buf[1024];
     const char *cwd = getcwd(cwd_buf, sizeof(cwd_buf));
     snprintf(l1, sizeof(l1), "getcwd=%s", cwd ? cwd : "(null)");
     probe_emit(out, &used, out_len, l1);
 
-    probe_one(out, &used, out_len, "docs", docs ? docs : "");
+    /* Candidate POSIX-accessible roots: stat + write test on each */
+    char candb[12][1300];
+    const char *cands[12];
+    int nc = 0;
+    if (docs && docs[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", docs); cands[nc] = candb[nc]; nc++; }
+    if (tmpdir && tmpdir[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", tmpdir); cands[nc] = candb[nc]; nc++; }
+    if (home && home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", home); cands[nc] = candb[nc]; nc++; }
+    if (tmpdir && tmpdir[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/../..", tmpdir); cands[nc] = candb[nc]; nc++; }
+    snprintf(candb[nc], sizeof(candb[nc]), "/tmp"); cands[nc] = candb[nc]; nc++;
+    if (env_home && env_home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", env_home); cands[nc] = candb[nc]; nc++; }
+    if (bundle && bundle[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", bundle); cands[nc] = candb[nc]; nc++; }
+    if (home && home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/Documents", home); cands[nc] = candb[nc]; nc++; }
+    if (env_home && env_home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/..", env_home); cands[nc] = candb[nc]; nc++; }
+
+    for (int i = 0; i < nc; i++) {
+        probe_root(out, &used, out_len, i, cands[i]);
+    }
+
+    /* Specific file checks */
     if (docs && docs[0]) {
-        char w64[1200], bx[1200], docsTmp[1200];
+        char w64[1400], bx[1400];
         snprintf(w64, sizeof(w64), "%s/Wine/bin/wine64", docs);
         snprintf(bx, sizeof(bx), "%s/Box64/box64", docs);
-        snprintf(docsTmp, sizeof(docsTmp), "%s", docs);
         probe_one(out, &used, out_len, "docs/Wine/bin/wine64", w64);
         probe_one(out, &used, out_len, "docs/Box64/box64", bx);
         probe_walk_up(out, &used, out_len, w64);
-        probe_walk_up(out, &used, out_len, docsTmp);
+        probe_walk_up(out, &used, out_len, docs);
     }
-    probe_one(out, &used, out_len, "bundle", bundle ? bundle : "");
     if (bundle && bundle[0]) {
-        char bw[1200];
+        char bw[1400];
         snprintf(bw, sizeof(bw), "%s/BundledBinaries/Wine", bundle);
         probe_one(out, &used, out_len, "bundle/BundledBinaries/Wine", bw);
     }
-    probe_one(out, &used, out_len, "TMPDIR-arg", tmpdir ? tmpdir : "");
-    probe_one(out, &used, out_len, "/tmp", "/tmp");
-    probe_one(out, &used, out_len, "HOME", home ? home : "");
-
+    if (home && home[0]) {
+        char hw[1400];
+        snprintf(hw, sizeof(hw), "%s/Documents/Wine/bin/wine64", home);
+        probe_one(out, &used, out_len, "home/Documents/Wine/bin/wine64", hw);
+    }
     if (td && td[0]) {
-        char realdocs[1200];
+        char realdocs[1400];
         snprintf(realdocs, sizeof(realdocs), "%s/../../Documents", td);
         probe_one(out, &used, out_len, "realdocs(td/../../Documents)", realdocs);
         probe_walk_up(out, &used, out_len, realdocs);
     }
+
+    /* File-write self-tests: append result, then flush buffer to each candidate file */
+    probe_emit(out, &used, out_len, "---- file-write self-tests ----");
+    if (docs && docs[0]) {
+        probe_emit(out, &used, out_len, "FILE-WRITE docs/box64_probe.log attempting...");
+        probe_write_file(docs, "box64_probe.log", out);
+        probe_emit(out, &used, out_len, "FILE-WRITE docs/box64_probe.log done (fd tried)");
+    }
+    if (tmpdir && tmpdir[0]) {
+        probe_emit(out, &used, out_len, "FILE-WRITE tmpdir/box64_probe.log attempting...");
+        probe_write_file(tmpdir, "box64_probe.log", out);
+        probe_emit(out, &used, out_len, "FILE-WRITE tmpdir/box64_probe.log done (fd tried)");
+    }
+    probe_emit(out, &used, out_len, "FILE-WRITE /tmp/box64_probe.log attempting...");
+    probe_write_file("/tmp", "box64_probe.log", out);
+    probe_emit(out, &used, out_len, "FILE-WRITE /tmp/box64_probe.log done (fd tried)");
+    if (home && home[0]) {
+        probe_emit(out, &used, out_len, "FILE-WRITE home/box64_probe.log attempting...");
+        probe_write_file(home, "box64_probe.log", out);
+        probe_emit(out, &used, out_len, "FILE-WRITE home/box64_probe.log done (fd tried)");
+    }
+    if (env_home && env_home[0]) {
+        probe_emit(out, &used, out_len, "FILE-WRITE envHOME/box64_probe.log attempting...");
+        probe_write_file(env_home, "box64_probe.log", out);
+        probe_emit(out, &used, out_len, "FILE-WRITE envHOME/box64_probe.log done (fd tried)");
+    }
+    probe_emit(out, &used, out_len, "==== box64_probe_paths END ====");
 }

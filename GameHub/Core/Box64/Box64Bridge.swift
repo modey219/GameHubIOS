@@ -158,17 +158,37 @@ class Box64Bridge {
 
         Self.writeDiag("step1: calloc")
         Self.writeDiag("c_diag_test_exists=\(FileManager.default.fileExists(atPath: docsPath + "/c_diag_test.txt"))")
-        var probeBuf = [CChar](repeating: 0, count: 8192)
+        Self.writeDiag("probe_magic=\(box64_probe_magic())")
+        let homePath = NSHomeDirectory()
+        Self.writeDiag("NSHomeDirectory=\(homePath)")
+        var probeBuf = [CChar](repeating: 0, count: 32768)
         probeBuf.withUnsafeMutableBufferPointer { bufPtr in
             docsPath.withCString { d in
                 Bundle.main.bundlePath.withCString { b in
                     NSTemporaryDirectory().withCString { t in
-                        box64_probe_paths(d, b, t, bufPtr.baseAddress, 8192)
+                        homePath.withCString { h in
+                            box64_probe_paths(d, b, t, h, bufPtr.baseAddress, 32768)
+                        }
                     }
                 }
             }
         }
-        Self.writeDiag("PROBE RESULT:\n\(String(cString: probeBuf))")
+        let probeText = String(cString: probeBuf)
+        Self.writeDiag("PROBE RESULT (buffer \(probeText.count) chars):\n\(probeText)")
+        let probeFiles = [
+            ("docs", docsPath + "/box64_probe.log"),
+            ("tmpdir", NSTemporaryDirectory() + "/box64_probe.log"),
+            ("/tmp", "/tmp/box64_probe.log"),
+            ("home", homePath + "/box64_probe.log"),
+        ]
+        for (label, path) in probeFiles {
+            if let data = FileManager.default.contents(atPath: path),
+               let content = String(data: data, encoding: .utf8), !content.isEmpty {
+                Self.writeDiag("PROBE FILE [\(label)] \(path):\n\(content)")
+            } else {
+                Self.writeDiag("PROBE FILE [\(label)] \(path): (missing)")
+            }
+        }
         let localCtx = autoreleasepool { () -> UnsafeMutablePointer<box64_context_t>? in
             box64_create_step1()
         }

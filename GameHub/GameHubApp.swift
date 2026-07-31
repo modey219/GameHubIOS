@@ -46,7 +46,7 @@ private func writeDiag(_ s: String) {
 struct GameHubApp: App {
     init() {
         setupCrashHandler()
-        Box64Bridge.writeDiag("APP_BUILD probe-paths-344")
+        Box64Bridge.writeDiag("APP_BUILD probe-paths-345")
     }
     @StateObject private var containerManager = ContainerManager()
     @StateObject private var jitManager = JITManager()

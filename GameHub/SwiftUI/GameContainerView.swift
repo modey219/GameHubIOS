@@ -637,29 +637,33 @@ struct GameContainerView: View {
         DispatchQueue.global(qos: .userInitiated).async {
             var log: [String] = []
             func logMsg(_ msg: String) {
-                let ts = ISO8601DateFormatter().string(from: Date())
-                let line = "[\(ts)] \(msg)"
+                let line = "[\(Date().timeIntervalSince1970)] \(msg)"
                 log.append(line)
+                if let p = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
+                    let path = p + "/launch.log"
+                    let data = (line + "\n").data(using: .utf8)!
+                    if let fh = FileHandle(forWritingAtPath: path) {
+                        fh.seekToEndOfFile()
+                        fh.write(data)
+                        fh.closeFile()
+                    } else {
+                        try? data.write(to: URL(fileURLWithPath: path))
+                    }
+                }
             }
 
             func flushLog() {
-                let full = log.joined(separator: "\n")
-                let fm = FileManager.default
-                let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
-                    ?? URL(fileURLWithPath: NSTemporaryDirectory())
-                let logPath = docs.appendingPathComponent("launch.log").path
-                let data = full.data(using: .utf8)
-                if let d = data {
-                    fm.createFile(atPath: logPath, contents: d)
-                }
-                UserDefaults.standard.set(full, forKey: "last_launch_log")
             }
 
             PrepWatchdog.shared.setStage("launchGame_bg_logs")
             Box64Bridge.writeDiag("launchGame_bg_entered")
+            Box64Bridge.writeDiag("launchGame_bg_log1")
             logMsg("launchGame() called")
+            Box64Bridge.writeDiag("launchGame_bg_log2")
             logMsg("executablePath: \(capturedContainer.executablePath)")
-            logMsg("Box64Bridge initialized: \(Box64Bridge.shared.isSetupComplete)")
+            Box64Bridge.writeDiag("launchGame_bg_log3")
+            logMsg("container id: \(capturedContainer.id.uuidString)")
+            Box64Bridge.writeDiag("launchGame_bg_flush")
             flushLog()
             Box64Bridge.writeDiag("launchGame_bg_logs_flushed")
 

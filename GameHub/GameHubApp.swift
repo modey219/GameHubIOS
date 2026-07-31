@@ -46,7 +46,7 @@ private func writeDiag(_ s: String) {
 struct GameHubApp: App {
     init() {
         setupCrashHandler()
-        Box64Bridge.writeDiag("APP_BUILD launch-all-off-main-341")
+        Box64Bridge.writeDiag("APP_BUILD launch-cdiag-343")
     }
     @StateObject private var containerManager = ContainerManager()
     @StateObject private var jitManager = JITManager()

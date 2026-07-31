@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <setjmp.h>
+#include <errno.h>
 
 extern char **environ;
 
@@ -112,6 +113,8 @@ static void *wine_thread_func(void *arg) {
     g_runner_exit_code = 0;
     g_runner_error[0] = 0;
 
+    runner_log("[Runner] wine_thread_func ENTERED (thread started)");
+
     signal(SIGSEGV, signal_handler);
     signal(SIGBUS, signal_handler);
     signal(SIGABRT, signal_handler);
@@ -188,6 +191,10 @@ static void *wine_thread_func(void *arg) {
 
 int box64_runner_start(const char *wine64_path, const char *game_exe, const char *prefix_path) {
     if (g_runner_running) {
+        pthread_mutex_lock(&g_runner_lock);
+        snprintf(g_runner_error, sizeof(g_runner_error),
+                 "runner already running (g_runner_running=1)");
+        pthread_mutex_unlock(&g_runner_lock);
         return -1;
     }
 
@@ -224,6 +231,7 @@ int box64_runner_start(const char *wine64_path, const char *game_exe, const char
         snprintf(g_runner_error, sizeof(g_runner_error),
                  "Failed to create runner thread: %d", ret);
         pthread_mutex_unlock(&g_runner_lock);
+        runner_log("[Runner] pthread_create FAILED ret=%d errno=%d", ret, errno);
         g_runner_running = 0;
         free(args->wine64_path); free(args->game_exe); free(args->prefix_path);
         free(args);

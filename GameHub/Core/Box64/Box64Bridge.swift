@@ -157,6 +157,7 @@ class Box64Bridge {
         Self.writeDiag("CRASH_LOG=\(docsPath)/crash.log")
 
         Self.writeDiag("step1: calloc")
+        Self.writeDiag("c_diag_test_exists=\(FileManager.default.fileExists(atPath: docsPath + "/c_diag_test.txt"))")
         let localCtx = autoreleasepool { () -> UnsafeMutablePointer<box64_context_t>? in
             box64_create_step1()
         }
@@ -276,7 +277,7 @@ class Box64Bridge {
         Self.log("calling box64_launch_wine(), memory = \(Self.memoryUsageMB())MB...")
         Self.writeDiag("box64_launch_enter")
         let rc: Int32 = autoreleasepool { box64_launch_wine(ctx, executablePath, nil) }
-        Self.writeDiag("box64_launch_exit rc=\(rc)")
+        Self.writeDiag("box64_launch_exit rc=\(rc) errno=\(errno)")
         Self.log("box64_launch_wine returned \(rc), memory = \(Self.memoryUsageMB())MB")
         if rc != 0 {
             let cError = box64_get_wine_error()
@@ -286,11 +287,7 @@ class Box64Bridge {
             result.error = "Failed to launch Box64+Wine (error \(rc)):\n\(errStr)\n\n" +
                 "Binary: \(wine64Path)\n" +
                 "Exe: \(executablePath)\n\n" +
-                "iOS cannot execute unsigned binaries from the Documents folder.\n" +
-                "Possible fixes:\n" +
-                "1. Jailbreak your device (JIT enabled)\n" +
-                "2. Use TrollStore for unsigned execution\n" +
-                "3. Enable JIT via StikDebug first"
+                "Box64 could not launch Wine. Check the error above for the exact cause."
             return result
         }
 

@@ -261,8 +261,16 @@ int box64_set_game(box64_context_t *ctx, const char *game_exe) {
 }
 
 int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_envp) {
-    if (!ctx || !ctx->initialized) { bridge_log("[Bridge] box64_launch_wine: not initialized"); return -1; }
     g_wine_error[0] = 0;
+    if (!ctx) {
+        snprintf(g_wine_error, sizeof(g_wine_error), "box64_launch_wine: ctx is NULL");
+        return -10;
+    }
+    if (!ctx->initialized) {
+        snprintf(g_wine_error, sizeof(g_wine_error),
+                 "box64_launch_wine: ctx NOT initialized (rc=-11)");
+        return -11;
+    }
     char buf[1024];
 
     snprintf(buf, sizeof(buf), "[Bridge] box64_launch_wine(exe=%s)", exe_path);
@@ -296,10 +304,10 @@ int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_e
         snprintf(wine_bin, sizeof(wine_bin), "%s/bin/wine64", ctx->wine_path);
         if (!file_exists(wine_bin)) {
             snprintf(g_wine_error, sizeof(g_wine_error),
-                     "Wine binary not found. Tried: '%s' and '%s'",
+                     "Wine binary not found. Tried: '%s' and '%s' (rc=-12)",
                      ctx->wine_path, wine_bin);
             fprintf(stderr, "[Box64] %s\n", g_wine_error);
-            return -1;
+            return -12;
         }
     }
 
@@ -318,10 +326,10 @@ int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_e
     bridge_log(buf);
     if (rc != 0) {
         snprintf(g_wine_error, sizeof(g_wine_error),
-                 "box64_runner_start failed (code %d)", rc);
+                 "box64_runner_start failed (code %d, errno=%d) (rc=-20)", rc, errno);
         ctx->running = 0;
         g_wine_running = 0;
-        return -1;
+        return -20;
     }
 
     bridge_log("[Bridge] box64_launch_wine: SUCCESS");

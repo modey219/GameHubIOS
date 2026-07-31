@@ -263,43 +263,17 @@ struct DebugView: View {
             return "FAIL: Binary not found"
         }
 
-        let attrs = try? fm.attributesOfItem(atPath: box64Path)
-        if let perm = attrs?[.posixPermissions] as? Int {
-            if perm & 0o111 == 0 {
-                try? fm.setAttributes([.posixPermissions: perm | 0o755], ofItemAtPath: box64Path)
-            }
+        guard let attrs = try? fm.attributesOfItem(atPath: box64Path),
+              let size = attrs[.size] as? NSNumber, size.intValue > 0 else {
+            return "FAIL: Cannot read binary attributes"
         }
 
-        let process = NativeProcess()
-        process.executableURL = URL(fileURLWithPath: box64Path)
-        process.arguments = ["--version"]
-
-        let pipe = iOSPipe()
-        let errPipe = iOSPipe()
-        process.standardOutput = pipe
-        process.standardError = errPipe
-
-        do {
-            try process.run()
-            let deadline = Date().addingTimeInterval(10)
-            while process.isRunning && Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.1)
-            }
-            if process.isRunning {
-                process.terminate()
-                return "TIMEOUT: process did not exit within 10s"
-            }
-            let output = pipe?.readOutput(timeout: 2) ?? ""
-            let errOutput = errPipe?.readOutput(timeout: 0.5) ?? ""
-            let combined = output + (errOutput.isEmpty ? "" : "\n\(errOutput)")
-            if process.terminationStatus == 0 {
-                return "OK: \(combined.prefix(100))"
-            } else {
-                return "EXIT \(process.terminationStatus): \(combined.prefix(100))"
-            }
-        } catch {
-            return "FAIL: \(error.localizedDescription.prefix(100))"
+        let perm = (attrs[.posixPermissions] as? Int) ?? 0
+        if perm & 0o111 == 0 {
+            try? fm.setAttributes([.posixPermissions: perm | 0o755], ofItemAtPath: box64Path)
         }
+
+        return "OK: \(size.intValue / 1024)KB, mode \(String(perm | 0o111, radix: 8))"
     }
 
     private func testWine() -> String {
@@ -325,8 +299,8 @@ struct DebugView: View {
 
     private func testLaunch() {
         isRunning = true
-        launchTestResult = "Launching box64..."
-        log("Testing box64 launch...")
+        launchTestResult = "Launching box64 in-process..."
+        log("Testing box64 launch (in-process)...")
 
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
@@ -343,49 +317,32 @@ struct DebugView: View {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let process = NativeProcess()
-            process.executableURL = URL(fileURLWithPath: box64Path)
-            process.arguments = ["--version"]
+            let semaphore = DispatchSemaphore(value: 0)
+            let work = DispatchWorkItem {
+                Box64Bridge.shared.initialize()
+                semaphore.signal()
+            }
+            DispatchQueue.global(qos: .userInitiated).async(execute: work)
 
-            let outPipe = iOSPipe()
-            let errPipe = iOSPipe()
-            process.standardOutput = outPipe
-            process.standardError = errPipe
+            let timedOut = semaphore.wait(timeout: .now() + 20) == .timedOut
 
-            do {
-                try process.run()
-                let deadline = Date().addingTimeInterval(10)
-                while process.isRunning && Date() < deadline {
-                    Thread.sleep(forTimeInterval: 0.1)
-                }
-                if process.isRunning {
-                    process.terminate()
-                    DispatchQueue.main.async {
-                        self.launchTestResult = "TIMEOUT: process did not exit within 10s"
-                        self.isRunning = false
+            DispatchQueue.main.async {
+                guard timedOut else {
+                    let setup = Box64Bridge.shared.isSetupComplete
+                    let status = Box64Bridge.shared.getEmulatorStatus()
+                    if setup {
+                        self.launchTestResult = "OK: box64 initialized in-process.\nStatus: \(status)"
+                        self.log("Launch test OK: \(status)")
+                    } else {
+                        self.launchTestResult = "FAIL: box64 init finished but binaries are incomplete.\nStatus: \(status)"
+                        self.log("Launch test FAIL: incomplete setup: \(status)")
                     }
+                    self.isRunning = false
                     return
                 }
-                let out = outPipe?.readOutput(timeout: 3) ?? ""
-                let err = errPipe?.readOutput(timeout: 1) ?? ""
-                let combined = (out + (err.isEmpty ? "" : "\n\(err)")).trimmingCharacters(in: .whitespacesAndNewlines)
-
-                DispatchQueue.main.async {
-                    if process.terminationStatus == 0 {
-                        self.launchTestResult = "OK (exit 0):\n\(combined.prefix(200))"
-                        self.log("Launch test OK: \(combined.prefix(80))")
-                    } else {
-                        self.launchTestResult = "FAIL (exit \(process.terminationStatus)):\n\(combined.prefix(200))"
-                        self.log("Launch test FAIL: \(combined.prefix(80))")
-                    }
-                    self.isRunning = false
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.launchTestResult = "FAIL: \(error.localizedDescription)"
-                    self.log("Launch test error: \(error.localizedDescription)")
-                    self.isRunning = false
-                }
+                self.launchTestResult = "TIMEOUT: box64 init did not finish within 20s"
+                self.log("Launch test TIMEOUT (box64 init blocked)")
+                self.isRunning = false
             }
         }
     }

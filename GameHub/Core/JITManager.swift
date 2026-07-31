@@ -221,14 +221,18 @@ class JITManager: ObservableObject {
     }
 
     private func checkTaskInfoJIT() -> Bool {
-        var info = task_dyld_info()
-        var count = mach_msg_type_number_t(MemoryLayout<task_dyld_info>.size) / 4
-        let result = withUnsafeMutablePointer(to: &info) { ptr in
-            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
-                task_info(mach_task_self_, task_flavor_t(TASK_DYLD_INFO), intPtr, &count)
-            }
+        // Standard iOS JIT check: mmap a page with MAP_JIT then try to make it
+        // executable. This only succeeds when the process has the JIT
+        // entitlement, which is granted when JIT is enabled (debugserver,
+        // StikDebug, SideJIT, TrollStore, jailbreak, etc.).
+        let pageSize = Int(getpagesize())
+        guard let ptr = mmap(nil, pageSize, PROT_READ | PROT_WRITE,
+                             MAP_PRIVATE | MAP_ANONYMOUS | MAP_JIT, -1, 0),
+              ptr != MAP_FAILED else {
+            return false
         }
-        return result == KERN_SUCCESS
+        defer { munmap(ptr, pageSize) }
+        return mprotect(ptr, pageSize, PROT_READ | PROT_WRITE | PROT_EXEC) == 0
     }
 
     func getJITInstructions() -> String {

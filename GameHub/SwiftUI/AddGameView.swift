@@ -10,6 +10,14 @@ struct AddGameView: View {
     @State private var selectedFiles: [URL] = []
     @State private var isImporting = false
     @State private var isInstalling = false
+    @State private var errorMessage: String?
+
+    private var safeFolderName: String {
+        let invalid = CharacterSet(charactersIn: "/\\:*?\"<>|")
+        let cleaned = gameName.components(separatedBy: invalid).joined(separator: "_")
+        let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "game" : trimmed
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,7 +52,7 @@ struct AddGameView: View {
 
                     if executablePath.isEmpty && !gameName.isEmpty {
                         Button("Auto-fill path") {
-                            executablePath = "C:\\games\\\(gameName)\\\(gameName).exe"
+                            executablePath = "C:\\games\\\(safeFolderName)\\\(safeFolderName).exe"
                         }
                     }
 
@@ -59,6 +67,8 @@ struct AddGameView: View {
                     }
 
                     if !selectedFiles.isEmpty {
+                        Text("\(selectedFiles.count) file(s) selected:")
+                            .font(.caption).foregroundColor(.secondary)
                         ForEach(selectedFiles, id: \.self) { file in
                             HStack {
                                 Image(systemName: "doc")
@@ -66,6 +76,13 @@ struct AddGameView: View {
                                 Spacer()
                             }
                         }
+                    }
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .textSelection(.enabled)
                     }
 
                     Button(action: addGame) {
@@ -80,46 +97,83 @@ struct AddGameView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
         .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.data, .folder], allowsMultipleSelection: true) { result in
-            if case .success(let urls) = result {
-                isImporting = true
-                let fm = FileManager.default
-                let tempDir = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-                try? fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
-                for url in urls { _ = url.startAccessingSecurityScopedResource() }
-                DispatchQueue.global(qos: .userInitiated).async {
-                    var copiedURLs: [URL] = []
-                    for url in urls {
-                        let dest = tempDir.appendingPathComponent(url.lastPathComponent)
-                        if (try? fm.copyItem(at: url, to: dest)) != nil {
-                            copiedURLs.append(dest)
-                        }
-                    }
-                    DispatchQueue.main.async {
-                        for url in urls { url.stopAccessingSecurityScopedResource() }
-                        selectedFiles = copiedURLs
-                        isImporting = false
-                        if let first = urls.first {
-                            let name = first.deletingPathExtension().lastPathComponent
-                            if gameName.isEmpty { gameName = name }
-                            executablePath = "C:\\games\\\(gameName)\\\(first.lastPathComponent)"
-                        }
-                    }
-                }
+            handleFilePicker(result)
+        }
+    }
+
+    private func handleFilePicker(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result, !urls.isEmpty else { return }
+        isImporting = true
+        errorMessage = nil
+
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            errorMessage = "Cannot access Documents directory"
+            isImporting = false
+            return
+        }
+
+        let stagingBase = docs.appendingPathComponent("Staging")
+        try? fm.createDirectory(at: stagingBase, withIntermediateDirectories: true)
+        let stagingDir = stagingBase.appendingPathComponent(UUID().uuidString)
+        try? fm.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+
+        var copied: [URL] = []
+        var copyError: String?
+
+        for url in urls {
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            let dest = stagingDir.appendingPathComponent(url.lastPathComponent)
+            do {
+                try fm.copyItem(at: url, to: dest)
+                copied.append(dest)
+                NSLog("[MNEmulator] staged \(url.lastPathComponent) -> \(dest.path)")
+            } catch {
+                NSLog("[MNEmulator] copy failed for \(url.lastPathComponent): \(error)")
+                copyError = copyError == nil
+                    ? "Couldn't copy '\(url.lastPathComponent)': \(error.localizedDescription)"
+                    : "\(copyError!)\nCouldn't copy '\(url.lastPathComponent)': \(error.localizedDescription)"
             }
+        }
+
+        if let copyError {
+            errorMessage = copyError
+        }
+        selectedFiles = copied
+        isImporting = false
+
+        if let first = urls.first, copied.contains(where: { $0.lastPathComponent == first.lastPathComponent }) {
+            let name = first.deletingPathExtension().lastPathComponent
+            if gameName.isEmpty { gameName = name }
+            executablePath = "C:\\games\\\(safeFolderName)\\\(first.lastPathComponent)"
         }
     }
 
     private func addGame() {
-        let container = containerManager.createContainer(name: gameName, executablePath: executablePath)
-        guard !selectedFiles.isEmpty else { onDismiss(); return }
+        guard !selectedFiles.isEmpty else {
+            errorMessage = "Select game files first."
+            return
+        }
+        guard !gameName.isEmpty, !executablePath.isEmpty else {
+            errorMessage = "Enter a game name and executable path."
+            return
+        }
         isInstalling = true
-        let files = selectedFiles.map { (source: $0, destination: "drive_c/games/\(gameName)/\($0.lastPathComponent)" ) }
+        errorMessage = nil
+
+        let container = containerManager.createContainer(name: gameName, executablePath: executablePath)
         let containerID = container.id
+        let files = selectedFiles.map {
+            (source: $0, destination: "drive_c/games/\(safeFolderName)/\($0.lastPathComponent)")
+        }
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.containerManager.installGameFiles(containerID: containerID, files: files)
+            guard let self = self else { return }
+            self.containerManager.installGameFiles(containerID: containerID, files: files)
             DispatchQueue.main.async {
-                self?.isInstalling = false
-                self?.onDismiss()
+                self.isInstalling = false
+                self.onDismiss()
             }
         }
     }

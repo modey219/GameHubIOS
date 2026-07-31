@@ -144,7 +144,12 @@ class ContainerManager: ObservableObject {
             let destPath = containerDir + "/" + file.destination
             let destDir = (destPath as NSString).deletingLastPathComponent
             try? fileManager.createDirectory(atPath: destDir, withIntermediateDirectories: true)
-            try? fileManager.copyItem(atPath: file.source.path, toPath: destPath)
+            do {
+                try fileManager.copyItem(atPath: file.source.path, toPath: destPath)
+                NSLog("[MNEmulator] installed \(file.source.lastPathComponent) -> \(destPath)")
+            } catch {
+                NSLog("[MNEmulator] installGameFiles copy failed \(file.source.path) -> \(destPath): \(error)")
+            }
         }
     }
 

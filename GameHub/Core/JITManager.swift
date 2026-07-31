@@ -179,7 +179,7 @@ class JITManager: ObservableObject {
             }
 
             let sysctlJIT = self.checkSysctlJIT()
-            let taskInfoJIT = self.checkTaskInfoJIT()
+            let taskInfoJIT = self.checkMAPJIT()
 
             DispatchQueue.main.async {
                 if jitlessVal == "1" {
@@ -220,7 +220,7 @@ class JITManager: ObservableObject {
         return (flag & P_TRACED) != 0
     }
 
-    private func checkTaskInfoJIT() -> Bool {
+    private func checkMAPJIT() -> Bool {
         // Standard iOS JIT check: mmap a page with MAP_JIT then try to make it
         // executable. This only succeeds when the process has the JIT
         // entitlement, which is granted when JIT is enabled (debugserver,

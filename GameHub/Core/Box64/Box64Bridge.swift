@@ -158,6 +158,17 @@ class Box64Bridge {
 
         Self.writeDiag("step1: calloc")
         Self.writeDiag("c_diag_test_exists=\(FileManager.default.fileExists(atPath: docsPath + "/c_diag_test.txt"))")
+        var probeBuf = [CChar](repeating: 0, count: 8192)
+        probeBuf.withUnsafeMutableBufferPointer { bufPtr in
+            docsPath.withCString { d in
+                Bundle.main.bundlePath.withCString { b in
+                    NSTemporaryDirectory().withCString { t in
+                        box64_probe_paths(d, b, t, bufPtr.baseAddress, 8192)
+                    }
+                }
+            }
+        }
+        Self.writeDiag("PROBE RESULT:\n\(String(cString: probeBuf))")
         let localCtx = autoreleasepool { () -> UnsafeMutablePointer<box64_context_t>? in
             box64_create_step1()
         }

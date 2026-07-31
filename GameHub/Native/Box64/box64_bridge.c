@@ -393,3 +393,113 @@ box64_status_t box64_get_status_detail(box64_context_t *ctx) {
     strncpy(status.wine_version, "9.21", sizeof(status.wine_version));
     return status;
 }
+
+static void probe_emit(char *out, size_t *used, size_t cap, const char *line) {
+    size_t n = strlen(line);
+    if (*used + n + 1 >= cap) return;
+    memcpy(out + *used, line, n);
+    *used += n;
+    out[(*used)++] = '\n';
+    out[*used] = 0;
+}
+
+static void probe_one(char *out, size_t *used, size_t cap, const char *label, const char *path) {
+    char line[1400];
+    if (!path || !path[0]) {
+        snprintf(line, sizeof(line), "PROBE %s | (empty path)", label);
+        probe_emit(out, used, cap, line);
+        return;
+    }
+    struct stat s;
+    errno = 0;
+    int st = stat(path, &s);
+    int st_errno = errno;
+    char rp[1100];
+    const char *rpstr = realpath(path, rp);
+    char access_kind[32] = "n/a";
+    if (st == 0) {
+        if (S_ISDIR(s.st_mode)) {
+            char tp[1400];
+            snprintf(tp, sizeof(tp), "%s/.__mn_probe", path);
+            int fd = open(tp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd >= 0) { close(fd); unlink(tp); strcpy(access_kind, "dir-writable"); }
+            else { snprintf(access_kind, sizeof(access_kind), "dir-readonly(errno=%d)", errno); }
+        } else if (S_ISREG(s.st_mode)) {
+            int fd = open(path, O_RDONLY);
+            if (fd >= 0) { close(fd); strcpy(access_kind, "file-readable"); }
+            else { snprintf(access_kind, sizeof(access_kind), "file-openfail(errno=%d)", errno); }
+        } else {
+            strcpy(access_kind, "other");
+        }
+    }
+    snprintf(line, sizeof(line), "PROBE %s | stat=%s(errno=%d) access=%s realpath=%s",
+             label, st == 0 ? "yes" : "no", st_errno, access_kind,
+             rpstr ? rpstr : "(null)");
+    probe_emit(out, used, cap, line);
+}
+
+static void probe_walk_up(char *out, size_t *used, size_t cap, const char *path) {
+    char cur[1100];
+    snprintf(cur, sizeof(cur), "%s", path);
+    for (int i = 0; i < 14; i++) {
+        struct stat s;
+        errno = 0;
+        if (stat(cur, &s) == 0) {
+            char line[1200];
+            snprintf(line, sizeof(line), "WALK-UP level %d ACCESSIBLE: '%s'", i, cur);
+            probe_emit(out, used, cap, line);
+            return;
+        }
+        char *slash = strrchr(cur, '/');
+        if (!slash || slash == cur) return;
+        *slash = 0;
+    }
+}
+
+void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir, char *out, size_t out_len) {
+    if (!out || out_len < 64) return;
+    out[0] = 0;
+    size_t used = 0;
+
+    probe_emit(out, &used, out_len, "==== box64_probe_paths ====");
+    const char *home = getenv("HOME");
+    const char *td = getenv("TMPDIR");
+
+    char l1[1200];
+    snprintf(l1, sizeof(l1), "HOME=%s", home ? home : "(null)");
+    probe_emit(out, &used, out_len, l1);
+    snprintf(l1, sizeof(l1), "TMPDIR=%s", td ? td : "(null)");
+    probe_emit(out, &used, out_len, l1);
+    char cwd_buf[1024];
+    const char *cwd = getcwd(cwd_buf, sizeof(cwd_buf));
+    snprintf(l1, sizeof(l1), "getcwd=%s", cwd ? cwd : "(null)");
+    probe_emit(out, &used, out_len, l1);
+
+    probe_one(out, &used, out_len, "docs", docs ? docs : "");
+    if (docs && docs[0]) {
+        char w64[1200], bx[1200], docsTmp[1200];
+        snprintf(w64, sizeof(w64), "%s/Wine/bin/wine64", docs);
+        snprintf(bx, sizeof(bx), "%s/Box64/box64", docs);
+        snprintf(docsTmp, sizeof(docsTmp), "%s", docs);
+        probe_one(out, &used, out_len, "docs/Wine/bin/wine64", w64);
+        probe_one(out, &used, out_len, "docs/Box64/box64", bx);
+        probe_walk_up(out, &used, out_len, w64);
+        probe_walk_up(out, &used, out_len, docsTmp);
+    }
+    probe_one(out, &used, out_len, "bundle", bundle ? bundle : "");
+    if (bundle && bundle[0]) {
+        char bw[1200];
+        snprintf(bw, sizeof(bw), "%s/BundledBinaries/Wine", bundle);
+        probe_one(out, &used, out_len, "bundle/BundledBinaries/Wine", bw);
+    }
+    probe_one(out, &used, out_len, "TMPDIR-arg", tmpdir ? tmpdir : "");
+    probe_one(out, &used, out_len, "/tmp", "/tmp");
+    probe_one(out, &used, out_len, "HOME", home ? home : "");
+
+    if (td && td[0]) {
+        char realdocs[1200];
+        snprintf(realdocs, sizeof(realdocs), "%s/../../Documents", td);
+        probe_one(out, &used, out_len, "realdocs(td/../../Documents)", realdocs);
+        probe_walk_up(out, &used, out_len, realdocs);
+    }
+}

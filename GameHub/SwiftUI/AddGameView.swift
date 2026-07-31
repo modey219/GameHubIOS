@@ -8,6 +8,8 @@ struct AddGameView: View {
     @State private var executablePath = ""
     @State private var showFilePicker = false
     @State private var selectedFiles: [URL] = []
+    @State private var isImporting = false
+    @State private var isInstalling = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,7 +20,7 @@ struct AddGameView: View {
                 Text("Add Game").font(.headline).foregroundColor(.primary)
                 Spacer()
                 Button("Add") { addGame() }
-                    .disabled(gameName.isEmpty || executablePath.isEmpty)
+                    .disabled(gameName.isEmpty || executablePath.isEmpty || isInstalling)
                     .padding(.trailing)
             }
             .padding(.vertical)
@@ -46,8 +48,14 @@ struct AddGameView: View {
                         }
                     }
 
-                    Button(action: { showFilePicker = true }) {
-                        Label("Select Game Files", systemImage: "doc.badge.plus")
+                    if isImporting {
+                        ProgressView("Importing files...")
+                    } else if isInstalling {
+                        ProgressView("Installing game...")
+                    } else {
+                        Button(action: { showFilePicker = true }) {
+                            Label("Select Game Files", systemImage: "doc.badge.plus")
+                        }
                     }
 
                     if !selectedFiles.isEmpty {
@@ -63,7 +71,7 @@ struct AddGameView: View {
                     Button(action: addGame) {
                         Text("Add Game").fontWeight(.bold).frame(maxWidth: .infinity)
                     }
-                    .disabled(gameName.isEmpty || executablePath.isEmpty)
+                    .disabled(gameName.isEmpty || executablePath.isEmpty || isInstalling)
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
@@ -72,23 +80,29 @@ struct AddGameView: View {
         .background(Color(.systemBackground))
         .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.data, .folder], allowsMultipleSelection: true) { result in
             if case .success(let urls) = result {
-                var copiedURLs: [URL] = []
+                isImporting = true
                 let fm = FileManager.default
                 let tempDir = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
                 try? fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
-                for url in urls {
-                    let dest = tempDir.appendingPathComponent(url.lastPathComponent)
-                    let didStart = url.startAccessingSecurityScopedResource()
-                    defer { if didStart { url.stopAccessingSecurityScopedResource() } }
-                    if (try? fm.copyItem(at: url, to: dest)) != nil {
-                        copiedURLs.append(dest)
+                for url in urls { _ = url.startAccessingSecurityScopedResource() }
+                DispatchQueue.global(qos: .userInitiated).async {
+                    var copiedURLs: [URL] = []
+                    for url in urls {
+                        let dest = tempDir.appendingPathComponent(url.lastPathComponent)
+                        if (try? fm.copyItem(at: url, to: dest)) != nil {
+                            copiedURLs.append(dest)
+                        }
                     }
-                }
-                selectedFiles = copiedURLs
-                if let first = urls.first {
-                    let name = first.deletingPathExtension().lastPathComponent
-                    if gameName.isEmpty { gameName = name }
-                    executablePath = "C:\\games\\\(gameName)\\\(first.lastPathComponent)"
+                    DispatchQueue.main.async {
+                        for url in urls { url.stopAccessingSecurityScopedResource() }
+                        selectedFiles = copiedURLs
+                        isImporting = false
+                        if let first = urls.first {
+                            let name = first.deletingPathExtension().lastPathComponent
+                            if gameName.isEmpty { gameName = name }
+                            executablePath = "C:\\games\\\(gameName)\\\(first.lastPathComponent)"
+                        }
+                    }
                 }
             }
         }
@@ -96,10 +110,16 @@ struct AddGameView: View {
 
     private func addGame() {
         let container = containerManager.createContainer(name: gameName, executablePath: executablePath)
-        if !selectedFiles.isEmpty {
-            let files = selectedFiles.map { (source: $0, destination: "drive_c/games/\(gameName)/\($0.lastPathComponent)" ) }
-            containerManager.installGameFiles(containerID: container.id, files: files)
+        guard !selectedFiles.isEmpty else { onDismiss(); return }
+        isInstalling = true
+        let files = selectedFiles.map { (source: $0, destination: "drive_c/games/\(gameName)/\($0.lastPathComponent)" ) }
+        let containerID = container.id
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.containerManager.installGameFiles(containerID: containerID, files: files)
+            DispatchQueue.main.async {
+                self?.isInstalling = false
+                self?.onDismiss()
+            }
         }
-        onDismiss()
     }
 }

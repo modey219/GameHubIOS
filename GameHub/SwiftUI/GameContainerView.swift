@@ -623,7 +623,6 @@ struct GameContainerView: View {
             let ts = ISO8601DateFormatter().string(from: Date())
             let line = "[\(ts)] \(msg)"
             log.append(line)
-            NSLog("%@", line)
         }
 
         func flushLog() {
@@ -654,6 +653,7 @@ struct GameContainerView: View {
         logMsg("executablePath: \(container.executablePath)")
         logMsg("Box64Bridge initialized: \(Box64Bridge.shared.isSetupComplete)")
         flushLog()
+        Box64Bridge.writeDiag("launchGame_logs_flushed")
 
         PrepWatchdog.shared.setStage("launchGame_before_applySettings")
         Box64Bridge.writeDiag("launchGame_before_applySettings")

@@ -2,6 +2,13 @@ import SwiftUI
 import UIKit
 
 func setupCrashHandler() {
+    if let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
+        let stderrPath = path + "/stderr.log"
+        if let file = fopen(stderrPath, "a") {
+            dup2(fileno(file), STDERR_FILENO)
+            fclose(file)
+        }
+    }
     NSSetUncaughtExceptionHandler { exception in
         let crash = "[Crash] ObjC exception: \(exception.name) reason=\(exception.reason ?? "nil") callStack=\(exception.callStackSymbols.joined(separator: "\n"))"
         NSLog("%@", crash)

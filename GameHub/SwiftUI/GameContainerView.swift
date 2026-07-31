@@ -527,6 +527,10 @@ struct GameContainerView: View {
         guard !isRunning else { return }
         guard !isPreparing else { return }
 
+        PrepWatchdog.shared.start()
+        PrepWatchdog.shared.setStage("startGame_entered")
+        Box64Bridge.writeDiag("startGame_entered")
+
         guard setupManager.isSetupComplete else {
             isPreparing = true
             preparingMessage = "Preparing..."
@@ -534,11 +538,19 @@ struct GameContainerView: View {
             startPrepWatch()
             setupManager.ensureReady { success, message in
                 if success {
+                    PrepWatchdog.shared.setStage("startGame_ensureReady_success")
+                    Box64Bridge.writeDiag("startGame_ensureReady_success")
                     self.isRunning = true
                     self.displayRenderer.startRendering()
+                    PrepWatchdog.shared.setStage("startGame_after_startRendering")
+                    Box64Bridge.writeDiag("startGame_after_startRendering")
                     self.startTimeCounter()
+                    PrepWatchdog.shared.setStage("startGame_after_timeCounter")
+                    Box64Bridge.writeDiag("startGame_after_timeCounter")
                     self.prepareAndLaunchGame()
                 } else {
+                    PrepWatchdog.shared.stop()
+                    Box64Bridge.writeDiag("startGame_ensureReady_failed: \(message)")
                     self.isPreparing = false
                     self.stopPrepWatch()
                     self.errorMessage = message
@@ -558,6 +570,8 @@ struct GameContainerView: View {
         isPreparing = true
         preparingMessage = "Starting Wine (first launch initializes prefix)..."
         prepElapsed = 0
+        PrepWatchdog.shared.setStage("prepareAndLaunchGame")
+        Box64Bridge.writeDiag("prepareAndLaunchGame_entered")
         startPrepWatch()
         launchGame()
     }
@@ -573,6 +587,7 @@ struct GameContainerView: View {
             prepElapsed = Int(Date().timeIntervalSince(prepStartTime))
             if displayRenderer.hasFirstFrame {
                 stopPrepWatch()
+                PrepWatchdog.shared.stop()
                 isPreparing = false
                 return
             }
@@ -583,6 +598,7 @@ struct GameContainerView: View {
     private func stopPrepWatch() {
         prepWatchTimer?.invalidate()
         prepWatchTimer = nil
+        PrepWatchdog.shared.stop()
     }
 
     private func stopGame() {
@@ -600,6 +616,8 @@ struct GameContainerView: View {
     }
 
     private func launchGame() {
+        PrepWatchdog.shared.setStage("launchGame_entered")
+        Box64Bridge.writeDiag("launchGame_entered")
         var log: [String] = []
         func logMsg(_ msg: String) {
             let ts = ISO8601DateFormatter().string(from: Date())
@@ -622,17 +640,25 @@ struct GameContainerView: View {
         }
 
         guard !container.executablePath.isEmpty else {
+            PrepWatchdog.shared.stop()
+            Box64Bridge.writeDiag("launchGame_guard_failed_empty_exe")
             errorMessage = "No executable path set for this container.\nPlease edit the container and set the .exe path."
             showError = true
             return
         }
+
+        PrepWatchdog.shared.setStage("launchGame_guard_passed")
+        Box64Bridge.writeDiag("launchGame_guard_passed exe=\(container.executablePath)")
 
         logMsg("launchGame() called")
         logMsg("executablePath: \(container.executablePath)")
         logMsg("Box64Bridge initialized: \(Box64Bridge.shared.isSetupComplete)")
         flushLog()
 
+        PrepWatchdog.shared.setStage("launchGame_before_applySettings")
+        Box64Bridge.writeDiag("launchGame_before_applySettings")
         settingsManager.applySettings()
+        PrepWatchdog.shared.setStage("launchGame_after_applySettings")
         logMsg("Settings applied")
         Box64Bridge.writeDiag("launchGame_settings_applied")
 
@@ -644,7 +670,10 @@ struct GameContainerView: View {
         let box64Path = docs.appendingPathComponent("Box64/box64").path
         let wine64Path = docs.appendingPathComponent("Wine/bin/wine64").path
 
+        PrepWatchdog.shared.setStage("launchGame_before_jit")
+        Box64Bridge.writeDiag("launchGame_before_jit")
         jitManager.enableJIT()
+        PrepWatchdog.shared.setStage("launchGame_after_jit")
         logMsg("JIT enabled: \(jitManager.isJITEnabled)")
         flushLog()
         Box64Bridge.writeDiag("launchGame_jit_done method=\(jitManager.jitMethod.rawValue)")
@@ -709,6 +738,7 @@ struct GameContainerView: View {
 
             logMsg("Calling Box64Bridge.shared.launchWine()...")
             flushLog()
+            PrepWatchdog.shared.setStage("launchGame_bg_calling_launchWine")
             Box64Bridge.writeDiag("launchGame_bg_calling_launchWine")
             let launchResult = Box64Bridge.shared.launchWine(
                 wine64Path: wine64Path,
@@ -716,9 +746,11 @@ struct GameContainerView: View {
                 containerPath: containerPath,
                 environment: capturedContainer.environment
             )
+            PrepWatchdog.shared.setStage("launchGame_bg_launchWine_returned")
             Box64Bridge.writeDiag("launchGame_bg_launchWine_returned wineLaunched=\(launchResult.wineLaunched)")
 
             DispatchQueue.main.async {
+                PrepWatchdog.shared.stop()
                 if launchResult.wineLaunched {
                     logMsg("launchWine SUCCESS")
                     self.isRunning = true

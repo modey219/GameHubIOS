@@ -43,7 +43,7 @@ private func writeDiag(_ s: String) {
 // itself triggers the watchdog, or if it's something deeper in the view
 // hierarchy.
 @main
-struct GameHubApp: App {
+struct MNEmulatorApp: App {
     init() {
         setupCrashHandler()
         Box64Bridge.writeDiag("APP_BUILD probe-paths-345")

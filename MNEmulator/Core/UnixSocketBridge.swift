@@ -9,7 +9,7 @@ class UnixSocketBridge: ObservableObject {
     private var serverSocket: Int32 = -1
     private var clientSocket: Int32 = -1
     private let socketLock = NSLock()
-    private var inputQueue = DispatchQueue(label: "com.gamehub.input", qos: .userInteractive)
+    private var inputQueue = DispatchQueue(label: "com.mnemulator.input", qos: .userInteractive)
     private var isServerRunning = false
     private var socketPath: String
 

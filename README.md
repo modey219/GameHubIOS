@@ -138,9 +138,9 @@ Metal (iPhone GPU rendering)
 ## Project Structure
 
 ```
-GameHubiOS/
-├── GameHub/                 # Main source code
-│   ├── GameHubApp.swift     # Entry point
+MNEmulatoriOS/
+├── MNEmulator/                 # Main source code
+│   ├── MNEmulatorApp.swift     # Entry point
 │   ├── SwiftUI/             # UI views
 │   ├── Core/                # Engine
 │   │   ├── Box64/           # x86 emulation bridge

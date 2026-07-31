@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# GameHub iOS - Master Build Script
+# MNEmulator iOS - Master Build Script
 # Builds all components: Box64, Wine, MoltenVK, DXVK
 # ============================================================
 
@@ -11,7 +11,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_DIR/build"
 
 echo "========================================"
-echo "  GameHub iOS - Master Build Script"
+echo "  MNEmulator iOS - Master Build Script"
 echo "========================================"
 echo ""
 echo "This script will build all components needed"
@@ -67,7 +67,7 @@ echo "  Step 4/4: Packaging for Xcode"
 echo "========================================"
 
 # Copy binaries to Xcode project
-XCODE_RESOURCES="$PROJECT_DIR/GameHub/Resources"
+XCODE_RESOURCES="$PROJECT_DIR/MNEmulator/Resources"
 
 echo "[*] Copying binaries to Xcode project..."
 cp "$BUILD_DIR/box64" "$XCODE_RESOURCES/box64" 2>/dev/null || true
@@ -85,14 +85,14 @@ echo "  Build Complete!"
 echo "========================================"
 echo ""
 echo "Next steps:"
-echo "  1. Open GameHub.xcodeproj in Xcode"
+echo "  1. Open MNEmulator.xcodeproj in Xcode"
 echo "  2. Select your iOS device as target"
 echo "  3. Set your Development Team in Signing"
 echo "  4. Build and Run"
 echo ""
 echo "For JIT support:"
 echo "  - Install StikDebug from App Store"
-echo "  - Open StikDebug and enable JIT for GameHub"
-echo "  - Return to GameHub and start playing!"
+echo "  - Open StikDebug and enable JIT for MNEmulator"
+echo "  - Return to MNEmulator and start playing!"
 echo ""
 echo "========================================"

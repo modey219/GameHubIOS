@@ -525,8 +525,8 @@ long translate_syscall(emulator_context_t *ctx, long num, long a1, long a2, long
             struct linux_utsname *n = (struct linux_utsname *)(uintptr_t)a1;
             memset(n, 0, sizeof(*n));
             strcpy(n->sysname, "Linux");
-            strcpy(n->nodename, "gamehub");
-            strcpy(n->release, "5.15.0-gamehub");
+            strcpy(n->nodename, "mnemulator");
+            strcpy(n->release, "5.15.0-mnemulator");
             strcpy(n->version, "#1 SMP");
             strcpy(n->machine, "aarch64");
             strcpy(n->domainname, "(none)");

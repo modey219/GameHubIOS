@@ -50,7 +50,7 @@ class AudioBridge: ObservableObject {
     }
 
     func startAudioServer() {
-        audioThread = DispatchQueue(label: "com.gamehub.audio", qos: .userInteractive)
+        audioThread = DispatchQueue(label: "com.mnemulator.audio", qos: .userInteractive)
         audioThread?.async { [weak self] in self?.startPosixSocketServer() }
         startAudioQueue()
         DispatchQueue.main.async { self.isPlaying = true }

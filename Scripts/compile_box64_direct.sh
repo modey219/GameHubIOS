@@ -19,7 +19,7 @@ CC=$(xcrun --sdk iphoneos --find clang)
 
 # Compat headers MUST be first so our Linux stubs override missing system headers
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-COMPAT_DIR="$SCRIPT_DIR/../GameHub/Native/Compat"
+COMPAT_DIR="$SCRIPT_DIR/../MNEmulator/Native/Compat"
 
 CFLAGS="-arch arm64 -mios-version-min=16.0 -isysroot $SDK -O2 -fembed-bitcode-marker"
 CFLAGS="$CFLAGS -DARM64 -DNOGIT -D__IOS__=1 -DTARGET_IPHONE=1"

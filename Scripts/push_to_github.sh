@@ -1,13 +1,13 @@
 #!/bin/bash
 # ============================================================
-# GameHub iOS - Push to GitHub
-# شغّل هذا السكربت من داخل مجلد GameHubiOS
+# MNEmulator iOS - Push to GitHub
+# شغّل هذا السكربت من داخل مجلد MNEmulatoriOS
 # ============================================================
 
 set -e
 
 echo "========================================="
-echo "  رفع مشروع GameHub iOS إلى GitHub"
+echo "  رفع مشروع MNEmulator iOS إلى GitHub"
 echo "========================================="
 echo ""
 
@@ -34,7 +34,7 @@ fi
 # اسم الريبو
 echo ""
 echo "أدخل مسار الريبو من GitHub:"
-echo "(مثال: https://github.com/USERNAME/GameHubiOS.git)"
+echo "(مثال: https://github.com/USERNAME/MNEmulatoriOS.git)"
 echo ""
 read -p "Git repo URL: " REPO_URL
 
@@ -54,7 +54,7 @@ git add .
 
 # الحذف الأولي
 echo "[3/5] أول commit..."
-git commit -m "feat: GameHub iOS - PC game emulator for iPhone
+git commit -m "feat: MNEmulator iOS - PC game emulator for iPhone
 
 - Box64 for x86_64 → ARM64 translation
 - Wine for Windows API support

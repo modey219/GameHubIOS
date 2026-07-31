@@ -163,7 +163,7 @@ class SimpleHTTPServer {
     private var port: UInt16
     private var directory: String
     private var onUpload: ((String) -> Void)?
-    private var serverQueue = DispatchQueue(label: "com.gamehub.httpserver", qos: .userInitiated)
+    private var serverQueue = DispatchQueue(label: "com.mnemulator.httpserver", qos: .userInitiated)
     private var serverFD: Int32 = -1
 
     init(port: UInt16, directory: String, onUpload: ((String) -> Void)? = nil) {

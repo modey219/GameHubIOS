@@ -54,8 +54,8 @@ fastlane/README.md
 *.provisionprofile
 
 # Binaries (will be built by CI)
-GameHub/Resources/binaries/
-GameHub/Native/Box64Lib/
+MNEmulator/Resources/binaries/
+MNEmulator/Native/Box64Lib/
 Box64Source/
 WineSource/
 build/

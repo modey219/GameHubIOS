@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# GameHub iOS - Box64 Build Script
+# MNEmulator iOS - Box64 Build Script
 # Builds Box64 for iOS (arm64) with JIT support
 # ============================================================
 
@@ -16,7 +16,7 @@ BOX64_REPO="https://github.com/ptitSeb/box64.git"
 BOX64_BRANCH="main"
 
 echo "========================================"
-echo "  GameHub iOS - Box64 Build Script"
+echo "  MNEmulator iOS - Box64 Build Script"
 echo "========================================"
 
 # Check for required tools

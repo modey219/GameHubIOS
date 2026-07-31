@@ -1,13 +1,13 @@
 #!/bin/bash
 # ============================================================
-# GameHub iOS - Build Box64 for iOS ARM64 as static library
+# MNEmulator iOS - Build Box64 for iOS ARM64 as static library
 # ============================================================
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_DIR/build/box64_ios"
-OUTPUT_DIR="$PROJECT_DIR/GameHub/Native/Box64Lib"
+OUTPUT_DIR="$PROJECT_DIR/MNEmulator/Native/Box64Lib"
 JOBS=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
 echo "========================================"

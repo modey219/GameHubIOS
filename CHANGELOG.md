@@ -11,7 +11,7 @@
 - **UIKit import**: Added missing import for UIApplication in SettingsManager
 - **Duplicate case 202**: Confirmed only one futex case in syscall_core.c
 - **CI icon generation**: Inlined Python script to eliminate path dependency issues
-- **project.yml bundleIdPrefix**: Fixed from com.gamehub to com.mnemulator
+- **project.yml bundleIdPrefix**: Fixed to com.mnemulator
 
 ### New Features
 - **Overlay menu**: Complete redesign with grid layout
@@ -51,7 +51,7 @@
 - **README**: Complete English rewrite with Telegram @R_MOX link, installation guide, troubleshooting
 
 ## Build 2026.07.18 - Initial Rename & Stabilization
-- Renamed from GameHub to MN emulator
+- Renamed to MN emulator
 - Fixed extraction errors (pre-existing directories)
 - Rewrote JITManager, ProcessStub, JITStatusView, DebugView
 - Added LaunchResult struct for detailed error reporting

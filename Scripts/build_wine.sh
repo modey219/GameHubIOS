@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# GameHub iOS - Wine Build Script
+# MNEmulator iOS - Wine Build Script
 # Builds Wine for iOS (arm64) with Vulkan/Metal support
 # ============================================================
 
@@ -16,7 +16,7 @@ WINE_REPO="https://gitlab.winehq.org/wine/wine.git"
 WINE_BRANCH="wine-9.0"
 
 echo "========================================"
-echo "  GameHub iOS - Wine Build Script"
+echo "  MNEmulator iOS - Wine Build Script"
 echo "========================================"
 
 # Check for required tools

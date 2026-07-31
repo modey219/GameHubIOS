@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# GameHub iOS - Fastlane Configuration
+# MNEmulator iOS - Fastlane Configuration
 # بناء تلقائي باستخدام Fastlane
 # ============================================================
 
@@ -26,9 +26,9 @@ platform :ios do
     sh("cd ../.. && bash Scripts/build_wine.sh")
     
     # نسخ الملفات
-    sh("mkdir -p GameHub/Resources/binaries")
-    sh("cp build/box64 GameHub/Resources/binaries/")
-    sh("cp build/sysroot/usr/bin/wine64 GameHub/Resources/binaries/")
+    sh("mkdir -p MNEmulator/Resources/binaries")
+    sh("cp build/box64 MNEmulator/Resources/binaries/")
+    sh("cp build/sysroot/usr/bin/wine64 MNEmulator/Resources/binaries/")
   end
 
   desc "Build Debug IPA (unsigned)"
@@ -36,12 +36,12 @@ platform :ios do
     build_dependencies
     
     gym(
-      project: "GameHub.xcodeproj",
-      scheme: "GameHub",
+      project: "MNEmulator.xcodeproj",
+      scheme: "MNEmulator",
       configuration: "Debug",
       sdk: "iphoneos",
       output_directory: "./build",
-      output_name: "GameHub-debug.ipa",
+      output_name: "MNEmulator-debug.ipa",
       export_method: "development",
       codesigning_identity: "",
       xcargs: "CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO"
@@ -53,12 +53,12 @@ platform :ios do
     build_dependencies
     
     gym(
-      project: "GameHub.xcodeproj",
-      scheme: "GameHub",
+      project: "MNEmulator.xcodeproj",
+      scheme: "MNEmulator",
       configuration: "Release",
       sdk: "iphoneos",
       output_directory: "./build",
-      output_name: "GameHub.ipa",
+      output_name: "MNEmulator.ipa",
       export_method: "development",
       codesigning_identity: "",
       xcargs: "CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO"
@@ -78,16 +78,16 @@ platform :ios do
     )
 
     gym(
-      project: "GameHub.xcodeproj",
-      scheme: "GameHub",
+      project: "MNEmulator.xcodeproj",
+      scheme: "MNEmulator",
       configuration: "Release",
       sdk: "iphoneos",
       output_directory: "./build",
-      output_name: "GameHub-signed.ipa",
+      output_name: "MNEmulator-signed.ipa",
       export_method: "app-store",
       export_options: {
         provisioningProfiles: {
-          "com.gamehub.ios" => "GameHub Distribution"
+          "com.mnemulator.ios" => "MNEmulator Distribution"
         }
       }
     )
@@ -104,7 +104,7 @@ platform :ios do
         key_content: ENV["APP_STORE_CONNECT_API_KEY"],
         is_key_content_base64: true
       ),
-      ipa: "./build/GameHub-signed.ipa",
+      ipa: "./build/MNEmulator-signed.ipa",
       skip_waiting_for_build_processing: true
     )
   end
@@ -113,10 +113,10 @@ platform :ios do
   lane :upload_github do
     build_release
     
-    version = get_version_number(xcodeproj: "GameHub.xcodeproj")
+    version = get_version_number(xcodeproj: "MNEmulator.xcodeproj")
     
     # رفع إلى GitHub
-    sh("cd ../.. && gh release create v#{version} ./build/GameHub.ipa --title 'GameHub iOS v#{version}' --draft")
+    sh("cd ../.. && gh release create v#{version} ./build/MNEmulator.ipa --title 'MNEmulator iOS v#{version}' --draft")
   end
 
   # === Emergency lanes ===
@@ -124,12 +124,12 @@ platform :ios do
   desc "Quick build without dependencies"
   lane :quick_build do
     gym(
-      project: "GameHub.xcodeproj",
-      scheme: "GameHub",
+      project: "MNEmulator.xcodeproj",
+      scheme: "MNEmulator",
       configuration: "Debug",
       sdk: "iphoneos",
       output_directory: "./build",
-      output_name: "GameHub-quick.ipa",
+      output_name: "MNEmulator-quick.ipa",
       export_method: "development",
       codesigning_identity: "",
       xcargs: "CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO"

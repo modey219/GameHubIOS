@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# GameHub iOS - MoltenVK Build Script
+# MNEmulator iOS - MoltenVK Build Script
 # Builds MoltenVK for iOS (Vulkan → Metal translation)
 # ============================================================
 
@@ -15,7 +15,7 @@ MOLTENVK_REPO="https://github.com/nicoboss/MoltenVK.git"
 MOLTENVK_BRANCH="master"
 
 echo "========================================"
-echo "  GameHub iOS - MoltenVK Build Script"
+echo "  MNEmulator iOS - MoltenVK Build Script"
 echo "========================================"
 
 # Clone MoltenVK

@@ -21,11 +21,11 @@ def create_png(w, h):
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    iconset = os.path.join(script_dir, '..', 'GameHub', 'Resources', 'Assets.xcassets', 'AppIcon.appiconset')
+    iconset = os.path.join(script_dir, '..', 'MNEmulator', 'Resources', 'Assets.xcassets', 'AppIcon.appiconset')
     if not os.path.isdir(iconset):
         iconset = os.environ.get('ICONSET', '')
     if not iconset or not os.path.isdir(iconset):
-        alt = os.path.join(script_dir, '..', '..', 'GameHub', 'Resources', 'Assets.xcassets', 'AppIcon.appiconset')
+        alt = os.path.join(script_dir, '..', '..', 'MNEmulator', 'Resources', 'Assets.xcassets', 'AppIcon.appiconset')
         if os.path.isdir(alt):
             iconset = alt
     if not os.path.isdir(iconset):

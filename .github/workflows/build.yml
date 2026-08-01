@@ -125,6 +125,7 @@ jobs:
           
           # Add our iOS stubs (without exit macro - stubs defines box64_exit_intercept)
           STUB_SRC="$PWD/MNEmulator/Native/SyscallTranslation/ios_stubs.c"
+          RAW_SRC="$PWD/MNEmulator/Native/SyscallTranslation/rawlibc.c"
           
           SRC_COUNT=$(echo $SOURCES | wc -w)
           echo "Found $SRC_COUNT source files + ios_stubs.c"
@@ -158,7 +159,22 @@ jobs:
               cat /tmp/box64_err_$$ 2>/dev/null | tail -3
           fi
           rm -f /tmp/box64_err_$$
-          
+
+          # Compile rawlibc.c (raw-syscall layer) WITHOUT the compat header
+          # macros — the macros would rewrite this file's own function bodies
+          # (box64_raw_* is what they redirect TO) → infinite recursion.
+          echo "Compiling rawlibc.c (raw-syscall layer, no compat macros)..."
+          if $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" -O2 -fembed-bitcode-marker \
+              -D_DARWIN_C_SOURCE=1 -Wno-error \
+              -c "$RAW_SRC" -o "$OUTPUT_DIR/objects/rawlibc.o" 2>/tmp/box64_err_$$; then
+              COMPILED=$((COMPILED + 1))
+              echo "rawlibc.c: OK"
+          else
+              echo "rawlibc.c: FAILED"
+              cat /tmp/box64_err_$$ 2>/dev/null | tail -5
+          fi
+          rm -f /tmp/box64_err_$$
+
           echo ""
           echo "Compiled: $COMPILED / $SRC_COUNT (Failed: $FAILED)"
           

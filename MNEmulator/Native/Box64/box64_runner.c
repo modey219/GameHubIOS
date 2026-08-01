@@ -12,6 +12,7 @@
 #include <dlfcn.h>
 #include <sys/syscall.h>
 #include "../Include/reallibc.h"
+#include "../Include/rawlibc.h"
 
 extern char **environ;
 
@@ -50,8 +51,8 @@ static void runner_close(int fd) {
 
 static void raw_log(const char *msg) {
     if (g_log_fd >= 0) {
-        write(g_log_fd, msg, strlen(msg));
-        write(g_log_fd, "\n", 1);
+        runner_write(g_log_fd, msg, strlen(msg));
+        runner_write(g_log_fd, "\n", 1);
     }
 }
 
@@ -114,10 +115,10 @@ static void setup_logging(const char *prefix_path) {
     const char *home = getenv("HOME");
     if (!home) home = "/tmp";
     snprintf(g_log_path, sizeof(g_log_path), "%s/Documents/box64_runner.log", home);
-    g_log_fd = open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    g_log_fd = box64_raw_open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (g_log_fd < 0) {
         snprintf(g_log_path, sizeof(g_log_path), "%s/box64_runner.log", home);
-        g_log_fd = open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        g_log_fd = box64_raw_open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     }
     /* Capture real libc for use in the async-signal crash handler */
     g_real_write = (ssize_t (*)(int, const void *, size_t))reallibc_resolve("write");
@@ -171,7 +172,7 @@ static void *wine_thread_func(void *arg) {
         g_runner_exit_code = -crash_sig;
         free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
         free(wargs);
-        if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
+        if (g_log_fd >= 0) { box64_raw_close(g_log_fd); g_log_fd = -1; }
         return NULL;
     }
 
@@ -189,7 +190,7 @@ static void *wine_thread_func(void *arg) {
         g_runner_exit_code = -1;
         free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
         free(wargs);
-        if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
+        if (g_log_fd >= 0) { box64_raw_close(g_log_fd); g_log_fd = -1; }
         return NULL;
     }
 
@@ -205,7 +206,7 @@ static void *wine_thread_func(void *arg) {
 
     free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
     free(wargs);
-    if (g_log_fd >= 0) { close(g_log_fd); g_log_fd = -1; }
+    if (g_log_fd >= 0) { box64_raw_close(g_log_fd); g_log_fd = -1; }
     return NULL;
 }
 

@@ -1,6 +1,7 @@
 #include "../Include/box64_bridge.h"
 #include "../Include/syscall_translation.h"
 #include "../Include/reallibc.h"
+#include "../Include/rawlibc.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -98,11 +99,11 @@ static void plog(const char *fmt, ...) {
     va_end(ap);
     probe_trace_append(buf);
     if (g_trace_path[0]) {
-        int fd = open(g_trace_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        int fd = box64_raw_open(g_trace_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
         if (fd >= 0) {
-            write(fd, buf, strlen(buf));
-            write(fd, "\n", 1);
-            close(fd);
+            box64_raw_write(fd, buf, strlen(buf));
+            box64_raw_write(fd, "\n", 1);
+            box64_raw_close(fd);
         }
     }
 }
@@ -186,11 +187,11 @@ static void bridge_log(const char *msg) {
     if (!docs) return;
     char path[1024];
     snprintf(path, sizeof(path), "%s/bridge.log", docs);
-    int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    int fd = box64_raw_open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd >= 0) {
-        write(fd, msg, strlen(msg));
-        write(fd, "\n", 1);
-        close(fd);
+        box64_raw_write(fd, msg, strlen(msg));
+        box64_raw_write(fd, "\n", 1);
+        box64_raw_close(fd);
     }
 }
 
@@ -203,11 +204,11 @@ static void append_to_log(const char *base_path, const char *filename, const cha
     full[blen] = '/';
     memcpy(full + blen + 1, filename, flen);
     full[blen + 1 + flen] = '\0';
-    int fd = open(full, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    int fd = box64_raw_open(full, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd >= 0) {
-        write(fd, msg, strlen(msg));
-        write(fd, "\n", 1);
-        close(fd);
+        box64_raw_write(fd, msg, strlen(msg));
+        box64_raw_write(fd, "\n", 1);
+        box64_raw_close(fd);
     }
 }
 
@@ -225,11 +226,11 @@ void set_c_diag_docs_path(const char *path) {
 
     char test_path[1032];
     snprintf(test_path, sizeof(test_path), "%s/c_diag_test.txt", g_docs_path);
-    int fd = open(test_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int fd = box64_raw_open(test_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd >= 0) {
         const char *msg = "C file IO works!\n";
-        write(fd, msg, strlen(msg));
-        close(fd);
+        box64_raw_write(fd, msg, strlen(msg));
+        box64_raw_close(fd);
     }
 
     c_diag("set_c_diag_docs_path: OK");
@@ -304,10 +305,10 @@ static int file_exists(const char *path) {
 static long file_size(const char *path) {
     char rp[1100];
     if (!path || !realpath(path, rp)) return 0;
-    int fd = open(rp, O_RDONLY);
+    int fd = box64_raw_open(rp, O_RDONLY);
     if (fd < 0) return 0;
-    off_t sz = lseek(fd, 0, SEEK_END);
-    if (fd > 2) close(fd);
+    off_t sz = box64_raw_lseek(fd, 0, SEEK_END);
+    if (fd > 2) box64_raw_close(fd);
     return sz > 0 ? (long)sz : 0;
 }
 
@@ -322,7 +323,7 @@ int box64_init(box64_context_t *ctx, const char *bundle_path) {
     snprintf(ctx->prefix_path, sizeof(ctx->prefix_path), "%s/wineprefix", bundle_path);
     snprintf(ctx->game_path, sizeof(ctx->game_path), "%s/games", bundle_path);
     c_diag("box64_init: about to mkdir");
-    mkdir(ctx->prefix_path, 0755);
+    box64_raw_mkdir(ctx->prefix_path, 0755);
     c_diag("box64_init: mkdir done");
     ctx->initialized = 1;
     c_diag("box64_init: DONE");
@@ -440,7 +441,7 @@ int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_e
 int box64_launch_wine_prefix_init(box64_context_t *ctx) {
     if (!ctx || !ctx->initialized) return -1;
     fprintf(stderr, "[Box64] Init prefix: %s\n", ctx->prefix_path);
-    mkdir(ctx->prefix_path, 0755);
+    box64_raw_mkdir(ctx->prefix_path, 0755);
     /* Environment variables are set by Swift before calling this function. */
 
     char wine_bin[1024];
@@ -514,7 +515,7 @@ static void probe_one(char *out, size_t *used, size_t cap, const char *label, co
     }
     struct stat s;
     errno = 0;
-    int st = stat(path, &s);
+    int st = box64_raw_stat(path, &s);
     int st_errno = errno;
     plog("probe_one[%s]: stat done st=%d errno=%d", label, st, st_errno);
     char rp[1100];
@@ -527,15 +528,15 @@ static void probe_one(char *out, size_t *used, size_t cap, const char *label, co
             char tp[1400];
             snprintf(tp, sizeof(tp), "%s/.__mn_probe", path);
             plog("probe_one[%s]: open-write-test %s", label, tp);
-            int fd = open(tp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            int fd = box64_raw_open(tp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             plog("probe_one[%s]: open done fd=%d errno=%d", label, fd, errno);
-            if (fd >= 0) { close(fd); unlink(tp); strcpy(access_kind, "dir-writable"); }
+            if (fd >= 0) { box64_raw_close(fd); box64_raw_unlink(tp); strcpy(access_kind, "dir-writable"); }
             else { snprintf(access_kind, sizeof(access_kind), "dir-readonly(errno=%d)", errno); }
         } else if (S_ISREG(s.st_mode)) {
             plog("probe_one[%s]: open-read %s", label, path);
-            int fd = open(path, O_RDONLY);
+            int fd = box64_raw_open(path, O_RDONLY);
             plog("probe_one[%s]: open-read done fd=%d errno=%d", label, fd, errno);
-            if (fd >= 0) { close(fd); strcpy(access_kind, "file-readable"); }
+            if (fd >= 0) { box64_raw_close(fd); strcpy(access_kind, "file-readable"); }
             else { snprintf(access_kind, sizeof(access_kind), "file-openfail(errno=%d)", errno); }
         } else {
             strcpy(access_kind, "other");
@@ -584,12 +585,12 @@ static void probe_write_file(const char *base_path, const char *fname, const cha
     memcpy(full + blen + 1, fname, flen);
     full[blen + 1 + flen] = '\0';
     plog("write_file: open(%s)", full);
-    int fd = open(full, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int fd = box64_raw_open(full, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     plog("write_file: open done fd=%d errno=%d", fd, errno);
     if (fd >= 0) {
         plog("write_file: write %zu bytes", strlen(content));
-        write(fd, content, strlen(content));
-        close(fd);
+        box64_raw_write(fd, content, strlen(content));
+        box64_raw_close(fd);
         plog("write_file: closed");
     }
 }
@@ -611,7 +612,7 @@ static void probe_open_io(char *out, size_t *used, size_t cap, const char *label
     }
     plog("open_io[%s]: open(O_RDONLY) %s", label, rps);
     errno = 0;
-    int fd = open(rps, O_RDONLY);
+    int fd = box64_raw_open(rps, O_RDONLY);
     int o_errno = errno;
     plog("open_io[%s]: open done fd=%d errno=%d", label, fd, o_errno);
     if (fd < 0) {
@@ -621,17 +622,17 @@ static void probe_open_io(char *out, size_t *used, size_t cap, const char *label
     }
     struct stat st;
     errno = 0;
-    int fst = fstat(fd, &st);
+    int fst = box64_raw_fstat(fd, &st);
     int f_errno = errno;
     plog("open_io[%s]: fstat done=%d errno=%d", label, fst, f_errno);
-    off_t sz = lseek(fd, 0, SEEK_END);
+    off_t sz = box64_raw_lseek(fd, 0, SEEK_END);
     int l_errno = errno;
     plog("open_io[%s]: lseek done sz=%lld errno=%d", label, (long long)sz, l_errno);
     char magic[16];
     int n = 0;
     if (sz >= 4) {
-        lseek(fd, 0, SEEK_SET);
-        n = (int)read(fd, magic, sizeof(magic));
+        box64_raw_lseek(fd, 0, SEEK_SET);
+        n = (int)box64_raw_read(fd, magic, sizeof(magic));
     }
     int r_errno = errno;
     char hex[128] = "";
@@ -641,7 +642,7 @@ static void probe_open_io(char *out, size_t *used, size_t cap, const char *label
         strncat(hex, part, sizeof(hex) - strlen(hex) - 1);
         if (i < n - 1) strncat(hex, " ", sizeof(hex) - strlen(hex) - 1);
     }
-    if (fd > 2) close(fd);
+    if (fd > 2) box64_raw_close(fd);
     snprintf(line, sizeof(line),
              "OPENIO %s | open=fd%d fstat=%d(errno=%d) size=%lld read=%dbytes(errno=%d) magic=[%s] realpath=%s",
              label, fd, fst, f_errno, (long long)sz, n, r_errno, hex, rps);
@@ -654,7 +655,7 @@ static void probe_root(char *out, size_t *used, size_t cap, int idx, const char 
     struct stat s;
     errno = 0;
     plog("probe_root[%d]: stat(%s)", idx, path ? path : "(null)");
-    int st = stat(path, &s);
+    int st = box64_raw_stat(path, &s);
     int st_errno = errno;
     plog("probe_root[%d]: stat done st=%d errno=%d", idx, st, st_errno);
     char rp[1300];
@@ -666,15 +667,15 @@ static void probe_root(char *out, size_t *used, size_t cap, int idx, const char 
         char tp[1400];
         snprintf(tp, sizeof(tp), "%s/.wtest", path);
         plog("probe_root[%d]: open-write %s", idx, tp);
-        int fd = open(tp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        int fd = box64_raw_open(tp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         plog("probe_root[%d]: open done fd=%d errno=%d", idx, fd, errno);
-        if (fd >= 0) { close(fd); unlink(tp); snprintf(acc, sizeof(acc), "DIR-WRITABLE"); }
+        if (fd >= 0) { box64_raw_close(fd); box64_raw_unlink(tp); snprintf(acc, sizeof(acc), "DIR-WRITABLE"); }
         else { snprintf(acc, sizeof(acc), "DIR-readonly(errno=%d)", errno); }
     } else if (st == 0 && S_ISREG(s.st_mode)) {
         plog("probe_root[%d]: open-read %s", idx, path);
-        int fd = open(path, O_RDONLY);
+        int fd = box64_raw_open(path, O_RDONLY);
         plog("probe_root[%d]: open-read done fd=%d errno=%d", idx, fd, errno);
-        if (fd >= 0) { close(fd); snprintf(acc, sizeof(acc), "FILE-readable"); }
+        if (fd >= 0) { box64_raw_close(fd); snprintf(acc, sizeof(acc), "FILE-readable"); }
         else { snprintf(acc, sizeof(acc), "FILE-openfail(errno=%d)", errno); }
     }
     snprintf(line, sizeof(line), "ROOT %d stat=%s(errno=%d) access=%s realpath=%s | '%s'",
@@ -695,7 +696,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     out[0] = 0;
     size_t used = 0;
 
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v353 (reallibc shim) ====");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v360 (rawlibc syscalls) ====");
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
     plog("env HOME=%s TMPDIR=%s", env_home ? env_home : "(null)", td ? td : "(null)");
@@ -715,7 +716,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     probe_emit(out, &used, out_len, l1);
     char cwd_buf[1024];
     plog("getcwd...");
-    const char *cwd = getcwd(cwd_buf, sizeof(cwd_buf));
+    const char *cwd = box64_raw_getcwd(cwd_buf, sizeof(cwd_buf));
     plog("getcwd=%s", cwd ? cwd : "(null)");
     snprintf(l1, sizeof(l1), "getcwd=%s", cwd ? cwd : "(null)");
     probe_emit(out, &used, out_len, l1);

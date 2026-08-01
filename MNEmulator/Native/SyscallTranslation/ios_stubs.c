@@ -5,6 +5,7 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include "../Include/rawlibc.h"
 
 /* Box64 needs these Linux/glibc symbols that don't exist on iOS */
 
@@ -44,12 +45,12 @@ void box64_exit_intercept(int status) {
     if (home) {
         char path[512];
         snprintf(path, sizeof(path), "%s/Documents/box64_runner.log", home);
-        int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        int fd = box64_raw_open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
         if (fd >= 0) {
             char buf[128];
             int n = snprintf(buf, sizeof(buf), "[Stubs] exit(%d) intercepted — returning\n", status);
-            write(fd, buf, n);
-            close(fd);
+            box64_raw_write(fd, buf, n);
+            box64_raw_close(fd);
         }
     }
     /* Just return — don't let Box64 kill the iOS app */

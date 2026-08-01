@@ -346,6 +346,16 @@ class Box64Bridge {
         auditDirContents((wineInstallPath as NSString).appendingPathComponent("lib"), label: "wine/lib")
         auditDirContents((wineInstallPath as NSString).appendingPathComponent("lib/wine64"), label: "wine/lib/wine64")
         auditPath(box64InstallPath + "/box64", label: "box64_bin")
+
+        let tmpDir = NSTemporaryDirectory()
+        let realDocs = (tmpDir as NSString).appendingPathComponent("../Documents")
+        auditPath(realDocs, label: "real_container_Documents(tmp/../Documents)")
+        auditDirContents(realDocs, label: "real_container_Documents_entries")
+        Self.writeDiag("TMPDIR_real=\(tmpDir)")
+        Self.writeDiag("realDocs_candidate=\(realDocs)")
+        self.auditMagicBytes(wine64Path, label: "wine64_magic")
+        self.auditMagicBytes((wineInstallPath as NSString).appendingPathComponent("loader/wine64"), label: "loader_wine64_magic")
+        self.auditMagicBytes((wineInstallPath as NSString).appendingPathComponent("lib64/wine64"), label: "lib64_wine64_magic")
         Self.writeDiag("launchWine_fs_audit_end")
         Self.log("calling box64_launch_wine(), memory = \(Self.memoryUsageMB())MB...")
         Self.writeDiag("box64_launch_enter")
@@ -553,6 +563,18 @@ class Box64Bridge {
         }
         let shown = items.sorted().prefix(limit).joined(separator: ", ")
         Self.writeDiag("FS-AUDIT \(label) dir=\(path) count=\(items.count) [\(shown)]")
+    }
+
+    private func auditMagicBytes(_ path: String, label: String) {
+        let fm = FileManager.default
+        guard let data = fm.contents(atPath: path) else {
+            Self.writeDiag("FS-AUDIT \(label) path=\(path) read=(failed)")
+            return
+        }
+        let shown = Array(data.prefix(16))
+        let hex = shown.map { String(format: "%02x", $0) }.joined(separator: " ")
+        let ascii = shown.map { (0x20...0x7e).contains($0) ? String(UnicodeScalar(UInt32($0))) : "." }.joined()
+        Self.writeDiag("FS-AUDIT \(label) path=\(path) size=\(data.count) head=[\(hex)] \"\(ascii)\"")
     }
 
     private func extractBox64() throws {

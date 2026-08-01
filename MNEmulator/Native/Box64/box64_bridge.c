@@ -559,8 +559,6 @@ static void probe_root(char *out, size_t *used, size_t cap, int idx, const char 
     struct stat s;
     errno = 0;
     plog("probe_root[%d]: stat(%s)", idx, path ? path : "(null)");
-    int accRes = path ? access(path, F_OK) : -1;
-    plog("probe_root[%d]: access F_OK=%d errno=%d", idx, accRes, errno);
     int st = stat(path, &s);
     int st_errno = errno;
     plog("probe_root[%d]: stat done st=%d errno=%d", idx, st, st_errno);
@@ -602,7 +600,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     out[0] = 0;
     size_t used = 0;
 
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v346 (weak-stubs) ====");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v351 (hang-safe, real-roots-first) ====");
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
     plog("env HOME=%s TMPDIR=%s", env_home ? env_home : "(null)", td ? td : "(null)");
@@ -627,19 +625,32 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     snprintf(l1, sizeof(l1), "getcwd=%s", cwd ? cwd : "(null)");
     probe_emit(out, &used, out_len, l1);
 
-    /* Candidate POSIX-accessible roots: stat + write test on each */
-    char candb[12][1300];
-    const char *cands[12];
+    /* Candidate POSIX-accessible roots: stat + write test on each.
+       Order matters: docs (fake LiveContainer container) HANGS in access(),
+       so real-container paths are tested first. */
+    char candb[14][1300];
+    const char *cands[14];
     int nc = 0;
-    if (docs && docs[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", docs); cands[nc] = candb[nc]; nc++; }
-    if (tmpdir && tmpdir[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", tmpdir); cands[nc] = candb[nc]; nc++; }
-    if (home && home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", home); cands[nc] = candb[nc]; nc++; }
-    if (tmpdir && tmpdir[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/../..", tmpdir); cands[nc] = candb[nc]; nc++; }
-    snprintf(candb[nc], sizeof(candb[nc]), "/tmp"); cands[nc] = candb[nc]; nc++;
-    if (env_home && env_home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", env_home); cands[nc] = candb[nc]; nc++; }
+    /* 0: app bundle (read-only, inside real container Documents) */
     if (bundle && bundle[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", bundle); cands[nc] = candb[nc]; nc++; }
+    /* 1: TMPDIR (real container tmp) */
+    if (tmpdir && tmpdir[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", tmpdir); cands[nc] = candb[nc]; nc++; }
+    /* 2: real container root = TMPDIR/.. */
+    if (tmpdir && tmpdir[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/..", tmpdir); cands[nc] = candb[nc]; nc++; }
+    /* 3: real container Documents = TMPDIR/../Documents */
+    if (tmpdir && tmpdir[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/../Documents", tmpdir); cands[nc] = candb[nc]; nc++; }
+    /* 4: /tmp */
+    snprintf(candb[nc], sizeof(candb[nc]), "/tmp"); cands[nc] = candb[nc]; nc++;
+    /* 5: home (fake LiveContainer home) */
+    if (home && home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", home); cands[nc] = candb[nc]; nc++; }
+    /* 6: env HOME */
+    if (env_home && env_home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", env_home); cands[nc] = candb[nc]; nc++; }
+    /* 7: home/Documents (fake container docs) */
     if (home && home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/Documents", home); cands[nc] = candb[nc]; nc++; }
+    /* 8: env HOME/.. */
     if (env_home && env_home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/..", env_home); cands[nc] = candb[nc]; nc++; }
+    /* 9: docs (fake LiveContainer docs — LAST, known to hang in access()) */
+    if (docs && docs[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", docs); cands[nc] = candb[nc]; nc++; }
 
     for (int i = 0; i < nc; i++) {
         plog("candidate[%d]='%s'", i, cands[i]);
@@ -670,8 +681,8 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     }
     if (td && td[0]) {
         char realdocs[1400];
-        snprintf(realdocs, sizeof(realdocs), "%s/../../Documents", td);
-        probe_one(out, &used, out_len, "realdocs(td/../../Documents)", realdocs);
+        snprintf(realdocs, sizeof(realdocs), "%s/../Documents", td);
+        probe_one(out, &used, out_len, "realdocs(td/../Documents)", realdocs);
         probe_walk_up(out, &used, out_len, realdocs);
     }
     plog("specific file checks done");

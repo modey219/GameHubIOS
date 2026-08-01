@@ -25,13 +25,22 @@ static char g_docs_path[1024] = {0};
 static box64_log_callback g_probe_log_cb = NULL;
 void box64_set_probe_log_cb(box64_log_callback cb) { g_probe_log_cb = cb; }
 
+static char g_trace_path[1100] = {0};
+
 static void plog(const char *fmt, ...) {
     char buf[512];
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    if (g_probe_log_cb) g_probe_log_cb(buf);
+    if (g_trace_path[0]) {
+        int fd = open(g_trace_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd >= 0) {
+            write(fd, buf, strlen(buf));
+            write(fd, "\n", 1);
+            close(fd);
+        }
+    }
     fprintf(stderr, "[probe] %s\n", buf);
 }
 
@@ -512,6 +521,8 @@ static void probe_root(char *out, size_t *used, size_t cap, int idx, const char 
     struct stat s;
     errno = 0;
     plog("probe_root[%d]: stat(%s)", idx, path ? path : "(null)");
+    int acc = path ? access(path, F_OK) : -1;
+    plog("probe_root[%d]: access F_OK=%d errno=%d", idx, acc, errno);
     int st = stat(path, &s);
     int st_errno = errno;
     plog("probe_root[%d]: stat done st=%d errno=%d", idx, st, st_errno);
@@ -542,6 +553,9 @@ static void probe_root(char *out, size_t *used, size_t cap, int idx, const char 
 }
 
 void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir, const char *home, char *out, size_t out_len) {
+    if (docs && docs[0]) {
+        snprintf(g_trace_path, sizeof(g_trace_path), "%s/probe_trace.log", docs);
+    }
     plog("box64_probe_paths ENTER docs=%s bundle=%s tmpdir=%s home=%s",
          docs ? docs : "(null)", bundle ? bundle : "(null)",
          tmpdir ? tmpdir : "(null)", home ? home : "(null)");

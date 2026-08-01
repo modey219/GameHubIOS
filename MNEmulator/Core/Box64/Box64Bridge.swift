@@ -161,39 +161,52 @@ class Box64Bridge {
         Self.writeDiag("probe_magic=\(box64_probe_magic())")
         let homePath = NSHomeDirectory()
         Self.writeDiag("NSHomeDirectory=\(homePath)")
-        box64_set_probe_log_cb { msg in
-            if let msg = msg {
-                NSLog("[probe] %@", String(cString: msg))
-            }
-        }
-        var probeBuf = [CChar](repeating: 0, count: 32768)
-        probeBuf.withUnsafeMutableBufferPointer { bufPtr in
+        let probePtr = UnsafeMutablePointer<CChar>.allocate(capacity: 32768)
+        probePtr.initialize(repeating: 0, count: 32768)
+        let probeSem = DispatchSemaphore(value: 0)
+        let probeThread = Thread {
             docsPath.withCString { d in
                 Bundle.main.bundlePath.withCString { b in
                     NSTemporaryDirectory().withCString { t in
                         homePath.withCString { h in
-                            box64_probe_paths(d, b, t, h, bufPtr.baseAddress, 32768)
+                            box64_probe_paths(d, b, t, h, probePtr, 32768)
                         }
                     }
                 }
             }
+            probeSem.signal()
         }
-        let probeText = String(cString: probeBuf)
-        Self.writeDiag("PROBE RESULT (buffer \(probeText.count) chars):\n\(probeText)")
-        let probeFiles = [
-            ("docs", docsPath + "/box64_probe.log"),
-            ("tmpdir", NSTemporaryDirectory() + "/box64_probe.log"),
-            ("/tmp", "/tmp/box64_probe.log"),
-            ("home", homePath + "/box64_probe.log"),
-        ]
-        for (label, path) in probeFiles {
-            if let data = FileManager.default.contents(atPath: path),
-               let content = String(data: data, encoding: .utf8), !content.isEmpty {
-                Self.writeDiag("PROBE FILE [\(label)] \(path):\n\(content)")
-            } else {
-                Self.writeDiag("PROBE FILE [\(label)] \(path): (missing)")
+        probeThread.name = "mn-probe"
+        probeThread.stackSize = 2 << 20
+        probeThread.start()
+        if probeSem.wait(timeout: .now() + 20) == .timedOut {
+            Self.writeDiag("PROBE TIMEOUT (20s) — continuing without probe data")
+        } else {
+            let probeText = String(cString: probePtr)
+            Self.writeDiag("PROBE RESULT (buffer \(probeText.count) chars):\n\(probeText)")
+            let probeFiles = [
+                ("docs", docsPath + "/box64_probe.log"),
+                ("tmpdir", NSTemporaryDirectory() + "/box64_probe.log"),
+                ("/tmp", "/tmp/box64_probe.log"),
+                ("home", homePath + "/box64_probe.log"),
+            ]
+            for (label, path) in probeFiles {
+                if let data = FileManager.default.contents(atPath: path),
+                   let content = String(data: data, encoding: .utf8), !content.isEmpty {
+                    Self.writeDiag("PROBE FILE [\(label)] \(path):\n\(content)")
+                } else {
+                    Self.writeDiag("PROBE FILE [\(label)] \(path): (missing)")
+                }
             }
         }
+        if let trace = FileManager.default.contents(atPath: docsPath + "/probe_trace.log"),
+           let traceText = String(data: trace, encoding: .utf8), !traceText.isEmpty {
+            Self.writeDiag("PROBE TRACE:\n\(traceText)")
+        } else {
+            Self.writeDiag("PROBE TRACE: (missing)")
+        }
+        probePtr.deinitialize(count: 32768)
+        probePtr.deallocate()
         let localCtx = autoreleasepool { () -> UnsafeMutablePointer<box64_context_t>? in
             box64_create_step1()
         }

@@ -15,6 +15,7 @@
 #include <dirent.h>
 #include <dlfcn.h>
 #include <sys/syscall.h>
+#include <time.h>
 
 static box64_context_t *g_box64 = NULL;
 static box64_context_t g_static_box64;
@@ -684,6 +685,273 @@ static void probe_root(char *out, size_t *used, size_t cap, int idx, const char 
     plog("probe_root[%d]: done", idx);
 }
 
+/* ================================================================== */
+/*  forensic open/stat matrix (watchdog-guarded trials)               */
+/* ================================================================== */
+
+/* build-366: probe died at raw open() of the wine64 realpath — raw
+   syscall(SYS_open) hangs while libc realpath()/getcwd() work. We need to
+   know WHICH mechanism (plain syscall symbol / dlsym'd libSystem syscall /
+   dlsym'd libc open / interposed libc open / openat vs open / stat64 vs
+   fstat) actually works under LiveContainer. Each trial runs on its own
+   thread so a hung syscall is recorded as HANG and the probe continues. */
+
+static void *g_libc_handle = NULL;
+static long (*g_libc_syscall_fn)(int, ...) = NULL;
+static int (*g_libc_open_fn)(const char *, int, ...) = NULL;
+static int (*g_libc_stat_fn)(const char *, struct stat *) = NULL;
+static int (*g_libc_fstat_fn)(int, struct stat *) = NULL;
+static ssize_t (*g_libc_read_fn)(int, void *, size_t) = NULL;
+static FILE *(*g_libc_fopen_fn)(const char *, const char *) = NULL;
+
+static void resolve_libc_pointers(void) {
+    if (g_libc_handle) return;
+    g_libc_handle = dlopen("/usr/lib/libSystem.B.dylib", RTLD_LAZY);
+    if (!g_libc_handle) g_libc_handle = dlopen("/usr/lib/libSystem.dylib", RTLD_LAZY);
+    if (!g_libc_handle) return;
+    g_libc_syscall_fn = (long (*)(int, ...))dlsym(g_libc_handle, "syscall");
+    g_libc_open_fn = (int (*)(const char *, int, ...))dlsym(g_libc_handle, "open");
+    g_libc_stat_fn = (int (*)(const char *, struct stat *))dlsym(g_libc_handle, "stat");
+    g_libc_fstat_fn = (int (*)(int, struct stat *))dlsym(g_libc_handle, "fstat");
+    g_libc_read_fn = (ssize_t (*)(int, void *, size_t))dlsym(g_libc_handle, "read");
+    g_libc_fopen_fn = (FILE *(*)(const char *, const char *))dlsym(g_libc_handle, "fopen");
+}
+
+enum {
+    TK_REAL_SC_OPEN = 0,     /* dlsym'd libSystem syscall(SYS_open) */
+    TK_REAL_SC_OPENAT = 1,   /* dlsym'd libSystem syscall(SYS_openat,AT_FDCWD) */
+    TK_RAW_OPEN = 2,         /* plain syscall symbol SYS_open (current failure) */
+    TK_RAW_OPENAT = 3,       /* plain syscall symbol SYS_openat */
+    TK_RAW_STAT64 = 4,       /* plain syscall symbol SYS_stat64 */
+    TK_LIBC_OPEN_DL = 5,     /* dlsym'd libSystem open */
+    TK_LIBC_STAT_DL = 6,     /* dlsym'd libSystem stat */
+    TK_LIBC_FOPEN_DL = 7,    /* dlsym'd libSystem fopen */
+    TK_LIBC_OPEN = 8,        /* interposed plain open() */
+    TK_RAW_FSTAT64 = 9,      /* plain syscall SYS_fstat64 on t->fd */
+    TK_RAW_READ4 = 10,       /* plain syscall SYS_read 4 bytes on t->fd */
+    TK_LIBC_FSTAT_DL = 11,   /* dlsym'd libSystem fstat on t->fd */
+    TK_LIBC_READ4_DL = 12,   /* dlsym'd libSystem read on t->fd */
+    TK_RAW_GETDENTS64 = 13,  /* plain syscall SYS_getdirentries64 on t->fd */
+    TK_REAL_SC_MKDIR = 14,   /* dlsym'd libSystem syscall(SYS_mkdir) */
+    TK_REAL_SC_UNLINK = 15,  /* dlsym'd libSystem syscall(SYS_unlink) */
+    TK_REAL_SC_CREATE = 16,  /* dlsym'd syscall openat O_WRONLY|O_CREAT + write + close */
+    TK_COUNT
+};
+
+typedef struct {
+    volatile int state;          /* 1=running, 2=done, 3=abandoned(hung) */
+    int kind;
+    const char *path;
+    int fd;
+    int r1;
+    int r2;
+    int r_errno;
+    unsigned char rbuf[16];
+} trial_t;
+
+static const char *trial_name(int kind) {
+    switch (kind) {
+    case TK_REAL_SC_OPEN: return "real-syscall-open";
+    case TK_REAL_SC_OPENAT: return "real-syscall-openat";
+    case TK_RAW_OPEN: return "raw-open";
+    case TK_RAW_OPENAT: return "raw-openat";
+    case TK_RAW_STAT64: return "raw-stat64";
+    case TK_LIBC_OPEN_DL: return "libc-open(dlsym)";
+    case TK_LIBC_STAT_DL: return "libc-stat(dlsym)";
+    case TK_LIBC_FOPEN_DL: return "libc-fopen(dlsym)";
+    case TK_LIBC_OPEN: return "libc-open(plain)";
+    case TK_RAW_FSTAT64: return "raw-fstat64";
+    case TK_RAW_READ4: return "raw-read4";
+    case TK_LIBC_FSTAT_DL: return "libc-fstat(dlsym)";
+    case TK_LIBC_READ4_DL: return "libc-read4(dlsym)";
+    case TK_RAW_GETDENTS64: return "raw-getdents64";
+    case TK_REAL_SC_MKDIR: return "real-syscall-mkdir";
+    case TK_REAL_SC_UNLINK: return "real-syscall-unlink";
+    case TK_REAL_SC_CREATE: return "real-syscall-create+write";
+    default: return "?";
+    }
+}
+
+static void bridge_msleep(int ms) {
+    struct timespec ts;
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (long)(ms % 1000) * 1000000L;
+    nanosleep(&ts, NULL);
+}
+
+static void *bridge_trial_thread(void *arg) {
+    trial_t *t = (trial_t *)arg;
+    struct stat sb;
+    errno = 0;
+    switch (t->kind) {
+    case TK_REAL_SC_OPEN:
+        t->r1 = g_libc_syscall_fn ? (int)g_libc_syscall_fn(SYS_open, t->path, O_RDONLY, 0L) : -1;
+        t->r_errno = errno; break;
+    case TK_REAL_SC_OPENAT:
+        t->r1 = g_libc_syscall_fn ? (int)g_libc_syscall_fn(SYS_openat, AT_FDCWD, t->path, O_RDONLY, 0L) : -1;
+        t->r_errno = errno; break;
+    case TK_RAW_OPEN:
+        t->r1 = (int)syscall(SYS_open, t->path, O_RDONLY, 0L);
+        t->r_errno = errno; break;
+    case TK_RAW_OPENAT:
+        t->r1 = (int)syscall(SYS_openat, AT_FDCWD, t->path, O_RDONLY, 0L);
+        t->r_errno = errno; break;
+    case TK_RAW_STAT64:
+        t->r1 = (int)syscall(SYS_stat64, t->path, &sb);
+        t->r2 = (t->r1 == 0) ? (int)sb.st_size : -1;
+        t->r_errno = errno; break;
+    case TK_LIBC_OPEN_DL:
+        t->r1 = g_libc_open_fn ? g_libc_open_fn(t->path, O_RDONLY) : -1;
+        t->r_errno = errno; break;
+    case TK_LIBC_STAT_DL:
+        t->r1 = g_libc_stat_fn ? g_libc_stat_fn(t->path, &sb) : -1;
+        t->r2 = (t->r1 == 0) ? (int)sb.st_size : -1;
+        t->r_errno = errno; break;
+    case TK_LIBC_FOPEN_DL: {
+        FILE *f = g_libc_fopen_fn ? g_libc_fopen_fn(t->path, "rb") : NULL;
+        t->r1 = f ? fileno(f) : -1;
+        if (f) fclose(f);
+        t->r_errno = errno; break;
+    }
+    case TK_LIBC_OPEN:
+        t->r1 = open(t->path, O_RDONLY);
+        t->r_errno = errno; break;
+    case TK_RAW_FSTAT64:
+        t->r1 = (int)syscall(SYS_fstat64, t->fd, &sb);
+        t->r2 = (t->r1 == 0) ? (int)sb.st_size : -1;
+        t->r_errno = errno; break;
+    case TK_RAW_READ4:
+        t->r1 = (int)syscall(SYS_read, t->fd, t->rbuf, 4);
+        t->r_errno = errno; break;
+    case TK_LIBC_FSTAT_DL:
+        t->r1 = g_libc_fstat_fn ? g_libc_fstat_fn(t->fd, &sb) : -1;
+        t->r2 = (t->r1 == 0) ? (int)sb.st_size : -1;
+        t->r_errno = errno; break;
+    case TK_LIBC_READ4_DL:
+        t->r1 = g_libc_read_fn ? (int)g_libc_read_fn(t->fd, t->rbuf, 4) : -1;
+        t->r_errno = errno; break;
+    case TK_RAW_GETDENTS64: {
+        off_t base = 0;
+        char db[4096];
+        t->r1 = (int)syscall(SYS_getdirentries64, t->fd, db, (size_t)sizeof(db), &base);
+        t->r_errno = errno; break;
+    }
+    case TK_REAL_SC_MKDIR:
+        t->r1 = g_libc_syscall_fn ? (int)g_libc_syscall_fn(SYS_mkdir, t->path, 0755) : -1;
+        t->r_errno = errno; break;
+    case TK_REAL_SC_UNLINK:
+        t->r1 = g_libc_syscall_fn ? (int)g_libc_syscall_fn(SYS_unlink, t->path) : -1;
+        t->r_errno = errno; break;
+    case TK_REAL_SC_CREATE: {
+        int fd = g_libc_syscall_fn
+                     ? (int)g_libc_syscall_fn(SYS_openat, AT_FDCWD, t->path,
+                                              O_WRONLY | O_CREAT | O_TRUNC, 0644)
+                     : -1;
+        if (fd >= 0) {
+            if (g_libc_syscall_fn) g_libc_syscall_fn(SYS_write, fd, "OK", 2L);
+            if (g_libc_syscall_fn) g_libc_syscall_fn(SYS_close, fd);
+        }
+        t->r1 = fd;
+        t->r_errno = errno; break;
+    }
+    default:
+        t->r1 = -1;
+        t->r_errno = ENOSYS;
+        break;
+    }
+    t->state = 2;
+    return NULL;
+}
+
+#define TRIAL_TIMEOUT_MS 1200
+
+/* Runs one trial. Returns: 0 = returned, -1 = HANG (thread abandoned),
+   -2 = spawn failure. Result is appended to `out` as a MATRIX line. */
+static int bridge_run_trial(trial_t *t, const char *lbl, char *out, size_t *used, size_t cap) {
+    pthread_t tid;
+    pthread_attr_t attr;
+    char line[320];
+
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    pthread_attr_setstacksize(&attr, 96 * 1024);
+    t->state = 1;
+    if (pthread_create(&tid, &attr, bridge_trial_thread, t) != 0) {
+        pthread_attr_destroy(&attr);
+        snprintf(line, sizeof(line), "MATRIX %s | %s = spawn-FAIL", lbl, trial_name(t->kind));
+        probe_emit(out, used, cap, line);
+        plog("trial %s: pthread_create FAILED", lbl);
+        return -2;
+    }
+    pthread_attr_destroy(&attr);
+
+    int waited = 0;
+    while (t->state == 1 && waited < TRIAL_TIMEOUT_MS) {
+        bridge_msleep(20);
+        waited += 20;
+    }
+    if (t->state == 1) {
+        t->state = 3;
+        snprintf(line, sizeof(line), "MATRIX %s | %s = HANG (>%dms)",
+                 lbl, trial_name(t->kind), TRIAL_TIMEOUT_MS);
+        probe_emit(out, used, cap, line);
+        plog("trial %s [%s]: HANG", lbl, trial_name(t->kind));
+        return -1;
+    }
+
+    const char *op = trial_name(t->kind);
+    if (t->r1 >= 0) {
+        char extra[96] = "";
+        if (t->kind == TK_RAW_STAT64 || t->kind == TK_LIBC_STAT_DL ||
+            t->kind == TK_RAW_FSTAT64 || t->kind == TK_LIBC_FSTAT_DL)
+            snprintf(extra, sizeof(extra), " size=%d", t->r2);
+        else if (t->kind == TK_RAW_READ4 || t->kind == TK_LIBC_READ4_DL)
+            snprintf(extra, sizeof(extra), " got=%d", t->r2);
+        snprintf(line, sizeof(line), "MATRIX %s | %s = OK r1=%d%s", lbl, op, t->r1, extra);
+    } else {
+        snprintf(line, sizeof(line), "MATRIX %s | %s = FAIL errno=%d", lbl, op, t->r_errno);
+    }
+    probe_emit(out, used, cap, line);
+    plog("trial %s [%s]: r1=%d errno=%d", lbl, op, t->r1, t->r_errno);
+    return 0;
+}
+
+/* Runs `kinds` (len `nk`) against `path`, in order, until one HANGS or spawns
+   fine. `ok` bitmask of kinds that RETURNED (no hang) is written to *okmask.
+   Returns the first fd>=0 obtained (for pipeline tests) or -1. */
+static int probe_matrix_path(const char *lbl, const char *path, const int *kinds, int nk,
+                             unsigned *okmask, int first_fd, char *out, size_t *used, size_t cap) {
+    int got_fd = -1;
+    for (int i = 0; i < nk; i++) {
+        trial_t *t = (trial_t *)calloc(1, sizeof(trial_t));
+        if (!t) continue;
+        t->kind = kinds[i];
+        t->path = path;
+        t->fd = first_fd;
+        int r = bridge_run_trial(t, lbl, out, used, cap);
+        if (r == -1) continue;                 /* hung — skip op for later paths */
+        *okmask |= (1u << (unsigned)kinds[i]);
+        if (got_fd < 0 && t->r1 >= 0 &&
+            (kinds[i] == TK_REAL_SC_OPEN || kinds[i] == TK_REAL_SC_OPENAT ||
+             kinds[i] == TK_RAW_OPEN || kinds[i] == TK_RAW_OPENAT ||
+             kinds[i] == TK_LIBC_OPEN_DL || kinds[i] == TK_LIBC_OPEN))
+            got_fd = t->r1;
+    }
+    return got_fd;
+}
+
+static void probe_syscall_report(char *out, size_t *used, size_t cap) {
+    char line[512];
+    snprintf(line, sizeof(line),
+             "SYSNUMS SYS_open=%d SYS_openat=%d SYS_stat64=%d SYS_fstat64=%d "
+             "SYS_lseek=%d SYS_read=%d SYS_getdirentries64=%d SYS_mkdir=%d SYS_unlink=%d",
+             (int)SYS_open, (int)SYS_openat, (int)SYS_stat64, (int)SYS_fstat64,
+             (int)SYS_lseek, (int)SYS_read, (int)SYS_getdirentries64,
+             (int)SYS_mkdir, (int)SYS_unlink);
+    probe_emit(out, used, cap, line);
+    plog("syscall report: %s", line + 8);
+}
+
 void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir, const char *home, char *out, size_t out_len) {
     if (docs && docs[0]) {
         snprintf(g_trace_path, sizeof(g_trace_path), "%s/probe_trace.log", docs);
@@ -696,7 +964,13 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     out[0] = 0;
     size_t used = 0;
 
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v360 (rawlibc syscalls) ====");
+    resolve_libc_pointers();
+    plog("libc resolve: syscall=%p open=%p stat=%p fstat=%p read=%p fopen=%p",
+         (void *)g_libc_syscall_fn, (void *)g_libc_open_fn, (void *)g_libc_stat_fn,
+         (void *)g_libc_fstat_fn, (void *)g_libc_read_fn, (void *)g_libc_fopen_fn);
+
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v361 (matrix) ====");
+    probe_syscall_report(out, &used, out_len);
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
     plog("env HOME=%s TMPDIR=%s", env_home ? env_home : "(null)", td ? td : "(null)");
@@ -721,118 +995,154 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     snprintf(l1, sizeof(l1), "getcwd=%s", cwd ? cwd : "(null)");
     probe_emit(out, &used, out_len, l1);
 
-    /* Open-based I/O probe FIRST: tells us whether box64's elfloader
-       (open/fstat/read) can ever load wine64 under LiveContainer. */
-    plog("open-io probe start");
-    probe_emit(out, &used, out_len, "---- open-io probe ----");
-    if (docs && docs[0]) {
-        char w64[1400], bx[1400];
-        snprintf(w64, sizeof(w64), "%s/Wine/bin/wine64", docs);
-        snprintf(bx, sizeof(bx), "%s/Box64/box64", docs);
-        probe_open_io(out, &used, out_len, "docs/Wine/bin/wine64", w64);
-        probe_open_io(out, &used, out_len, "docs/Box64/box64", bx);
-    }
-    if (bundle && bundle[0]) {
-        char bw[1400];
-        snprintf(bw, sizeof(bw), "%s/BundledBinaries/Wine/bin/wine64", bundle);
-        probe_open_io(out, &used, out_len, "bundle/Wine/bin/wine64", bw);
-    }
-    if (td && td[0]) {
-        char realdocs[1400];
-        snprintf(realdocs, sizeof(realdocs), "%s/../Documents", td);
-        probe_open_io(out, &used, out_len, "realdocs(td/../Documents)", realdocs);
-    }
-    probe_open_io(out, &used, out_len, "/tmp", "/tmp");
-    plog("open-io probe done");
+    static char w64raw[1400], realdocs[1400], bw[1400];
+    w64raw[0] = realdocs[0] = bw[0] = 0;
+    if (docs && docs[0]) snprintf(w64raw, sizeof(w64raw), "%s/Wine/bin/wine64", docs);
+    if (td && td[0]) snprintf(realdocs, sizeof(realdocs), "%s/../Documents", td);
+    if (bundle && bundle[0]) snprintf(bw, sizeof(bw), "%s/BundledBinaries/Wine/bin/wine64", bundle);
 
-    /* Candidate POSIX-accessible roots: stat + write test on each.
-       Order matters: docs (fake LiveContainer container) HANGS in access(),
-       so real-container paths are tested first. */
-    char candb[14][1300];
-    const char *cands[14];
-    int nc = 0;
-    /* 0: app bundle (read-only, inside real container Documents) */
-    if (bundle && bundle[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", bundle); cands[nc] = candb[nc]; nc++; }
-    /* 1: TMPDIR (real container tmp) */
-    if (tmpdir && tmpdir[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", tmpdir); cands[nc] = candb[nc]; nc++; }
-    /* 2: real container root = TMPDIR/.. */
-    if (tmpdir && tmpdir[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/..", tmpdir); cands[nc] = candb[nc]; nc++; }
-    /* 3: real container Documents = TMPDIR/../Documents */
-    if (tmpdir && tmpdir[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/../Documents", tmpdir); cands[nc] = candb[nc]; nc++; }
-    /* 4: /tmp */
-    snprintf(candb[nc], sizeof(candb[nc]), "/tmp"); cands[nc] = candb[nc]; nc++;
-    /* 5: home (fake LiveContainer home) */
-    if (home && home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", home); cands[nc] = candb[nc]; nc++; }
-    /* 6: env HOME */
-    if (env_home && env_home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", env_home); cands[nc] = candb[nc]; nc++; }
-    /* 7: home/Documents (fake container docs) */
-    if (home && home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/Documents", home); cands[nc] = candb[nc]; nc++; }
-    /* 8: env HOME/.. */
-    if (env_home && env_home[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s/..", env_home); cands[nc] = candb[nc]; nc++; }
-    /* 9: docs (fake LiveContainer docs — LAST, known to hang in access()) */
-    if (docs && docs[0]) { snprintf(candb[nc], sizeof(candb[nc]), "%s", docs); cands[nc] = candb[nc]; nc++; }
+    /* Resolve realpaths for the paths we care about (realpath is proven to
+       work under LiveContainer). */
+    char rp_w64[1300], rp_bw[1300], rp_docs[1300], rp_rd[1300], rp_tmp[1300];
+    rp_w64[0] = rp_bw[0] = rp_docs[0] = rp_rd[0] = rp_tmp[0] = 0;
+    if (w64raw[0]) { const char *r = realpath(w64raw, rp_w64); if (!r) rp_w64[0] = 0; }
+    if (bw[0]) { const char *r = realpath(bw, rp_bw); if (!r) rp_bw[0] = 0; }
+    if (docs && docs[0]) { const char *r = realpath(docs, rp_docs); if (!r) rp_docs[0] = 0; }
+    if (realdocs[0]) { const char *r = realpath(realdocs, rp_rd); if (!r) rp_rd[0] = 0; }
+    const char *r = realpath("/tmp", rp_tmp); if (!r) rp_tmp[0] = 0;
 
-    for (int i = 0; i < nc; i++) {
-        plog("candidate[%d]='%s'", i, cands[i]);
-        probe_root(out, &used, out_len, i, cands[i]);
-        plog("candidate[%d] done", i);
+    probe_emit(out, &used, out_len, "---- paths ----");
+    snprintf(l1, sizeof(l1), "PATH w64-raw=%s", w64raw[0] ? w64raw : "(null)");
+    probe_emit(out, &used, out_len, l1);
+    snprintf(l1, sizeof(l1), "PATH w64-real=%s", rp_w64[0] ? rp_w64 : "(null)");
+    probe_emit(out, &used, out_len, l1);
+    snprintf(l1, sizeof(l1), "PATH docs-real=%s", rp_docs[0] ? rp_docs : "(null)");
+    probe_emit(out, &used, out_len, l1);
+    snprintf(l1, sizeof(l1), "PATH realdocs=%s", rp_rd[0] ? rp_rd : "(null)");
+    probe_emit(out, &used, out_len, l1);
+    snprintf(l1, sizeof(l1), "PATH bundle-w64-real=%s", rp_bw[0] ? rp_bw : "(null)");
+    probe_emit(out, &used, out_len, l1);
+    snprintf(l1, sizeof(l1), "PATH /tmp=%s", rp_tmp[0] ? rp_tmp : "(null)");
+    probe_emit(out, &used, out_len, l1);
+
+    /* ---- Phase 1: full op set on the critical path (wine64 realpath) ---- */
+    probe_emit(out, &used, out_len, "---- matrix: wine64 (realpath) ----");
+    int full_ops[] = {
+        TK_REAL_SC_OPENAT, TK_REAL_SC_OPEN, TK_RAW_OPENAT, TK_RAW_OPEN,
+        TK_LIBC_OPEN_DL, TK_LIBC_STAT_DL, TK_LIBC_FOPEN_DL, TK_RAW_STAT64,
+        TK_LIBC_OPEN
+    };
+    unsigned okmask = 0;
+    int p0_fd = probe_matrix_path("w64-real", rp_w64[0] ? rp_w64 : w64raw,
+                                  full_ops, (int)(sizeof(full_ops) / sizeof(full_ops[0])),
+                                  &okmask, -1, out, &used, out_len);
+    plog("matrix w64-real okmask=0x%x p0_fd=%d", okmask, p0_fd);
+
+    /* ---- Phase 2: surviving ops on the other paths ---- */
+    int p2_ops[10];
+    int n_p2 = 0;
+    {
+        static const int want[] = { TK_REAL_SC_OPENAT, TK_REAL_SC_OPEN, TK_RAW_OPENAT,
+                                    TK_RAW_OPEN, TK_LIBC_OPEN_DL, TK_RAW_STAT64,
+                                    TK_LIBC_STAT_DL };
+        for (int i = 0; i < (int)(sizeof(want) / sizeof(want[0])); i++)
+            if (okmask & (1u << (unsigned)want[i]))
+                p2_ops[n_p2++] = want[i];
+    }
+    if (n_p2 > 0) {
+        if (w64raw[0]) {
+            probe_emit(out, &used, out_len, "---- matrix: wine64 (as-given) ----");
+            probe_matrix_path("w64-raw", w64raw, p2_ops, n_p2, &okmask, -1, out, &used, out_len);
+        }
+        if (docs && docs[0]) {
+            probe_emit(out, &used, out_len, "---- matrix: docs root ----");
+            probe_matrix_path("docs", docs, p2_ops, n_p2, &okmask, -1, out, &used, out_len);
+        }
+        if (rp_tmp[0]) {
+            probe_emit(out, &used, out_len, "---- matrix: /tmp ----");
+            probe_matrix_path("tmp", rp_tmp, p2_ops, n_p2, &okmask, -1, out, &used, out_len);
+        }
+        if (rp_rd[0]) {
+            probe_emit(out, &used, out_len, "---- matrix: realdocs ----");
+            probe_matrix_path("realdocs", rp_rd, p2_ops, n_p2, &okmask, -1, out, &used, out_len);
+        }
+        if (rp_bw[0]) {
+            probe_emit(out, &used, out_len, "---- matrix: bundle wine64 ----");
+            probe_matrix_path("bundle-w64", rp_bw, p2_ops, n_p2, &okmask, -1, out, &used, out_len);
+        }
     }
 
-    /* Specific file checks */
-    plog("specific file checks start");
-    if (docs && docs[0]) {
-        char w64[1400], bx[1400];
-        snprintf(w64, sizeof(w64), "%s/Wine/bin/wine64", docs);
-        snprintf(bx, sizeof(bx), "%s/Box64/box64", docs);
-        probe_one(out, &used, out_len, "docs/Wine/bin/wine64", w64);
-        probe_one(out, &used, out_len, "docs/Box64/box64", bx);
-        probe_walk_up(out, &used, out_len, w64);
-        probe_walk_up(out, &used, out_len, docs);
+    /* ---- Phase 3: full elfloader pipeline (open→fstat→read) on wine64 ---- */
+    probe_emit(out, &used, out_len, "---- pipeline: open→fstat→read on wine64 ----");
+    if (p0_fd < 0) {
+        probe_emit(out, &used, out_len, "PIPELINE w64 | no working open — skipped");
+    } else {
+        int pipe_ops[] = { TK_RAW_FSTAT64, TK_LIBC_FSTAT_DL, TK_RAW_READ4, TK_LIBC_READ4_DL };
+        probe_matrix_path("pipe-w64", NULL, pipe_ops, (int)(sizeof(pipe_ops) / sizeof(pipe_ops[0])),
+                          &okmask, p0_fd, out, &used, out_len);
     }
-    if (bundle && bundle[0]) {
-        char bw[1400];
-        snprintf(bw, sizeof(bw), "%s/BundledBinaries/Wine", bundle);
-        probe_one(out, &used, out_len, "bundle/BundledBinaries/Wine", bw);
-    }
-    if (home && home[0]) {
-        char hw[1400];
-        snprintf(hw, sizeof(hw), "%s/Documents/Wine/bin/wine64", home);
-        probe_one(out, &used, out_len, "home/Documents/Wine/bin/wine64", hw);
-    }
-    if (td && td[0]) {
-        char realdocs[1400];
-        snprintf(realdocs, sizeof(realdocs), "%s/../Documents", td);
-        probe_one(out, &used, out_len, "realdocs(td/../Documents)", realdocs);
-        probe_walk_up(out, &used, out_len, realdocs);
-    }
-    plog("specific file checks done");
 
-    /* File-write self-tests: append result, then flush buffer to each candidate file */
-    plog("file-write self-tests start");
-    probe_emit(out, &used, out_len, "---- file-write self-tests ----");
-    if (docs && docs[0]) {
-        probe_emit(out, &used, out_len, "FILE-WRITE docs/box64_probe.log attempting...");
-        probe_write_file(docs, "box64_probe.log", out);
-        probe_emit(out, &used, out_len, "FILE-WRITE docs/box64_probe.log done (fd tried)");
+    /* ---- Phase 4: directory readdir on TMPDIR ---- */
+    probe_emit(out, &used, out_len, "---- readdir: TMPDIR ----");
+    {
+        int dirfd = -1;
+        if (td && td[0]) {
+            trial_t *t = (trial_t *)calloc(1, sizeof(trial_t));
+            if (t) {
+                t->kind = TK_REAL_SC_OPENAT;
+                t->path = td;
+                bridge_run_trial(t, "tmpdir-open", out, &used, out_len);
+                dirfd = t->r1;
+            }
+        }
+        if (dirfd < 0) {
+            trial_t *t = (trial_t *)calloc(1, sizeof(trial_t));
+            if (t) {
+                t->kind = TK_LIBC_OPEN_DL;
+                t->path = td ? td : "/tmp";
+                bridge_run_trial(t, "tmpdir-open-libc", out, &used, out_len);
+                dirfd = t->r1;
+            }
+        }
+        if (dirfd >= 0) {
+            int got[] = { TK_RAW_GETDENTS64 };
+            probe_matrix_path("tmpdir-readdir", NULL, got, 1, &okmask, dirfd, out, &used, out_len);
+        } else {
+            probe_emit(out, &used, out_len, "READDIR tmpdir | no working open — skipped");
+        }
     }
-    if (tmpdir && tmpdir[0]) {
-        probe_emit(out, &used, out_len, "FILE-WRITE tmpdir/box64_probe.log attempting...");
-        probe_write_file(tmpdir, "box64_probe.log", out);
-        probe_emit(out, &used, out_len, "FILE-WRITE tmpdir/box64_probe.log done (fd tried)");
+
+    /* ---- Phase 5: write/create/delete on /tmp ---- */
+    probe_emit(out, &used, out_len, "---- write test: /tmp ----");
+    {
+        char wpath[1400];
+        snprintf(wpath, sizeof(wpath), "/tmp/.__mn_probe_%ld", (long)getpid());
+        trial_t *t = (trial_t *)calloc(1, sizeof(trial_t));
+        if (t) {
+            t->kind = TK_REAL_SC_CREATE;
+            t->path = wpath;
+            bridge_run_trial(t, "tmp-write", out, &used, out_len);
+        }
+        trial_t *u = (trial_t *)calloc(1, sizeof(trial_t));
+        if (u) {
+            u->kind = TK_REAL_SC_UNLINK;
+            u->path = wpath;
+            bridge_run_trial(u, "tmp-unlink", out, &used, out_len);
+        }
+        trial_t *m = (trial_t *)calloc(1, sizeof(trial_t));
+        if (m) {
+            m->kind = TK_REAL_SC_MKDIR;
+            m->path = "/tmp/.__mn_dir";
+            bridge_run_trial(m, "tmp-mkdir", out, &used, out_len);
+        }
+        trial_t *r = (trial_t *)calloc(1, sizeof(trial_t));
+        if (r) {
+            r->kind = TK_REAL_SC_UNLINK;
+            r->path = "/tmp/.__mn_dir";
+            bridge_run_trial(r, "tmp-rmdir", out, &used, out_len);
+        }
     }
-    probe_emit(out, &used, out_len, "FILE-WRITE /tmp/box64_probe.log attempting...");
-    probe_write_file("/tmp", "box64_probe.log", out);
-    probe_emit(out, &used, out_len, "FILE-WRITE /tmp/box64_probe.log done (fd tried)");
-    if (home && home[0]) {
-        probe_emit(out, &used, out_len, "FILE-WRITE home/box64_probe.log attempting...");
-        probe_write_file(home, "box64_probe.log", out);
-        probe_emit(out, &used, out_len, "FILE-WRITE home/box64_probe.log done (fd tried)");
-    }
-    if (env_home && env_home[0]) {
-        probe_emit(out, &used, out_len, "FILE-WRITE envHOME/box64_probe.log attempting...");
-        probe_write_file(env_home, "box64_probe.log", out);
-        probe_emit(out, &used, out_len, "FILE-WRITE envHOME/box64_probe.log done (fd tried)");
-    }
+
     probe_emit(out, &used, out_len, "==== box64_probe_paths END ====");
-    plog("box64_probe_paths END used=%zu", used);
+    plog("box64_probe_paths END used=%zu okmask=0x%x", used, okmask);
 }

@@ -22,8 +22,43 @@
 #include <sys/syscall.h>
 #include <sys/dirent.h>
 #include <sys/uio.h>
+#include <dlfcn.h>
+#include <stdarg.h>
 
 #define RAW_DIRBUF_BLKSIZ 8192
+
+/* ================================================================== */
+/*  real syscall() routing                                            */
+/* ================================================================== */
+
+/* LiveContainer's dyld-insert interposer (fishhook/litehook rebinding) can
+   rebind the imported 'syscall' symbol to a broken function (wrong signature
+   → garbage results) or block it (hang forever). Resolve the GENUINE
+   libSystem syscall() once via an explicit dlopen handle — dlsym on the
+   defining image bypasses any symbol rebinding — and route every raw syscall
+   through it. */
+static long (*g_real_syscall)(int, ...) = NULL;
+
+__attribute__((constructor))
+static void rawlibc_resolve_syscall(void) {
+    void *h = dlopen("/usr/lib/libSystem.B.dylib", RTLD_LAZY);
+    if (!h) h = dlopen("/usr/lib/libSystem.dylib", RTLD_LAZY);
+    if (h) g_real_syscall = (long (*)(int, ...))dlsym(h, "syscall");
+    if (!g_real_syscall) g_real_syscall = (long (*)(int, ...))syscall;
+}
+
+static long rawlibc_syscall(int num, ...) {
+    long a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0;
+    va_list ap;
+    va_start(ap, num);
+    a1 = va_arg(ap, long);
+    a2 = va_arg(ap, long);
+    a3 = va_arg(ap, long);
+    a4 = va_arg(ap, long);
+    a5 = va_arg(ap, long);
+    va_end(ap);
+    return g_real_syscall(num, a1, a2, a3, a4, a5);
+}
 
 /* ================================================================== */
 /*  fd / path syscalls                                                 */
@@ -37,7 +72,13 @@ int box64_raw_open(const char *path, int flags, ...) {
         mode = (mode_t)va_arg(ap, int);
         va_end(ap);
     }
-    return (int)syscall(SYS_open, path, flags, mode);
+#ifdef SYS_openat
+    /* Legacy SYS_open can hang under LiveContainer; openat is what libc's
+       open() itself uses internally and is proven reachable. */
+    return (int)rawlibc_syscall(SYS_openat, AT_FDCWD, path, flags, mode);
+#else
+    return (int)rawlibc_syscall(SYS_open, path, flags, mode);
+#endif
 }
 
 int box64_raw_openat(int dirfd, const char *path, int flags, ...) {
@@ -49,30 +90,30 @@ int box64_raw_openat(int dirfd, const char *path, int flags, ...) {
         va_end(ap);
     }
 #ifdef SYS_openat
-    return (int)syscall(SYS_openat, dirfd, path, flags, mode);
+    return (int)rawlibc_syscall(SYS_openat, dirfd, path, flags, mode);
 #else
     if (dirfd == AT_FDCWD)
-        return (int)syscall(SYS_open, path, flags, mode);
+        return (int)rawlibc_syscall(SYS_open, path, flags, mode);
     errno = ENOSYS;
     return -1;
 #endif
 }
 
 int box64_raw_close(int fd) {
-    return (int)syscall(SYS_close, fd);
+    return (int)rawlibc_syscall(SYS_close, fd);
 }
 
 ssize_t box64_raw_read(int fd, void *buf, size_t n) {
-    return (ssize_t)syscall(SYS_read, fd, buf, n);
+    return (ssize_t)rawlibc_syscall(SYS_read, fd, buf, n);
 }
 
 ssize_t box64_raw_write(int fd, const void *buf, size_t n) {
-    return (ssize_t)syscall(SYS_write, fd, buf, n);
+    return (ssize_t)rawlibc_syscall(SYS_write, fd, buf, n);
 }
 
 ssize_t box64_raw_pread(int fd, void *buf, size_t n, off_t off) {
 #ifdef SYS_pread
-    return (ssize_t)syscall(SYS_pread, fd, buf, n, off);
+    return (ssize_t)rawlibc_syscall(SYS_pread, fd, buf, n, off);
 #else
     (void)fd; (void)buf; (void)n; (void)off;
     errno = ENOSYS;
@@ -82,7 +123,7 @@ ssize_t box64_raw_pread(int fd, void *buf, size_t n, off_t off) {
 
 ssize_t box64_raw_pwrite(int fd, const void *buf, size_t n, off_t off) {
 #ifdef SYS_pwrite
-    return (ssize_t)syscall(SYS_pwrite, fd, buf, n, off);
+    return (ssize_t)rawlibc_syscall(SYS_pwrite, fd, buf, n, off);
 #else
     (void)fd; (void)buf; (void)n; (void)off;
     errno = ENOSYS;
@@ -91,84 +132,84 @@ ssize_t box64_raw_pwrite(int fd, const void *buf, size_t n, off_t off) {
 }
 
 off_t box64_raw_lseek(int fd, off_t off, int whence) {
-    return (off_t)syscall(SYS_lseek, fd, off, whence);
+    return (off_t)rawlibc_syscall(SYS_lseek, fd, off, whence);
 }
 
 int box64_raw_stat(const char *path, struct stat *sb) {
 #ifdef SYS_stat64
-    return (int)syscall(SYS_stat64, path, sb);
+    return (int)rawlibc_syscall(SYS_stat64, path, sb);
 #else
-    return (int)syscall(SYS_stat, path, sb);
+    return (int)rawlibc_syscall(SYS_stat, path, sb);
 #endif
 }
 
 int box64_raw_lstat(const char *path, struct stat *sb) {
 #ifdef SYS_lstat64
-    return (int)syscall(SYS_lstat64, path, sb);
+    return (int)rawlibc_syscall(SYS_lstat64, path, sb);
 #else
-    return (int)syscall(SYS_lstat, path, sb);
+    return (int)rawlibc_syscall(SYS_lstat, path, sb);
 #endif
 }
 
 int box64_raw_fstat(int fd, struct stat *sb) {
 #ifdef SYS_fstat64
-    return (int)syscall(SYS_fstat64, fd, sb);
+    return (int)rawlibc_syscall(SYS_fstat64, fd, sb);
 #else
-    return (int)syscall(SYS_fstat, fd, sb);
+    return (int)rawlibc_syscall(SYS_fstat, fd, sb);
 #endif
 }
 
 int box64_raw_access(const char *path, int mode) {
-    return (int)syscall(SYS_access, path, mode);
+    return (int)rawlibc_syscall(SYS_access, path, mode);
 }
 
 int box64_raw_faccessat(int dirfd, const char *path, int mode, int flags) {
 #ifdef SYS_faccessat
-    return (int)syscall(SYS_faccessat, dirfd, path, mode, flags);
+    return (int)rawlibc_syscall(SYS_faccessat, dirfd, path, mode, flags);
 #else
     (void)flags;
     if (dirfd == AT_FDCWD)
-        return (int)syscall(SYS_access, path, mode);
+        return (int)rawlibc_syscall(SYS_access, path, mode);
     errno = ENOSYS;
     return -1;
 #endif
 }
 
 int box64_raw_mkdir(const char *path, mode_t mode) {
-    return (int)syscall(SYS_mkdir, path, mode);
+    return (int)rawlibc_syscall(SYS_mkdir, path, mode);
 }
 
 int box64_raw_rmdir(const char *path) {
-    return (int)syscall(SYS_rmdir, path);
+    return (int)rawlibc_syscall(SYS_rmdir, path);
 }
 
 int box64_raw_unlink(const char *path) {
-    return (int)syscall(SYS_unlink, path);
+    return (int)rawlibc_syscall(SYS_unlink, path);
 }
 
 int box64_raw_rename(const char *a, const char *b) {
-    return (int)syscall(SYS_rename, a, b);
+    return (int)rawlibc_syscall(SYS_rename, a, b);
 }
 
 int box64_raw_chmod(const char *path, mode_t mode) {
-    return (int)syscall(SYS_chmod, path, mode);
+    return (int)rawlibc_syscall(SYS_chmod, path, mode);
 }
 
 int box64_raw_fchmod(int fd, mode_t mode) {
-    return (int)syscall(SYS_fchmod, fd, mode);
+    return (int)rawlibc_syscall(SYS_fchmod, fd, mode);
 }
 
 int box64_raw_chown(const char *path, uid_t uid, gid_t gid) {
-    return (int)syscall(SYS_chown, path, uid, gid);
+    return (int)rawlibc_syscall(SYS_chown, path, uid, gid);
 }
 
 int box64_raw_fchown(int fd, uid_t uid, gid_t gid) {
-    return (int)syscall(SYS_fchown, fd, uid, gid);
+    return (int)rawlibc_syscall(SYS_fchown, fd, uid, gid);
 }
 
 int box64_raw_truncate(const char *path, off_t len) {
 #ifdef SYS_truncate
-    return (int)syscall(SYS_truncate, path, len);
+    return (int)rawlibc_syscall(SYS_truncate, path, len);
 #else
     (void)path; (void)len;
     errno = ENOSYS;
@@ -178,7 +219,7 @@ int box64_raw_truncate(const char *path, off_t len) {
 
 int box64_raw_ftruncate(int fd, off_t len) {
 #ifdef SYS_ftruncate
-    return (int)syscall(SYS_ftruncate, fd, len);
+    return (int)rawlibc_syscall(SYS_ftruncate, fd, len);
 #else
     (void)fd; (void)len;
     errno = ENOSYS;
@@ -187,32 +228,32 @@ int box64_raw_ftruncate(int fd, off_t len) {
 }
 
 int box64_raw_fsync(int fd) {
-    return (int)syscall(SYS_fsync, fd);
+    return (int)rawlibc_syscall(SYS_fsync, fd);
 }
 
 int box64_raw_dup(int fd) {
-    return (int)syscall(SYS_dup, fd);
+    return (int)rawlibc_syscall(SYS_dup, fd);
 }
 
 int box64_raw_dup2(int fd, int fd2) {
-    return (int)syscall(SYS_dup2, fd, fd2);
+    return (int)rawlibc_syscall(SYS_dup2, fd, fd2);
 }
 
 int box64_raw_chdir(const char *path) {
-    return (int)syscall(SYS_chdir, path);
+    return (int)rawlibc_syscall(SYS_chdir, path);
 }
 
 int box64_raw_fchdir(int fd) {
-    return (int)syscall(SYS_fchdir, fd);
+    return (int)rawlibc_syscall(SYS_fchdir, fd);
 }
 
 char *box64_raw_getcwd(char *buf, size_t n) {
 #if defined(SYS___getcwd) || defined(SYS_getcwd)
     long r;
 #ifdef SYS___getcwd
-    r = syscall(SYS___getcwd, buf, n);
+    r = rawlibc_syscall(SYS___getcwd, buf, n);
 #else
-    r = syscall(SYS_getcwd, buf, n);
+    r = rawlibc_syscall(SYS_getcwd, buf, n);
 #endif
     if (r < 0)
         return NULL;
@@ -226,7 +267,7 @@ char *box64_raw_getcwd(char *buf, size_t n) {
 
 int box64_raw_pipe(int fds[2]) {
 #ifdef SYS_pipe
-    return (int)syscall(SYS_pipe, fds);
+    return (int)rawlibc_syscall(SYS_pipe, fds);
 #else
     (void)fds;
     errno = ENOSYS;
@@ -235,19 +276,19 @@ int box64_raw_pipe(int fds[2]) {
 }
 
 mode_t box64_raw_umask(mode_t mask) {
-    return (mode_t)syscall(SYS_umask, mask);
+    return (mode_t)rawlibc_syscall(SYS_umask, mask);
 }
 
 int box64_raw_symlink(const char *a, const char *b) {
-    return (int)syscall(SYS_symlink, a, b);
+    return (int)rawlibc_syscall(SYS_symlink, a, b);
 }
 
 ssize_t box64_raw_readlink(const char *path, char *buf, size_t n) {
-    return (ssize_t)syscall(SYS_readlink, path, buf, n);
+    return (ssize_t)rawlibc_syscall(SYS_readlink, path, buf, n);
 }
 
 int box64_raw_link(const char *a, const char *b) {
-    return (int)syscall(SYS_link, a, b);
+    return (int)rawlibc_syscall(SYS_link, a, b);
 }
 
 /* ================================================================== */
@@ -364,10 +405,10 @@ struct _RawDir {
 
 static int raw_getdirentries(int fd, char *buf, size_t n, off_t *basep) {
 #if defined(SYS_getdirentries64)
-    long r = syscall(SYS_getdirentries64, fd, buf, n, basep);
+    long r = rawlibc_syscall(SYS_getdirentries64, fd, buf, n, basep);
     return (int)r;
 #elif defined(SYS_getdirentries)
-    return (int)syscall(SYS_getdirentries, fd, buf, n, basep);
+    return (int)rawlibc_syscall(SYS_getdirentries, fd, buf, n, basep);
 #else
     (void)fd; (void)buf; (void)n; (void)basep;
     errno = ENOSYS;

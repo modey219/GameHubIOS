@@ -46,7 +46,7 @@ private func writeDiag(_ s: String) {
 struct MNEmulatorApp: App {
     init() {
         setupCrashHandler()
-        Box64Bridge.writeDiag("APP_BUILD rawlibc-layer")
+        Box64Bridge.writeDiag("APP_BUILD rawlibc-matrix")
     }
     @StateObject private var containerManager = ContainerManager()
     @StateObject private var jitManager = JITManager()

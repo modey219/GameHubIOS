@@ -534,14 +534,12 @@ class Box64Bridge {
         var info = "FS-AUDIT \(label) path=\(path) exists=\(exists)"
         if exists { info += " isDir=\(isDir.boolValue)" }
         if let attrs = try? fm.attributesOfItem(atPath: path) {
-            if let sz = attrs[.size] as? NSNumber { info += " size=\(sz.intValue)" }
-            if let type = attrs[.fileType] as? FileAttributeType { info += " type=\(type.rawValue)" }
-            if let perm = attrs[.posixPermissions] as? NSNumber { info += " perm=\(String(format: "0%o", perm.intValue))" }
+            if let sz = attrs[FileAttributeKey.size] as? NSNumber { info += " size=\(sz.intValue)" }
+            if let type = attrs[FileAttributeKey.fileType] as? FileAttributeType { info += " type=\(type.rawValue)" }
+            if let perm = attrs[FileAttributeKey.posixPermissions] as? NSNumber { info += " perm=\(String(format: "0%o", perm.intValue))" }
         }
-        let url = URL(fileURLWithPath: path)
-        if let vals = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .symbolicLinkDestinationURLKey]) {
-            if let sl = vals.isSymbolicLink { info += " symlink=\(sl)" }
-            if let dest = vals.symbolicLinkDestinationURL { info += " linktarget=\(dest.path)" }
+        if let dest = try? fm.destinationOfSymbolicLink(atPath: path) {
+            info += " isSymlink=true target=\(dest)"
         }
         Self.writeDiag(info)
         Self.log(info)

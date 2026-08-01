@@ -573,7 +573,7 @@ class Box64Bridge {
         }
         let shown = Array(data.prefix(16))
         let hex = shown.map { String(format: "%02x", $0) }.joined(separator: " ")
-        let ascii = shown.map { (0x20...0x7e).contains($0) ? String(UnicodeScalar(UInt32($0))) : "." }.joined()
+        let ascii = shown.map { (0x20...0x7e).contains($0) ? String(UnicodeScalar(UInt32($0))!) : "." }.joined()
         Self.writeDiag("FS-AUDIT \(label) path=\(path) size=\(data.count) head=[\(hex)] \"\(ascii)\"")
     }
 

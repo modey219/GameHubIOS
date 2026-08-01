@@ -179,11 +179,17 @@ class Box64Bridge {
         probeThread.name = "mn-probe"
         probeThread.stackSize = 2 << 20
         probeThread.start()
-        if probeSem.wait(timeout: .now() + 20) == .timedOut {
+        let timedOut = probeSem.wait(timeout: .now() + 20) == .timedOut
+        if timedOut {
             Self.writeDiag("PROBE TIMEOUT (20s) — continuing without probe data")
+        }
+        let probeText = String(cString: probePtr)
+        if !probeText.isEmpty {
+            Self.writeDiag("PROBE BUFFER (partial \(probeText.count) chars):\n\(probeText)")
         } else {
-            let probeText = String(cString: probePtr)
-            Self.writeDiag("PROBE RESULT (buffer \(probeText.count) chars):\n\(probeText)")
+            Self.writeDiag("PROBE BUFFER: (empty)")
+        }
+        if !timedOut {
             let probeFiles = [
                 ("docs", docsPath + "/box64_probe.log"),
                 ("tmpdir", NSTemporaryDirectory() + "/box64_probe.log"),
@@ -199,11 +205,21 @@ class Box64Bridge {
                 }
             }
         }
+        let traceSnap = UnsafeMutablePointer<CChar>.allocate(capacity: 32768)
+        traceSnap.initialize(repeating: 0, count: 32768)
+        box64_probe_trace_snapshot(traceSnap, 32768)
+        let snapText = String(cString: traceSnap)
+        if !snapText.isEmpty {
+            Self.writeDiag("PROBE TRACE (snapshot \(snapText.count) chars):\n\(snapText)")
+        } else {
+            Self.writeDiag("PROBE TRACE (snapshot): (empty)")
+        }
+        traceSnap.deallocate()
         if let trace = FileManager.default.contents(atPath: docsPath + "/probe_trace.log"),
            let traceText = String(data: trace, encoding: .utf8), !traceText.isEmpty {
-            Self.writeDiag("PROBE TRACE:\n\(traceText)")
+            Self.writeDiag("PROBE TRACE FILE:\n\(traceText)")
         } else {
-            Self.writeDiag("PROBE TRACE: (missing)")
+            Self.writeDiag("PROBE TRACE FILE: (missing)")
         }
         probePtr.deinitialize(count: 32768)
         probePtr.deallocate()
@@ -323,6 +339,14 @@ class Box64Bridge {
         box64_set_wine_path(ctx, wine64Path)
         box64_set_prefix(ctx, containerPath)
         box64_set_game(ctx, executablePath)
+        Self.writeDiag("launchWine_fs_audit_start")
+        auditPath(wine64Path, label: "wine64")
+        auditPath(wineInstallPath, label: "wine_dir")
+        auditDirContents((wineInstallPath as NSString).appendingPathComponent("bin"), label: "wine/bin")
+        auditDirContents((wineInstallPath as NSString).appendingPathComponent("lib"), label: "wine/lib")
+        auditDirContents((wineInstallPath as NSString).appendingPathComponent("lib/wine64"), label: "wine/lib/wine64")
+        auditPath(box64InstallPath + "/box64", label: "box64_bin")
+        Self.writeDiag("launchWine_fs_audit_end")
         Self.log("calling box64_launch_wine(), memory = \(Self.memoryUsageMB())MB...")
         Self.writeDiag("box64_launch_enter")
         let rc: Int32 = autoreleasepool { box64_launch_wine(ctx, executablePath, nil) }
@@ -501,6 +525,36 @@ class Box64Bridge {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
               let size = attrs[.size] as? NSNumber else { return false }
         return size.intValue > 0
+    }
+
+    private func auditPath(_ path: String, label: String) {
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        let exists = fm.fileExists(atPath: path, isDirectory: &isDir)
+        var info = "FS-AUDIT \(label) path=\(path) exists=\(exists)"
+        if exists { info += " isDir=\(isDir.boolValue)" }
+        if let attrs = try? fm.attributesOfItem(atPath: path) {
+            if let sz = attrs[.size] as? NSNumber { info += " size=\(sz.intValue)" }
+            if let type = attrs[.fileType] as? FileAttributeType { info += " type=\(type.rawValue)" }
+            if let perm = attrs[.posixPermissions] as? NSNumber { info += " perm=\(String(format: "0%o", perm.intValue))" }
+        }
+        let url = URL(fileURLWithPath: path)
+        if let vals = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .symbolicLinkDestinationURLKey]) {
+            if let sl = vals.isSymbolicLink { info += " symlink=\(sl)" }
+            if let dest = vals.symbolicLinkDestinationURL { info += " linktarget=\(dest.path)" }
+        }
+        Self.writeDiag(info)
+        Self.log(info)
+    }
+
+    private func auditDirContents(_ path: String, label: String, limit: Int = 80) {
+        let fm = FileManager.default
+        guard let items = try? fm.contentsOfDirectory(atPath: path) else {
+            Self.writeDiag("FS-AUDIT \(label) dir=\(path) listing=(failed)")
+            return
+        }
+        let shown = items.sorted().prefix(limit).joined(separator: ", ")
+        Self.writeDiag("FS-AUDIT \(label) dir=\(path) count=\(items.count) [\(shown)]")
     }
 
     private func extractBox64() throws {

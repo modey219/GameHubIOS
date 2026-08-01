@@ -27,12 +27,51 @@ void box64_set_probe_log_cb(box64_log_callback cb) { g_probe_log_cb = cb; }
 
 static char g_trace_path[1100] = {0};
 
+#define PROBE_TRACE_MAX 16384
+static char g_probe_trace[PROBE_TRACE_MAX];
+static size_t g_probe_trace_len = 0;
+static pthread_mutex_t g_probe_trace_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void probe_trace_clear(void) {
+    pthread_mutex_lock(&g_probe_trace_lock);
+    g_probe_trace_len = 0;
+    g_probe_trace[0] = 0;
+    pthread_mutex_unlock(&g_probe_trace_lock);
+}
+
+static void probe_trace_append(const char *s) {
+    size_t n = strlen(s);
+    pthread_mutex_lock(&g_probe_trace_lock);
+    if (n >= sizeof(g_probe_trace)) n = sizeof(g_probe_trace) - 1;
+    if (g_probe_trace_len + n > sizeof(g_probe_trace) - 1) {
+        size_t keep = sizeof(g_probe_trace) - 1 - n;
+        if (keep > g_probe_trace_len) keep = g_probe_trace_len;
+        memmove(g_probe_trace, g_probe_trace + g_probe_trace_len - keep, keep);
+        g_probe_trace_len = keep;
+    }
+    memcpy(g_probe_trace + g_probe_trace_len, s, n);
+    g_probe_trace_len += n;
+    g_probe_trace[g_probe_trace_len] = 0;
+    pthread_mutex_unlock(&g_probe_trace_lock);
+}
+
+void box64_probe_trace_snapshot(char *dst, size_t cap) {
+    if (!dst || cap == 0) return;
+    pthread_mutex_lock(&g_probe_trace_lock);
+    size_t n = g_probe_trace_len;
+    if (n > cap - 1) n = cap - 1;
+    memcpy(dst, g_probe_trace, n);
+    dst[n] = 0;
+    pthread_mutex_unlock(&g_probe_trace_lock);
+}
+
 static void plog(const char *fmt, ...) {
     char buf[512];
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
+    probe_trace_append(buf);
     if (g_trace_path[0]) {
         int fd = open(g_trace_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
         if (fd >= 0) {
@@ -41,7 +80,6 @@ static void plog(const char *fmt, ...) {
             close(fd);
         }
     }
-    fprintf(stderr, "[probe] %s\n", buf);
 }
 
 static const char *g_signal_names[32] = {
@@ -556,6 +594,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     if (docs && docs[0]) {
         snprintf(g_trace_path, sizeof(g_trace_path), "%s/probe_trace.log", docs);
     }
+    probe_trace_clear();
     plog("box64_probe_paths ENTER docs=%s bundle=%s tmpdir=%s home=%s",
          docs ? docs : "(null)", bundle ? bundle : "(null)",
          tmpdir ? tmpdir : "(null)", home ? home : "(null)");

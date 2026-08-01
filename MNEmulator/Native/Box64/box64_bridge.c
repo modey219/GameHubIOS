@@ -662,7 +662,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     out[0] = 0;
     size_t used = 0;
 
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v352 (realpath-based file_exists, open-io probe) ====");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v353 (reallibc shim) ====");
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
     plog("env HOME=%s TMPDIR=%s", env_home ? env_home : "(null)", td ? td : "(null)");

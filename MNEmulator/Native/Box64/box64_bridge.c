@@ -260,15 +260,22 @@ void box64_destroy(box64_context_t *ctx) {
     }
 }
 
+/* stat()/access() are broken under LiveContainer interposition (build-351:
+   stat returns garbage, access hangs). realpath() is proven to work on every
+   path in-process, so use it for existence checks instead of stat(). */
 static int file_exists(const char *path) {
-    struct stat s;
-    return stat(path, &s) == 0 && s.st_size > 0;
+    char rp[1100];
+    return path && realpath(path, rp) != NULL;
 }
 
 static long file_size(const char *path) {
-    struct stat s;
-    if (stat(path, &s) != 0) return 0;
-    return s.st_size;
+    char rp[1100];
+    if (!path || !realpath(path, rp)) return 0;
+    int fd = open(rp, O_RDONLY);
+    if (fd < 0) return 0;
+    off_t sz = lseek(fd, 0, SEEK_END);
+    if (fd > 2) close(fd);
+    return sz > 0 ? (long)sz : 0;
 }
 
 int box64_init(box64_context_t *ctx, const char *bundle_path) {
@@ -512,17 +519,17 @@ static void probe_walk_up(char *out, size_t *used, size_t cap, const char *path)
     char cur[1100];
     snprintf(cur, sizeof(cur), "%s", path);
     for (int i = 0; i < 14; i++) {
-        struct stat s;
+        char rp[1100];
         errno = 0;
-        plog("walk_up[%d]: stat(%s)", i, cur);
-        if (stat(cur, &s) == 0) {
+        plog("walk_up[%d]: realpath(%s)", i, cur);
+        const char *rpstr = realpath(cur, rp);
+        plog("walk_up[%d]: realpath done=%s", i, rpstr ? rpstr : "(null)");
+        if (rpstr) {
             char line[1200];
-            snprintf(line, sizeof(line), "WALK-UP level %d ACCESSIBLE: '%s'", i, cur);
+            snprintf(line, sizeof(line), "WALK-UP level %d ACCESSIBLE: '%s'", i, rpstr);
             probe_emit(out, used, cap, line);
-            plog("walk_up[%d]: ACCESSIBLE", i);
             return;
         }
-        plog("walk_up[%d]: not found errno=%d", i, errno);
         char *slash = strrchr(cur, '/');
         if (!slash || slash == cur) return;
         *slash = 0;
@@ -552,6 +559,61 @@ static void probe_write_file(const char *base_path, const char *fname, const cha
         close(fd);
         plog("write_file: closed");
     }
+}
+
+/* The critical unknown: box64's elfloader loads wine64 via open()/fstat()/
+   read(). stat() is broken under interposition, but open() may still work —
+   build-351's probe_one only attempted open-read when stat()==0, which never
+   happened. Test open-based I/O directly here. */
+static void probe_open_io(char *out, size_t *used, size_t cap, const char *label, const char *path) {
+    char line[1600];
+    char rp[1300];
+    plog("open_io[%s]: realpath(%s)", label, path ? path : "(null)");
+    const char *rps = path ? realpath(path, rp) : NULL;
+    plog("open_io[%s]: realpath done=%s", label, rps ? rps : "(null)");
+    if (!rps) {
+        snprintf(line, sizeof(line), "OPENIO %s | realpath=NULL (no such file)", label);
+        probe_emit(out, used, cap, line);
+        return;
+    }
+    plog("open_io[%s]: open(O_RDONLY) %s", label, rps);
+    errno = 0;
+    int fd = open(rps, O_RDONLY);
+    int o_errno = errno;
+    plog("open_io[%s]: open done fd=%d errno=%d", label, fd, o_errno);
+    if (fd < 0) {
+        snprintf(line, sizeof(line), "OPENIO %s | open=fail(errno=%d) realpath=%s", label, o_errno, rps);
+        probe_emit(out, used, cap, line);
+        return;
+    }
+    struct stat st;
+    errno = 0;
+    int fst = fstat(fd, &st);
+    int f_errno = errno;
+    plog("open_io[%s]: fstat done=%d errno=%d", label, fst, f_errno);
+    off_t sz = lseek(fd, 0, SEEK_END);
+    int l_errno = errno;
+    plog("open_io[%s]: lseek done sz=%lld errno=%d", label, (long long)sz, l_errno);
+    char magic[16];
+    int n = 0;
+    if (sz >= 4) {
+        lseek(fd, 0, SEEK_SET);
+        n = (int)read(fd, magic, sizeof(magic));
+    }
+    int r_errno = errno;
+    char hex[128] = "";
+    for (int i = 0; i < n && i < (int)sizeof(magic); i++) {
+        char part[8];
+        snprintf(part, sizeof(part), "%02x", (unsigned char)magic[i]);
+        strncat(hex, part, sizeof(hex) - strlen(hex) - 1);
+        if (i < n - 1) strncat(hex, " ", sizeof(hex) - strlen(hex) - 1);
+    }
+    if (fd > 2) close(fd);
+    snprintf(line, sizeof(line),
+             "OPENIO %s | open=fd%d fstat=%d(errno=%d) size=%lld read=%dbytes(errno=%d) magic=[%s] realpath=%s",
+             label, fd, fst, f_errno, (long long)sz, n, r_errno, hex, rps);
+    probe_emit(out, used, cap, line);
+    plog("open_io[%s]: done", label);
 }
 
 static void probe_root(char *out, size_t *used, size_t cap, int idx, const char *path) {
@@ -600,7 +662,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     out[0] = 0;
     size_t used = 0;
 
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v351 (hang-safe, real-roots-first) ====");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v352 (realpath-based file_exists, open-io probe) ====");
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
     plog("env HOME=%s TMPDIR=%s", env_home ? env_home : "(null)", td ? td : "(null)");
@@ -624,6 +686,30 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     plog("getcwd=%s", cwd ? cwd : "(null)");
     snprintf(l1, sizeof(l1), "getcwd=%s", cwd ? cwd : "(null)");
     probe_emit(out, &used, out_len, l1);
+
+    /* Open-based I/O probe FIRST: tells us whether box64's elfloader
+       (open/fstat/read) can ever load wine64 under LiveContainer. */
+    plog("open-io probe start");
+    probe_emit(out, &used, out_len, "---- open-io probe ----");
+    if (docs && docs[0]) {
+        char w64[1400], bx[1400];
+        snprintf(w64, sizeof(w64), "%s/Wine/bin/wine64", docs);
+        snprintf(bx, sizeof(bx), "%s/Box64/box64", docs);
+        probe_open_io(out, &used, out_len, "docs/Wine/bin/wine64", w64);
+        probe_open_io(out, &used, out_len, "docs/Box64/box64", bx);
+    }
+    if (bundle && bundle[0]) {
+        char bw[1400];
+        snprintf(bw, sizeof(bw), "%s/BundledBinaries/Wine/bin/wine64", bundle);
+        probe_open_io(out, &used, out_len, "bundle/Wine/bin/wine64", bw);
+    }
+    if (td && td[0]) {
+        char realdocs[1400];
+        snprintf(realdocs, sizeof(realdocs), "%s/../Documents", td);
+        probe_open_io(out, &used, out_len, "realdocs(td/../Documents)", realdocs);
+    }
+    probe_open_io(out, &used, out_len, "/tmp", "/tmp");
+    plog("open-io probe done");
 
     /* Candidate POSIX-accessible roots: stat + write test on each.
        Order matters: docs (fake LiveContainer container) HANGS in access(),

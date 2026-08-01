@@ -34,13 +34,14 @@
 /* LiveContainer's dyld-insert interposer (fishhook/litehook rebinding) can
    rebind the imported 'syscall' symbol to a broken function (wrong signature
    → garbage results) or block it (hang forever). Resolve the GENUINE
-   libSystem syscall() once via an explicit dlopen handle — dlsym on the
-   defining image bypasses any symbol rebinding — and route every raw syscall
-   through it. */
+   libSystem syscall() via an explicit dlopen handle — dlsym on the defining
+   image bypasses any symbol rebinding — and route every raw syscall through
+   it. Resolution is LAZY (first rawlibc syscall) so no dlopen/dlsym happens
+   at image load time. */
 static long (*g_real_syscall)(int, ...) = NULL;
 
-__attribute__((constructor))
 static void rawlibc_resolve_syscall(void) {
+    if (g_real_syscall) return;
     void *h = dlopen("/usr/lib/libSystem.B.dylib", RTLD_LAZY);
     if (!h) h = dlopen("/usr/lib/libSystem.dylib", RTLD_LAZY);
     if (h) g_real_syscall = (long (*)(int, ...))dlsym(h, "syscall");
@@ -48,6 +49,7 @@ static void rawlibc_resolve_syscall(void) {
 }
 
 static long rawlibc_syscall(int num, ...) {
+    if (!g_real_syscall) rawlibc_resolve_syscall();
     long a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0;
     va_list ap;
     va_start(ap, num);

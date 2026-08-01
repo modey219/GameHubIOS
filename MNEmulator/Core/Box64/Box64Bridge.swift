@@ -131,6 +131,7 @@ class Box64Bridge {
         progressCallback?("All extractions complete")
         NSLog("[MNEmulator] all extraction done")
         Self.writeDiag("setup_done")
+        runEarlyProbe()
     }
 
     func initialize() {
@@ -145,10 +146,14 @@ class Box64Bridge {
         graphicsInstallPath = documentsPath.appendingPathComponent("Graphics").path
         Self.log("box64InstallPath = \(box64InstallPath)")
         Self.log("wineInstallPath = \(wineInstallPath)")
+        Self.writeDiag("init_env_start")
         setupEnvironment()
+        Self.writeDiag("init_env_done")
 
         let docsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? "/tmp"
+        Self.writeDiag("init_docspath_done")
         docsPath.withCString { set_c_diag_docs_path($0) }
+        Self.writeDiag("init_setdiagdocs_done")
         Self.writeDiag("init_start")
         Self.writeDiag("docsPath=\(docsPath)")
         Self.writeDiag("box64InstallPath=\(box64InstallPath)")
@@ -161,6 +166,71 @@ class Box64Bridge {
         Self.writeDiag("probe_magic=\(box64_probe_magic())")
         let homePath = NSHomeDirectory()
         Self.writeDiag("NSHomeDirectory=\(homePath)")
+        runEarlyProbe()
+
+        let localCtx = autoreleasepool { () -> UnsafeMutablePointer<box64_context_t>? in
+            box64_create_step1()
+        }
+        Self.writeDiag("step1: result=\(localCtx != nil ? "OK" : "NULL")")
+        guard let localCtx = localCtx else {
+            Self.log("box64_create_step1 returned NULL!")
+            lock.unlock()
+            return
+        }
+
+        Self.writeDiag("step2a: syscall_emulator_create_alloc")
+        let step2aResult = autoreleasepool { () -> Int32 in
+            box64_create_step2a(localCtx)
+        }
+        Self.writeDiag("step2a: result=\(step2aResult)")
+        if step2aResult != 0 {
+            Self.log("box64_create_step2a FAILED: \(step2aResult)")
+            box64_destroy(localCtx)
+            lock.unlock()
+            return
+        }
+
+        Self.writeDiag("step2b: syscall_emulator_create_init")
+        let step2bResult = autoreleasepool { () -> Int32 in
+            box64_create_step2b(localCtx)
+        }
+        Self.writeDiag("step2b: result=\(step2bResult)")
+        if step2bResult != 0 {
+            Self.log("box64_create_step2b FAILED: \(step2bResult)")
+            box64_destroy(localCtx)
+            lock.unlock()
+            return
+        }
+
+        Self.writeDiag("step3: set_context + g_box64")
+        box64_create_step3(localCtx)
+        Self.writeDiag("step3: DONE")
+
+        Self.writeDiag("calling box64_init...")
+        let initResult = box64_init(localCtx, box64InstallPath)
+        Self.writeDiag("box64_init result=\(initResult)")
+        Self.log("box64_init returned \(initResult)")
+        if initResult == 0 {
+            ctx = localCtx
+            isInitialized = true
+        } else {
+            Self.log("box64_init FAILED — destroying context")
+            box64_destroy(localCtx)
+        }
+
+        lock.unlock()
+        Self.writeDiag("initialize_done isInitialized=\(isInitialized)")
+        Self.log("initialize() complete, isInitialized=\(isInitialized), memory = \(Self.memoryUsageMB())MB")
+    }
+
+    /// Runs the C matrix probe (box64_probe_paths) on a background thread with a
+    /// 20s cap and dumps the buffer + trace into diag.log. Called both after
+    /// bundled-binary extraction and from initialize() so we get syscall data
+    /// even when the launch path hangs before the probe.
+    func runEarlyProbe() {
+        let docsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? "/tmp"
+        let homePath = NSHomeDirectory()
+        Self.writeDiag("early_probe_start")
         let probePtr = UnsafeMutablePointer<CChar>.allocate(capacity: 32768)
         probePtr.initialize(repeating: 0, count: 32768)
         let probeSem = DispatchSemaphore(value: 0)
@@ -223,59 +293,7 @@ class Box64Bridge {
         }
         probePtr.deinitialize(count: 32768)
         probePtr.deallocate()
-        let localCtx = autoreleasepool { () -> UnsafeMutablePointer<box64_context_t>? in
-            box64_create_step1()
-        }
-        Self.writeDiag("step1: result=\(localCtx != nil ? "OK" : "NULL")")
-        guard let localCtx = localCtx else {
-            Self.log("box64_create_step1 returned NULL!")
-            lock.unlock()
-            return
-        }
-
-        Self.writeDiag("step2a: syscall_emulator_create_alloc")
-        let step2aResult = autoreleasepool { () -> Int32 in
-            box64_create_step2a(localCtx)
-        }
-        Self.writeDiag("step2a: result=\(step2aResult)")
-        if step2aResult != 0 {
-            Self.log("box64_create_step2a FAILED: \(step2aResult)")
-            box64_destroy(localCtx)
-            lock.unlock()
-            return
-        }
-
-        Self.writeDiag("step2b: syscall_emulator_create_init")
-        let step2bResult = autoreleasepool { () -> Int32 in
-            box64_create_step2b(localCtx)
-        }
-        Self.writeDiag("step2b: result=\(step2bResult)")
-        if step2bResult != 0 {
-            Self.log("box64_create_step2b FAILED: \(step2bResult)")
-            box64_destroy(localCtx)
-            lock.unlock()
-            return
-        }
-
-        Self.writeDiag("step3: set_context + g_box64")
-        box64_create_step3(localCtx)
-        Self.writeDiag("step3: DONE")
-
-        Self.writeDiag("calling box64_init...")
-        let initResult = box64_init(localCtx, box64InstallPath)
-        Self.writeDiag("box64_init result=\(initResult)")
-        Self.log("box64_init returned \(initResult)")
-        if initResult == 0 {
-            ctx = localCtx
-            isInitialized = true
-        } else {
-            Self.log("box64_init FAILED — destroying context")
-            box64_destroy(localCtx)
-        }
-
-        lock.unlock()
-        Self.writeDiag("initialize_done isInitialized=\(isInitialized)")
-        Self.log("initialize() complete, isInitialized=\(isInitialized), memory = \(Self.memoryUsageMB())MB")
+        Self.writeDiag("early_probe_done")
     }
 
     private func setupEnvironment() {
@@ -285,8 +303,10 @@ class Box64Bridge {
         safeSetenv("BOX64_SHOWSEGV", "1", 1)
         safeSetenv("BOX64_SHOWEXIT", "1", 1)
         safeSetenv("BOX64_NOSSE", "1", 1)
+        Self.writeDiag("setupenv_home_start")
         safeSetenv("HOME", (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory).appendingPathComponent("Wine").path, 1)
+        Self.writeDiag("setupenv_home_done")
         safeSetenv("MVK_CONFIG_LOG_LEVEL", "0", 1)
         safeSetenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "1", 1)
         safeSetenv("DXVK_LOG_LEVEL", "none", 1)

@@ -32,14 +32,188 @@
 #include <sys/uio.h>
 #include <sys/statvfs.h>
 #include <sys/mount.h>
+#include <sys/syscall.h>
+#include "../Include/reallibc.h"
+
+/* ---------- raw diagnostic writer (never goes through the shims) ---------- */
+
+static char g_shim_log[1400] = {0};
+
+static void shim_raw_write(int fd, const char *buf, size_t n) {
+    if (!buf || !n) return;
+    syscall(SYS_write, fd, buf, n);
+}
+
+static void shimlog(const char *buf) {
+    size_t n = strlen(buf);
+    shim_raw_write(2, buf, n);
+    if (!g_shim_log[0]) {
+        const char *home = getenv("HOME");
+        if (home && home[0]) {
+            snprintf(g_shim_log, sizeof(g_shim_log), "%s/Documents/shims.log", home);
+        } else {
+            snprintf(g_shim_log, sizeof(g_shim_log), "/tmp/shims.log");
+        }
+    }
+    int fd = (int)syscall(SYS_open, g_shim_log, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0 && strncmp(g_shim_log, "/tmp/", 5) != 0) {
+        snprintf(g_shim_log, sizeof(g_shim_log), "/tmp/shims.log");
+        fd = (int)syscall(SYS_open, g_shim_log, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    }
+    if (fd >= 0) {
+        shim_raw_write(fd, buf, n);
+        syscall(SYS_close, fd);
+    }
+}
+
+/* Recorded once at image load: which dylib does dlsym(RTLD_NEXT) give us for
+   each shimmed symbol? If we see LiveContainer's own dylib path here, the
+   bypass is NOT working and the app will misbehave exactly like the interposer
+   era. libSystem paths live in the dyld shared cache. */
+static void shim_selftest(void) __attribute__((constructor));
+static void shim_selftest(void) {
+    const char *names[] = {
+        "open", "openat", "fcntl",
+        "close", "read", "write", "pread", "pwrite", "lseek", "readv", "writev",
+        "dup", "dup2", "fsync", "ftruncate", "fchmod", "fchown", "fstat", "isatty",
+        "pipe", "stat", "lstat", "access", "mkdir", "rmdir", "unlink", "remove",
+        "rename", "symlink", "readlink", "link", "chmod", "chown", "truncate",
+        "chdir", "fchdir", "getcwd", "umask", "realpath",
+        "statfs", "fstatfs", "statvfs", "fstatvfs",
+        "mmap", "munmap", "mprotect", "msync", "madvise",
+        "fopen", "freopen", "fclose", "fread", "fwrite", "fseek", "fseeko", "ftell",
+        "ftello", "rewind", "fflush", "fgetc", "fgets", "fputc", "fputs", "fileno",
+        "ferror", "feof", "ungetc", "popen", "pclose", "getline", "getdelim",
+        "opendir", "fdopendir", "readdir", "closedir", "rewinddir", "seekdir", "telldir"
+    };
+    const char *home = getenv("HOME");
+    char line[512];
+    snprintf(line, sizeof(line), "== reallibc selftest (libSystem-handle resolver) HOME=%s ==\n",
+             home ? home : "(null)");
+    shimlog(line);
+    size_t n_names = sizeof(names) / sizeof(names[0]);
+    for (size_t i = 0; i < n_names; i++) {
+        void *p = reallibc_resolve(names[i]);
+        if (!p) {
+            void *rn = dlsym(RTLD_NEXT, names[i]);
+            snprintf(line, sizeof(line),
+                     "  %-12s -> RESOLVE NULL  (RTLD_NEXT gave %p)\n", names[i], rn);
+        } else {
+            Dl_info info;
+            const char *img = "?";
+            if (dladdr(p, &info) && info.dli_fname && info.dli_fname[0]) img = info.dli_fname;
+            snprintf(line, sizeof(line), "  %-12s -> %p  [%s]\n", names[i], p, img);
+        }
+        shimlog(line);
+    }
+    /* end-to-end I/O smoke test using the resolved real libc (open/stat/realpath) */
+    if (home && home[0]) {
+        char docs[1400];
+        snprintf(docs, sizeof(docs), "%s/Documents", home);
+        char rp[1400];
+        void *real_realpath = reallibc_resolve("realpath");
+        void *real_stat = reallibc_resolve("stat");
+        void *real_open = reallibc_resolve("open");
+        if (real_realpath) {
+            char *(*rr)(const char *, char *) = (char *(*)(const char *, char *))real_realpath;
+            char *res = rr(docs, rp);
+            snprintf(line, sizeof(line), "  realpath(docs)=%s\n", res ? res : "(null)");
+            shimlog(line);
+        }
+        if (real_stat && real_realpath && ((char *(*)(const char *, char *))real_realpath)(docs, rp)) {
+            struct stat st;
+            int (*rs)(const char *, struct stat *) = (int (*)(const char *, struct stat *))real_stat;
+            errno = 0;
+            int s = rs(rp, &st);
+            snprintf(line, sizeof(line), "  stat(%s)=%d errno=%d mode=%o\n", rp, s, errno,
+                     s == 0 ? (int)st.st_mode : 0);
+            shimlog(line);
+        }
+        if (real_open) {
+            char probe[1400];
+            snprintf(probe, sizeof(probe), "%s/shims_selftest.tmp", home);
+            int (*ro)(const char *, int, ...) = (int (*)(const char *, int, ...))real_open;
+            int fd = ro(probe, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            snprintf(line, sizeof(line), "  open(%s)=%d errno=%d\n", probe, fd, errno);
+            shimlog(line);
+            if (fd >= 0) syscall(SYS_close, fd);
+        }
+    }
+    shimlog("== reallibc selftest done ==\n");
+}
+
+/* ---------- resolver: real libSystem via explicit handle ---------- */
+
+/*
+ * Resolve a libc symbol to the GENUINE libSystem implementation, immune to
+ * LiveContainer's interposition. Strategy:
+ *   1. dlopen("/usr/lib/libSystem.B.dylib", RTLD_LAZY) — an explicit image
+ *      handle. dlsym(handle, name) searches ONLY that image, so LiveContainer
+ *      cannot redirect it regardless of load order.
+ *   2. Fallback: dlsym(RTLD_NEXT, name), but only accepted if dladdr() shows
+ *      the result lives in libSystem (shared cache). If RTLD_NEXT yields the
+ *      interposer, it is rejected.
+ */
+void *reallibc_resolve(const char *name) {
+    if (!name || !name[0]) return NULL;
+    static void *g_libSystem = NULL;
+    if (!g_libSystem) {
+        g_libSystem = dlopen("/usr/lib/libSystem.B.dylib", RTLD_LAZY);
+        if (!g_libSystem) g_libSystem = dlopen("/usr/lib/libSystem.dylib", RTLD_LAZY);
+    }
+    if (g_libSystem) {
+        void *p = dlsym(g_libSystem, name);
+        if (p) return p;
+    }
+    void *q = dlsym(RTLD_NEXT, name);
+    if (q) {
+        Dl_info info;
+        if (dladdr(q, &info) && info.dli_fname && info.dli_fname[0]) {
+            const char *f = info.dli_fname;
+            if (strstr(f, "libSystem") || strstr(f, "libsystem") || strstr(f, "/usr/lib/")) {
+                return q;
+            }
+        }
+    }
+    return NULL;
+}
+
+/* ---------- NULL-safe resolver ---------- */
+
+static void shim_fail_report(const char *name) {
+    char line[256];
+    int n = snprintf(line, sizeof(line), "[reallibc] reallibc_resolve(\"%s\") == NULL\n", name);
+    if (n > 0) shimlog(line);
+}
 
 #define SHIM_FN(ret, name, params, args)                                               \
     __attribute__((used)) static __typeof__(&name) real_##name = NULL;                 \
     static __typeof__(&name) resolve_##name(void) {                                    \
-        if (!real_##name) real_##name = (__typeof__(&name))dlsym(RTLD_NEXT, #name);    \
+        if (!real_##name) {                                                            \
+            real_##name = (__typeof__(&name))reallibc_resolve(#name);                  \
+            if (!real_##name) shim_fail_report(#name);                                 \
+        }                                                                              \
         return real_##name;                                                            \
     }                                                                                  \
-    ret name params { return resolve_##name() args; }
+    ret name params {                                                                  \
+        __typeof__(&name) f_ = resolve_##name();                                       \
+        if (!f_) { errno = ENOSYS; return (ret)0; }                                    \
+        return f_ args;                                                                \
+    }
+
+#define SHIM_VOID(name, params, args)                                                  \
+    __attribute__((used)) static __typeof__(&name) real_##name = NULL;                 \
+    static __typeof__(&name) resolve_##name(void) {                                    \
+        if (!real_##name) {                                                            \
+            real_##name = (__typeof__(&name))reallibc_resolve(#name);                  \
+            if (!real_##name) shim_fail_report(#name);                                 \
+        }                                                                              \
+        return real_##name;                                                            \
+    }                                                                                  \
+    void name params {                                                                 \
+        __typeof__(&name) f_ = resolve_##name();                                       \
+        if (f_) { f_ args; }                                                           \
+    }
 
 /* ---- fd-based file I/O ---- */
 SHIM_FN(int, close, (int fd), (fd))
@@ -103,7 +277,7 @@ SHIM_FN(int, fseek, (FILE *f, long off, int whence), (f, off, whence))
 SHIM_FN(int, fseeko, (FILE *f, off_t off, int whence), (f, off, whence))
 SHIM_FN(long, ftell, (FILE *f), (f))
 SHIM_FN(off_t, ftello, (FILE *f), (f))
-SHIM_FN(void, rewind, (FILE *f), (f))
+SHIM_VOID(rewind, (FILE *f), (f))
 SHIM_FN(int, fflush, (FILE *f), (f))
 SHIM_FN(int, fgetc, (FILE *f), (f))
 SHIM_FN(char *, fgets, (char *buf, int n, FILE *f), (buf, n, f))
@@ -123,49 +297,55 @@ SHIM_FN(DIR *, opendir, (const char *path), (path))
 SHIM_FN(DIR *, fdopendir, (int fd), (fd))
 SHIM_FN(struct dirent *, readdir, (DIR *d), (d))
 SHIM_FN(int, closedir, (DIR *d), (d))
-SHIM_FN(void, rewinddir, (DIR *d), (d))
-SHIM_FN(void, seekdir, (DIR *d, long off), (d, off))
+SHIM_VOID(rewinddir, (DIR *d), (d))
+SHIM_VOID(seekdir, (DIR *d, long off), (d, off))
 SHIM_FN(long, telldir, (DIR *d), (d))
 
 /* ---- variadic: open / openat / fcntl ---- */
 static __typeof__(&open) real_open = NULL;
 static __typeof__(&open) resolve_open(void) {
-    if (!real_open) real_open = (__typeof__(&open))dlsym(RTLD_NEXT, "open");
+    if (!real_open) real_open = (__typeof__(&open))reallibc_resolve("open");
     return real_open;
 }
 int open(const char *path, int flags, ...) {
+    __typeof__(&open) f_ = resolve_open();
+    if (!f_) { errno = ENOSYS; return -1; }
     if (flags & O_CREAT) {
         va_list ap; va_start(ap, flags);
         mode_t mode = (mode_t)va_arg(ap, int);
         va_end(ap);
-        return resolve_open()(path, flags, mode);
+        return f_(path, flags, mode);
     }
-    return resolve_open()(path, flags, 0);
+    return f_(path, flags, 0);
 }
 
 static __typeof__(&openat) real_openat = NULL;
 static __typeof__(&openat) resolve_openat(void) {
-    if (!real_openat) real_openat = (__typeof__(&openat))dlsym(RTLD_NEXT, "openat");
+    if (!real_openat) real_openat = (__typeof__(&openat))reallibc_resolve("openat");
     return real_openat;
 }
 int openat(int dirfd, const char *path, int flags, ...) {
+    __typeof__(&openat) f_ = resolve_openat();
+    if (!f_) { errno = ENOSYS; return -1; }
     if (flags & O_CREAT) {
         va_list ap; va_start(ap, flags);
         mode_t mode = (mode_t)va_arg(ap, int);
         va_end(ap);
-        return resolve_openat()(dirfd, path, flags, mode);
+        return f_(dirfd, path, flags, mode);
     }
-    return resolve_openat()(dirfd, path, flags, 0);
+    return f_(dirfd, path, flags, 0);
 }
 
 static __typeof__(&fcntl) real_fcntl = NULL;
 static __typeof__(&fcntl) resolve_fcntl(void) {
-    if (!real_fcntl) real_fcntl = (__typeof__(&fcntl))dlsym(RTLD_NEXT, "fcntl");
+    if (!real_fcntl) real_fcntl = (__typeof__(&fcntl))reallibc_resolve("fcntl");
     return real_fcntl;
 }
 int fcntl(int fd, int cmd, ...) {
+    __typeof__(&fcntl) f_ = resolve_fcntl();
+    if (!f_) { errno = ENOSYS; return -1; }
     va_list ap; va_start(ap, cmd);
     void *arg = va_arg(ap, void *);
     va_end(ap);
-    return resolve_fcntl()(fd, cmd, arg);
+    return f_(fd, cmd, arg);
 }

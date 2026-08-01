@@ -9,6 +9,9 @@
 #include <fcntl.h>
 #include <setjmp.h>
 #include <errno.h>
+#include <dlfcn.h>
+#include <sys/syscall.h>
+#include "../Include/reallibc.h"
 
 extern char **environ;
 
@@ -30,6 +33,20 @@ static pthread_mutex_t g_runner_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static sigjmp_buf g_jmp_buf;
 static volatile int g_jmp_ready = 0;
+
+/* Real libc pointers captured in setup_logging so the async-signal handler
+   never calls the reallibc shims (dlsym is not async-signal-safe). */
+static ssize_t (*g_real_write)(int, const void *, size_t) = NULL;
+static int (*g_real_close)(int) = NULL;
+
+static void runner_write(int fd, const char *buf, size_t n) {
+    if (g_real_write) g_real_write(fd, buf, n);
+    else syscall(SYS_write, fd, buf, n);
+}
+static void runner_close(int fd) {
+    if (g_real_close) g_real_close(fd);
+    else syscall(SYS_close, fd);
+}
 
 static void raw_log(const char *msg) {
     if (g_log_fd >= 0) {
@@ -57,7 +74,7 @@ static void signal_handler(int sig) {
     if (g_log_fd >= 0) {
         /* Write crash marker using only write() */
         const char *prefix = "[CRASH] Signal ";
-        write(g_log_fd, prefix, sizeof("[CRASH] Signal ") - 1);
+        runner_write(g_log_fd, prefix, sizeof("[CRASH] Signal ") - 1);
         /* Write signal number as decimal */
         char sigbuf[16];
         int siglen = 0;
@@ -69,9 +86,9 @@ static void signal_handler(int sig) {
             while (tmp > 0) { rev[rlen++] = '0' + (tmp % 10); tmp /= 10; }
             for (int i = rlen - 1; i >= 0; i--) sigbuf[siglen++] = rev[i];
         }
-        write(g_log_fd, sigbuf, siglen);
-        write(g_log_fd, "\n", 1);
-        close(g_log_fd);
+        runner_write(g_log_fd, sigbuf, (size_t)siglen);
+        runner_write(g_log_fd, "\n", 1);
+        runner_close(g_log_fd);
         g_log_fd = -1;
     }
 
@@ -102,6 +119,9 @@ static void setup_logging(const char *prefix_path) {
         snprintf(g_log_path, sizeof(g_log_path), "%s/box64_runner.log", home);
         g_log_fd = open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     }
+    /* Capture real libc for use in the async-signal crash handler */
+    g_real_write = (ssize_t (*)(int, const void *, size_t))reallibc_resolve("write");
+    g_real_close = (int (*)(int))reallibc_resolve("close");
     runner_log("[Runner] ===== Box64 In-Process Runner =====");
     runner_log("[Runner] Log path: %s (fd=%d)", g_log_path, g_log_fd);
 }

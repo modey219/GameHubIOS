@@ -1,5 +1,6 @@
 #include "../Include/box64_bridge.h"
 #include "../Include/syscall_translation.h"
+#include "../Include/reallibc.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -11,6 +12,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <dlfcn.h>
+#include <sys/syscall.h>
 
 static box64_context_t *g_box64 = NULL;
 static box64_context_t g_static_box64;
@@ -21,6 +24,28 @@ static char g_wine_error[1024] = {0};
 
 static char g_crash_log_path[1024] = {0};
 static char g_docs_path[1024] = {0};
+
+/* Real libc pointers captured at install time (NOT the reallibc shims) so the
+   async-signal crash handler never calls dlsym(). Fall back to raw syscalls. */
+static int (*g_real_open)(const char *, int, ...) = NULL;
+static ssize_t (*g_real_write)(int, const void *, size_t) = NULL;
+static int (*g_real_close)(int) = NULL;
+static size_t (*g_real_strlen)(const char *) = NULL;
+
+static void crash_write(int fd, const char *buf, size_t n) {
+    if (g_real_write) g_real_write(fd, buf, n);
+    else syscall(SYS_write, fd, buf, n);
+}
+static int crash_open(const char *p, int flags, mode_t mode) {
+    if (g_real_open) return g_real_open(p, flags, mode);
+    return (int)syscall(SYS_open, p, flags, mode);
+}
+static size_t crash_strlen(const char *s) {
+    if (g_real_strlen) return g_real_strlen(s);
+    const char *p = s;
+    while (*p) p++;
+    return (size_t)(p - s);
+}
 
 static box64_log_callback g_probe_log_cb = NULL;
 void box64_set_probe_log_cb(box64_log_callback cb) { g_probe_log_cb = cb; }
@@ -92,12 +117,12 @@ static const char *g_signal_names[32] = {
 };
 
 static void crash_signal_handler(int sig) {
-    int fd = open(g_crash_log_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    int fd = crash_open(g_crash_log_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd >= 0) {
         const char *prefix = "[CRASH] Signal ";
-        write(fd, prefix, 15);
+        crash_write(fd, prefix, 15);
         if (sig > 0 && sig < 32 && g_signal_names[sig]) {
-            write(fd, g_signal_names[sig], strlen(g_signal_names[sig]));
+            crash_write(fd, g_signal_names[sig], crash_strlen(g_signal_names[sig]));
         } else {
             char nbuf[16];
             int len = 0;
@@ -109,10 +134,11 @@ static void crash_signal_handler(int sig) {
                 while (tmp > 0) { rev[rlen++] = '0' + (tmp % 10); tmp /= 10; }
                 for (int i = rlen - 1; i >= 0; i--) nbuf[len++] = rev[i];
             }
-            write(fd, nbuf, len);
+            crash_write(fd, nbuf, (size_t)len);
         }
-        write(fd, "\n", 1);
-        close(fd);
+        crash_write(fd, "\n", 1);
+        if (g_real_close) g_real_close(fd);
+        else syscall(SYS_close, fd);
     }
     _exit(128 + sig);
 }
@@ -141,6 +167,13 @@ void install_crash_handler(const char *log_path) {
     sigaction(SIGILL, &sa, NULL);
     sigaction(SIGFPE, &sa, NULL);
     sigaction(SIGTRAP, &sa, NULL);
+
+    /* Capture the real libc functions for use inside the signal handler.
+       Done here (normal context) so the handler never needs dlsym(). */
+    g_real_open = (int (*)(const char *, int, ...))reallibc_resolve("open");
+    g_real_write = (ssize_t (*)(int, const void *, size_t))reallibc_resolve("write");
+    g_real_close = (int (*)(int))reallibc_resolve("close");
+    g_real_strlen = (size_t (*)(const char *))reallibc_resolve("strlen");
 }
 
 static const char *get_docs_dir(void) {

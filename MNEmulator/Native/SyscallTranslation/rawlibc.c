@@ -33,10 +33,78 @@
 /* NOTE: resolving the genuine libSystem syscall() via dlopen+dlsym was
    tried and ABANDONED — dlopen("/usr/lib/libSystem.B.dylib") HANGS at
    runtime under LiveContainer (both at image-load time in some builds and
-   lazily on first use). We therefore call the plain `syscall` symbol and
-   rely on SYS_openat (which box64 uses for all opens) instead of the
-   legacy SYS_open. box64_probe_paths' matrix probe decides empirically
-   which syscall numbers actually complete. */
+   lazily on first use).
+
+   build-372 then proved the plain libc `syscall` SYMBOL is itself interposed
+   by LiveContainer for path-opening syscalls: `syscall(SYS_openat, ...)`
+   HANGS while `syscall(SYS___getcwd, ...)` passes through. So even a
+   syscall-number-based call to the `syscall` symbol cannot be trusted.
+
+   box64_raw_syscall therefore issues a DIRECT kernel trap via inline
+   `svc 0x80` (arm64) — no DYLD interposer can hook a raw trap. The
+   varargs wrapper below supplies this, and rawlibc_syscall is kept as a
+   thin 5-arg wrapper so every box64_raw_* path funnels through the trap. */
+
+#if defined(__aarch64__)
+
+static inline long raw_kernel_syscall(long num, long a1, long a2, long a3,
+                                      long a4, long a5, long a6) {
+    long result;
+    __asm__ __volatile__(
+        "mov x16, %[num]\n"
+        "mov x0, %[a1]\n"
+        "mov x1, %[a2]\n"
+        "mov x2, %[a3]\n"
+        "mov x3, %[a4]\n"
+        "mov x4, %[a5]\n"
+        "mov x5, %[a6]\n"
+        "svc 0x80\n"
+        "b.cc 1f\n"
+        "neg x0, x0\n"
+        "1:\n"
+        "mov %[res], x0\n"
+        : [res] "=r"(result)
+        : [num] "r"(num), [a1] "r"(a1), [a2] "r"(a2), [a3] "r"(a3),
+          [a4] "r"(a4), [a5] "r"(a5), [a6] "r"(a6)
+        : "x0", "x1", "x2", "x3", "x4", "x5", "x16", "cc", "memory");
+    return result;
+}
+
+#else
+
+static inline long raw_kernel_syscall(long num, long a1, long a2, long a3,
+                                      long a4, long a5, long a6) {
+    (void)num; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6;
+    errno = ENOSYS;
+    return -1;
+}
+
+#endif
+
+long box64_raw_syscall(int num, ...) {
+    long a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0;
+    va_list ap;
+    va_start(ap, num);
+    a1 = va_arg(ap, long);
+    a2 = va_arg(ap, long);
+    a3 = va_arg(ap, long);
+    a4 = va_arg(ap, long);
+    a5 = va_arg(ap, long);
+    a6 = va_arg(ap, long);
+    va_end(ap);
+
+    /* Darwin ARM64 uses the RAW syscall number in x16 (Apple's own stubs:
+       `mov x16, #SYS_fork; svc 0x80`). The SYSCALL_CONSTRUCT_UNIX class
+       encoding (2<<24) is an x86_64 convention and would index past the
+       unix sysent table on arm64. Do NOT add class bits here. */
+    long r = raw_kernel_syscall((long)num, a1, a2, a3, a4, a5, a6);
+    if (r < 0) {
+        errno = (int)(-r);
+        return -1;
+    }
+    return r;
+}
+
 static long rawlibc_syscall(int num, ...) {
     long a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0;
     va_list ap;
@@ -47,7 +115,7 @@ static long rawlibc_syscall(int num, ...) {
     a4 = va_arg(ap, long);
     a5 = va_arg(ap, long);
     va_end(ap);
-    return syscall(num, a1, a2, a3, a4, a5);
+    return box64_raw_syscall(num, a1, a2, a3, a4, a5);
 }
 
 /* ================================================================== */

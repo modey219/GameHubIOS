@@ -720,6 +720,16 @@ enum {
     TK_REAL_SC_MKDIR = 14,   /* dlsym'd libSystem syscall(SYS_mkdir) */
     TK_REAL_SC_UNLINK = 15,  /* dlsym'd libSystem syscall(SYS_unlink) */
     TK_REAL_SC_CREATE = 16,  /* dlsym'd syscall openat O_WRONLY|O_CREAT + write + close */
+    TK_KERNEL_GETCWD = 17,   /* box64_raw_syscall(SYS___getcwd) — direct svc proof */
+    TK_KERNEL_OPENAT = 18,   /* box64_raw_syscall(SYS_openat, AT_FDCWD) — direct svc */
+    TK_KERNEL_OPEN = 19,     /* box64_raw_syscall(SYS_open) — direct svc */
+    TK_KERNEL_STAT64 = 20,   /* box64_raw_syscall(SYS_stat64) — direct svc */
+    TK_KERNEL_GETDENTS64 = 21, /* box64_raw_syscall(SYS_getdirentries64) — direct svc */
+    TK_KERNEL_CREATE = 22,   /* box64_raw_syscall openat+write+close — direct svc */
+    TK_KERNEL_MKDIR = 23,    /* box64_raw_syscall(SYS_mkdir) — direct svc */
+    TK_KERNEL_UNLINK = 24,   /* box64_raw_syscall(SYS_unlink) — direct svc */
+    TK_KERNEL_FSTAT64 = 25,  /* box64_raw_syscall(SYS_fstat64) on t->fd — direct svc */
+    TK_KERNEL_READ = 26,     /* box64_raw_syscall(SYS_read) on t->fd — direct svc */
     TK_COUNT
 };
 
@@ -753,6 +763,16 @@ static const char *trial_name(int kind) {
     case TK_REAL_SC_MKDIR: return "real-syscall-mkdir";
     case TK_REAL_SC_UNLINK: return "real-syscall-unlink";
     case TK_REAL_SC_CREATE: return "real-syscall-create+write";
+    case TK_KERNEL_GETCWD: return "kernel-svc-getcwd";
+    case TK_KERNEL_OPENAT: return "kernel-svc-openat";
+    case TK_KERNEL_OPEN: return "kernel-svc-open";
+    case TK_KERNEL_STAT64: return "kernel-svc-stat64";
+    case TK_KERNEL_GETDENTS64: return "kernel-svc-getdents64";
+    case TK_KERNEL_CREATE: return "kernel-svc-create+write";
+    case TK_KERNEL_MKDIR: return "kernel-svc-mkdir";
+    case TK_KERNEL_UNLINK: return "kernel-svc-unlink";
+    case TK_KERNEL_FSTAT64: return "kernel-svc-fstat64";
+    case TK_KERNEL_READ: return "kernel-svc-read";
     default: return "?";
     }
 }
@@ -828,6 +848,60 @@ static void bridge_trial_execute(trial_t *t) {
         t->r1 = fd;
         t->r_errno = errno; break;
     }
+    case TK_KERNEL_GETCWD: {
+        char kb[1024];
+#if defined(SYS___getcwd)
+        long r = box64_raw_syscall(SYS___getcwd, kb, (long)sizeof(kb));
+#elif defined(SYS_getcwd)
+        long r = box64_raw_syscall(SYS_getcwd, kb, (long)sizeof(kb));
+#else
+        long r = -1;
+        errno = ENOSYS;
+#endif
+        t->r1 = (int)r;
+        if (r >= 0) memcpy(t->rbuf, kb, sizeof(t->rbuf));
+        t->r_errno = errno; break;
+    }
+    case TK_KERNEL_OPENAT:
+        t->r1 = (int)box64_raw_syscall(SYS_openat, AT_FDCWD, t->path, O_RDONLY, 0L);
+        t->r_errno = errno; break;
+    case TK_KERNEL_OPEN:
+        t->r1 = (int)box64_raw_syscall(SYS_open, t->path, O_RDONLY, 0L);
+        t->r_errno = errno; break;
+    case TK_KERNEL_STAT64:
+        t->r1 = (int)box64_raw_syscall(SYS_stat64, t->path, &sb);
+        t->r2 = (t->r1 == 0) ? (int)sb.st_size : -1;
+        t->r_errno = errno; break;
+    case TK_KERNEL_GETDENTS64: {
+        off_t base = 0;
+        char db[4096];
+        t->r1 = (int)box64_raw_syscall(SYS_getdirentries64, t->fd, db, (long)sizeof(db), (long)&base);
+        t->r_errno = errno; break;
+    }
+    case TK_KERNEL_CREATE: {
+        int fd = (int)box64_raw_syscall(SYS_openat, AT_FDCWD, t->path,
+                                        O_WRONLY | O_CREAT | O_TRUNC, 0644L);
+        if (fd >= 0) {
+            box64_raw_syscall(SYS_write, fd, (long)"OK", 2L);
+            box64_raw_syscall(SYS_close, fd);
+        }
+        t->r1 = fd;
+        t->r_errno = errno; break;
+    }
+    case TK_KERNEL_MKDIR:
+        t->r1 = (int)box64_raw_syscall(SYS_mkdir, t->path, 0755L);
+        t->r_errno = errno; break;
+    case TK_KERNEL_UNLINK:
+        t->r1 = (int)box64_raw_syscall(SYS_unlink, t->path);
+        t->r_errno = errno; break;
+    case TK_KERNEL_FSTAT64:
+        t->r1 = (int)box64_raw_syscall(SYS_fstat64, t->fd, &sb);
+        t->r2 = (t->r1 == 0) ? (int)sb.st_size : -1;
+        t->r_errno = errno; break;
+    case TK_KERNEL_READ:
+        t->r1 = (int)box64_raw_syscall(SYS_read, t->fd, t->rbuf, 4L);
+        t->r2 = (t->r1 >= 0) ? (int)t->r1 : -1;
+        t->r_errno = errno; break;
     default:
         t->r1 = -1;
         t->r_errno = ENOSYS;
@@ -850,9 +924,11 @@ static int bridge_run_trial(trial_t *t, const char *lbl, char *out, size_t *used
     if (t->r1 >= 0) {
         char extra[96] = "";
         if (t->kind == TK_RAW_STAT64 || t->kind == TK_LIBC_STAT_DL ||
-            t->kind == TK_RAW_FSTAT64 || t->kind == TK_LIBC_FSTAT_DL)
+            t->kind == TK_RAW_FSTAT64 || t->kind == TK_LIBC_FSTAT_DL ||
+            t->kind == TK_KERNEL_STAT64 || t->kind == TK_KERNEL_FSTAT64)
             snprintf(extra, sizeof(extra), " size=%d", t->r2);
-        else if (t->kind == TK_RAW_READ4 || t->kind == TK_LIBC_READ4_DL)
+        else if (t->kind == TK_RAW_READ4 || t->kind == TK_LIBC_READ4_DL ||
+                 t->kind == TK_KERNEL_READ)
             snprintf(extra, sizeof(extra), " got=%d", t->r2);
         snprintf(line, sizeof(line), "MATRIX %s | %s = OK r1=%d%s", lbl, op, t->r1, extra);
     } else {
@@ -880,7 +956,8 @@ static int probe_matrix_path(const char *lbl, const char *path, const int *kinds
         if (got_fd < 0 && t.r1 >= 0 &&
             (kinds[i] == TK_REAL_SC_OPEN || kinds[i] == TK_REAL_SC_OPENAT ||
              kinds[i] == TK_RAW_OPEN || kinds[i] == TK_RAW_OPENAT ||
-             kinds[i] == TK_LIBC_OPEN_DL || kinds[i] == TK_LIBC_OPEN))
+             kinds[i] == TK_LIBC_OPEN_DL || kinds[i] == TK_LIBC_OPEN ||
+             kinds[i] == TK_KERNEL_OPENAT || kinds[i] == TK_KERNEL_OPEN))
             got_fd = t.r1;
     }
     return got_fd;
@@ -914,7 +991,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
        dlsym'd real-libc mechanisms are unavailable. Every REAL-SC and LIBC-DL
        trial below will report FAIL via the g_libc_* == NULL guards. */
     plog("NOTE: libSystem dlsym skipped (dlopen hangs under LiveContainer)");
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v364 (direct, no-threads, stack-trials) ====");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v365 (kernel-svc-first) ====");
     probe_syscall_report(out, &used, out_len);
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
@@ -970,23 +1047,37 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     snprintf(l1, sizeof(l1), "PATH /tmp=%s", rp_tmp[0] ? rp_tmp : "(null)");
     probe_emit(out, &used, out_len, l1);
 
-    /* ---- Phase 1: full op set on the critical path (wine64 realpath) ---- */
+    /* ---- Phase 1: full op set on the critical path (wine64 realpath) ----
+       KERNEL-SVC trials go FIRST: they trap straight to the kernel (inline
+       svc) and cannot be interposed, so they always complete. The
+       plain-`syscall`-symbol trials are gated behind MN_PROBE_SYSCALL_SYMBOL
+       because syscall(SYS_openat) HANGS under LiveContainer (build-372) and
+       would never return, stalling every later phase. */
     probe_emit(out, &used, out_len, "---- matrix: wine64 (realpath) ----");
-    int full_ops[] = {
-        TK_RAW_OPENAT, TK_RAW_OPEN, TK_LIBC_OPEN_DL, TK_LIBC_STAT_DL,
-        TK_LIBC_FOPEN_DL, TK_RAW_STAT64, TK_LIBC_OPEN
-    };
+    int full_ops[16];
+    int n_full = 0;
+    full_ops[n_full++] = TK_KERNEL_GETCWD;
+    full_ops[n_full++] = TK_KERNEL_OPENAT;
+    full_ops[n_full++] = TK_KERNEL_OPEN;
+    full_ops[n_full++] = TK_KERNEL_STAT64;
+    if (getenv("MN_PROBE_SYSCALL_SYMBOL")) {
+        static const int sym_ops[] = { TK_RAW_OPENAT, TK_RAW_OPEN, TK_LIBC_OPEN_DL,
+                                       TK_LIBC_STAT_DL, TK_LIBC_FOPEN_DL, TK_RAW_STAT64,
+                                       TK_LIBC_OPEN, TK_REAL_SC_OPEN, TK_REAL_SC_OPENAT };
+        for (size_t i = 0; i < sizeof(sym_ops) / sizeof(sym_ops[0]); i++)
+            full_ops[n_full++] = sym_ops[i];
+    }
     unsigned okmask = 0;
     int p0_fd = probe_matrix_path("w64-real", rp_w64[0] ? rp_w64 : w64raw,
-                                  full_ops, (int)(sizeof(full_ops) / sizeof(full_ops[0])),
-                                  &okmask, -1, out, &used, out_len);
+                                  full_ops, n_full, &okmask, -1, out, &used, out_len);
     plog("matrix w64-real okmask=0x%x p0_fd=%d", okmask, p0_fd);
 
     /* ---- Phase 2: surviving ops on the other paths ---- */
     int p2_ops[10];
     int n_p2 = 0;
     {
-        static const int want[] = { TK_RAW_OPENAT, TK_RAW_OPEN, TK_LIBC_OPEN_DL,
+        static const int want[] = { TK_KERNEL_OPENAT, TK_KERNEL_OPEN, TK_KERNEL_STAT64,
+                                    TK_RAW_OPENAT, TK_RAW_OPEN, TK_LIBC_OPEN_DL,
                                     TK_RAW_STAT64, TK_LIBC_STAT_DL };
         for (int i = 0; i < (int)(sizeof(want) / sizeof(want[0])); i++)
             if (okmask & (1u << (unsigned)want[i]))
@@ -1020,9 +1111,17 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     if (p0_fd < 0) {
         probe_emit(out, &used, out_len, "PIPELINE w64 | no working open — skipped");
     } else {
-        int pipe_ops[] = { TK_RAW_FSTAT64, TK_LIBC_FSTAT_DL, TK_RAW_READ4, TK_LIBC_READ4_DL };
-        probe_matrix_path("pipe-w64", NULL, pipe_ops, (int)(sizeof(pipe_ops) / sizeof(pipe_ops[0])),
-                          &okmask, p0_fd, out, &used, out_len);
+        int pipe_ops[8];
+        int n_pipe = 0;
+        pipe_ops[n_pipe++] = TK_KERNEL_FSTAT64;
+        pipe_ops[n_pipe++] = TK_KERNEL_READ;
+        if (getenv("MN_PROBE_SYSCALL_SYMBOL")) {
+            pipe_ops[n_pipe++] = TK_RAW_FSTAT64;
+            pipe_ops[n_pipe++] = TK_LIBC_FSTAT_DL;
+            pipe_ops[n_pipe++] = TK_RAW_READ4;
+            pipe_ops[n_pipe++] = TK_LIBC_READ4_DL;
+        }
+        probe_matrix_path("pipe-w64", NULL, pipe_ops, n_pipe, &okmask, p0_fd, out, &used, out_len);
     }
 
     /* ---- Phase 4: directory readdir on TMPDIR ---- */
@@ -1032,7 +1131,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
         if (td && td[0]) {
             trial_t t;
             memset(&t, 0, sizeof(t));
-            t.kind = TK_RAW_OPENAT;
+            t.kind = TK_KERNEL_OPENAT;
             t.path = td;
             bridge_run_trial(&t, "tmpdir-open", out, &used, out_len);
             dirfd = t.r1;
@@ -1040,13 +1139,13 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
         if (dirfd < 0) {
             trial_t t;
             memset(&t, 0, sizeof(t));
-            t.kind = TK_LIBC_OPEN_DL;
+            t.kind = TK_KERNEL_OPENAT;
             t.path = td ? td : "/tmp";
             bridge_run_trial(&t, "tmpdir-open-libc", out, &used, out_len);
             dirfd = t.r1;
         }
         if (dirfd >= 0) {
-            int got[] = { TK_RAW_GETDENTS64 };
+            int got[] = { TK_KERNEL_GETDENTS64 };
             probe_matrix_path("tmpdir-readdir", NULL, got, 1, &okmask, dirfd, out, &used, out_len);
         } else {
             probe_emit(out, &used, out_len, "READDIR tmpdir | no working open — skipped");
@@ -1060,22 +1159,22 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
         snprintf(wpath, sizeof(wpath), "/tmp/.__mn_probe_%ld", (long)getpid());
         trial_t t;
         memset(&t, 0, sizeof(t));
-        t.kind = TK_REAL_SC_CREATE;
+        t.kind = TK_KERNEL_CREATE;
         t.path = wpath;
         bridge_run_trial(&t, "tmp-write", out, &used, out_len);
         trial_t u;
         memset(&u, 0, sizeof(u));
-        u.kind = TK_REAL_SC_UNLINK;
+        u.kind = TK_KERNEL_UNLINK;
         u.path = wpath;
         bridge_run_trial(&u, "tmp-unlink", out, &used, out_len);
         trial_t m;
         memset(&m, 0, sizeof(m));
-        m.kind = TK_REAL_SC_MKDIR;
+        m.kind = TK_KERNEL_MKDIR;
         m.path = "/tmp/.__mn_dir";
         bridge_run_trial(&m, "tmp-mkdir", out, &used, out_len);
         trial_t r;
         memset(&r, 0, sizeof(r));
-        r.kind = TK_REAL_SC_UNLINK;
+        r.kind = TK_KERNEL_UNLINK;
         r.path = "/tmp/.__mn_dir";
         bridge_run_trial(&r, "tmp-rmdir", out, &used, out_len);
     }

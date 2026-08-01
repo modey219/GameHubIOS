@@ -25,6 +25,9 @@
 extern "C" {
 #endif
 
+/* ---- direct kernel syscall (inline svc, bypasses DYLD interposers) ---- */
+long box64_raw_syscall(int num, ...);
+
 /* ---- fd/path syscalls ---- */
 int box64_raw_open(const char *path, int flags, ...);
 int box64_raw_openat(int dirfd, const char *path, int flags, ...);

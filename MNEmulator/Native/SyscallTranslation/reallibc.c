@@ -35,6 +35,14 @@
 #include <sys/syscall.h>
 #include "../Include/reallibc.h"
 
+/* REALLIBC_DISABLED removes ALL strong libc definitions from the app image.
+   Diagnosing: defining strong _open/_stat/_mmap/_fopen/... in the main
+   executable is suspected of crashing dyld at load under LiveContainer's
+   DYLD_INSERT_LIBRARIES interposer (instant vanish, zero logs, even the raw
+   syscall constructor never runs). Set this to bisect: if the app launches
+   with it defined, the strong symbols are the load-time killer. */
+#ifndef REALLIBC_DISABLED
+
 /* ---------- raw diagnostic writer (never goes through the shims) ---------- */
 
 static char g_shim_log[1400] = {0};
@@ -349,3 +357,15 @@ int fcntl(int fd, int cmd, ...) {
     va_end(ap);
     return f_(fd, cmd, arg);
 }
+
+#else /* REALLIBC_DISABLED */
+
+/* Keep the shared resolver symbol so box64_bridge.c / box64_runner.c link.
+   Returns NULL: the async-signal crash handlers already fall back to raw
+   syscalls when the real-libc captures are NULL. */
+void *reallibc_resolve(const char *name) {
+    (void)name;
+    return NULL;
+}
+
+#endif /* REALLIBC_DISABLED */

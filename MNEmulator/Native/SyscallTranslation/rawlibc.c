@@ -207,7 +207,15 @@ int box64_raw_fchdir(int fd) {
 }
 
 char *box64_raw_getcwd(char *buf, size_t n) {
+#ifdef SYS___getcwd
+    long r = syscall(SYS___getcwd, buf, n);
+#elif defined(SYS_getcwd)
     long r = syscall(SYS_getcwd, buf, n);
+#else
+    (void)buf; (void)n;
+    errno = ENOSYS;
+    return NULL;
+#endif
     if (r < 0)
         return NULL;
     return buf;

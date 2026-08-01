@@ -28,6 +28,12 @@ extern "C" {
 /* ---- direct kernel syscall (inline svc, bypasses DYLD interposers) ---- */
 long box64_raw_syscall(int num, ...);
 
+/* Class-encoded variant: ORs SYSCALL_CONSTRUCT_UNIX (2<<24 = 0x2000000) into
+   the number before trapping. x86_64 Darwin encodes unix syscalls this way;
+   arm64 libsyscall historically uses the raw number. The bridge probe
+   compares both to settle which encoding the iOS kernel accepts. */
+long box64_raw_syscall_cls(int num, ...);
+
 /* ---- fd/path syscalls ---- */
 int box64_raw_open(const char *path, int flags, ...);
 int box64_raw_openat(int dirfd, const char *path, int flags, ...);

@@ -105,6 +105,30 @@ long box64_raw_syscall(int num, ...) {
     return r;
 }
 
+/* Same trap, but with the SYSCALL_CONSTRUCT_UNIX class bits pre-ORed into the
+   number. Diagnostic: build-373's raw-number openat hung while getcwd reported
+   ENOSYS(78), so we keep both encodings available and let the bridge probe
+   compare them before box64 settles on one. */
+long box64_raw_syscall_cls(int num, ...) {
+    long a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0;
+    va_list ap;
+    va_start(ap, num);
+    a1 = va_arg(ap, long);
+    a2 = va_arg(ap, long);
+    a3 = va_arg(ap, long);
+    a4 = va_arg(ap, long);
+    a5 = va_arg(ap, long);
+    a6 = va_arg(ap, long);
+    va_end(ap);
+
+    long r = raw_kernel_syscall((long)num | 0x2000000L, a1, a2, a3, a4, a5, a6);
+    if (r < 0) {
+        errno = (int)(-r);
+        return -1;
+    }
+    return r;
+}
+
 static long rawlibc_syscall(int num, ...) {
     long a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0;
     va_list ap;

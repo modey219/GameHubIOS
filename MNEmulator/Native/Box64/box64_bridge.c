@@ -947,7 +947,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     size_t used = 0;
 
     /* dlopen of libSystem.B.dylib HANGS at runtime under LiveContainer, so the
-       dlsym'd real-libc mechanisms are unavailable. Every TK_REAL_SC_*/TK_LIBC_*_DL
+       dlsym'd real-libc mechanisms are unavailable. Every REAL-SC and LIBC-DL
        trial below will report FAIL via the g_libc_* == NULL guards. */
     plog("NOTE: libSystem dlsym skipped (dlopen hangs under LiveContainer)");
     probe_emit(out, &used, out_len, "==== box64_probe_paths v362 (matrix, no-dlopen) ====");

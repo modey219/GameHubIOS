@@ -93,7 +93,7 @@ void box64_probe_trace_snapshot(char *dst, size_t cap) {
 }
 
 static void plog(const char *fmt, ...) {
-    char buf[512];
+    char buf[2048];
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
@@ -870,19 +870,18 @@ static int probe_matrix_path(const char *lbl, const char *path, const int *kinds
                              unsigned *okmask, int first_fd, char *out, size_t *used, size_t cap) {
     int got_fd = -1;
     for (int i = 0; i < nk; i++) {
-        trial_t *t = (trial_t *)calloc(1, sizeof(trial_t));
-        if (!t) continue;
-        t->kind = kinds[i];
-        t->path = path;
-        t->fd = first_fd;
-        int r = bridge_run_trial(t, lbl, out, used, cap);
-        (void)r;
+        trial_t t;
+        memset(&t, 0, sizeof(t));
+        t.kind = kinds[i];
+        t.path = path;
+        t.fd = first_fd;
+        bridge_run_trial(&t, lbl, out, used, cap);
         *okmask |= (1u << (unsigned)kinds[i]);
-        if (got_fd < 0 && t->r1 >= 0 &&
+        if (got_fd < 0 && t.r1 >= 0 &&
             (kinds[i] == TK_REAL_SC_OPEN || kinds[i] == TK_REAL_SC_OPENAT ||
              kinds[i] == TK_RAW_OPEN || kinds[i] == TK_RAW_OPENAT ||
              kinds[i] == TK_LIBC_OPEN_DL || kinds[i] == TK_LIBC_OPEN))
-            got_fd = t->r1;
+            got_fd = t.r1;
     }
     return got_fd;
 }
@@ -915,7 +914,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
        dlsym'd real-libc mechanisms are unavailable. Every REAL-SC and LIBC-DL
        trial below will report FAIL via the g_libc_* == NULL guards. */
     plog("NOTE: libSystem dlsym skipped (dlopen hangs under LiveContainer)");
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v363 (direct, no-threads) ====");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v364 (direct, no-threads, stack-trials) ====");
     probe_syscall_report(out, &used, out_len);
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
@@ -1031,22 +1030,20 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     {
         int dirfd = -1;
         if (td && td[0]) {
-            trial_t *t = (trial_t *)calloc(1, sizeof(trial_t));
-            if (t) {
-                t->kind = TK_RAW_OPENAT;
-                t->path = td;
-                bridge_run_trial(t, "tmpdir-open", out, &used, out_len);
-                dirfd = t->r1;
-            }
+            trial_t t;
+            memset(&t, 0, sizeof(t));
+            t.kind = TK_RAW_OPENAT;
+            t.path = td;
+            bridge_run_trial(&t, "tmpdir-open", out, &used, out_len);
+            dirfd = t.r1;
         }
         if (dirfd < 0) {
-            trial_t *t = (trial_t *)calloc(1, sizeof(trial_t));
-            if (t) {
-                t->kind = TK_LIBC_OPEN_DL;
-                t->path = td ? td : "/tmp";
-                bridge_run_trial(t, "tmpdir-open-libc", out, &used, out_len);
-                dirfd = t->r1;
-            }
+            trial_t t;
+            memset(&t, 0, sizeof(t));
+            t.kind = TK_LIBC_OPEN_DL;
+            t.path = td ? td : "/tmp";
+            bridge_run_trial(&t, "tmpdir-open-libc", out, &used, out_len);
+            dirfd = t.r1;
         }
         if (dirfd >= 0) {
             int got[] = { TK_RAW_GETDENTS64 };
@@ -1061,31 +1058,50 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     {
         char wpath[1400];
         snprintf(wpath, sizeof(wpath), "/tmp/.__mn_probe_%ld", (long)getpid());
-        trial_t *t = (trial_t *)calloc(1, sizeof(trial_t));
-        if (t) {
-            t->kind = TK_REAL_SC_CREATE;
-            t->path = wpath;
-            bridge_run_trial(t, "tmp-write", out, &used, out_len);
-        }
-        trial_t *u = (trial_t *)calloc(1, sizeof(trial_t));
-        if (u) {
-            u->kind = TK_REAL_SC_UNLINK;
-            u->path = wpath;
-            bridge_run_trial(u, "tmp-unlink", out, &used, out_len);
-        }
-        trial_t *m = (trial_t *)calloc(1, sizeof(trial_t));
-        if (m) {
-            m->kind = TK_REAL_SC_MKDIR;
-            m->path = "/tmp/.__mn_dir";
-            bridge_run_trial(m, "tmp-mkdir", out, &used, out_len);
-        }
-        trial_t *r = (trial_t *)calloc(1, sizeof(trial_t));
-        if (r) {
-            r->kind = TK_REAL_SC_UNLINK;
-            r->path = "/tmp/.__mn_dir";
-            bridge_run_trial(r, "tmp-rmdir", out, &used, out_len);
+        trial_t t;
+        memset(&t, 0, sizeof(t));
+        t.kind = TK_REAL_SC_CREATE;
+        t.path = wpath;
+        bridge_run_trial(&t, "tmp-write", out, &used, out_len);
+        trial_t u;
+        memset(&u, 0, sizeof(u));
+        u.kind = TK_REAL_SC_UNLINK;
+        u.path = wpath;
+        bridge_run_trial(&u, "tmp-unlink", out, &used, out_len);
+        trial_t m;
+        memset(&m, 0, sizeof(m));
+        m.kind = TK_REAL_SC_MKDIR;
+        m.path = "/tmp/.__mn_dir";
+        bridge_run_trial(&m, "tmp-mkdir", out, &used, out_len);
+        trial_t r;
+        memset(&r, 0, sizeof(r));
+        r.kind = TK_REAL_SC_UNLINK;
+        r.path = "/tmp/.__mn_dir";
+        bridge_run_trial(&r, "tmp-rmdir", out, &used, out_len);
+    }
+
+    /* build-371: calloc() itself HANGS on the probe thread (trace died right
+       before the first trial). Deliberately LAST so a heap hang cannot lose
+       the matrix/pipeline data above. */
+    plog("heap-test: malloc(64)...");
+    {
+        void *hp = malloc(64);
+        plog("heap-test: malloc done hp=%s", hp ? "ok" : "FAIL");
+        if (hp) {
+            free(hp);
+            plog("heap-test: free ok");
         }
     }
+    plog("heap-test: calloc(1,64)...");
+    {
+        void *cp = calloc(1, 64);
+        plog("heap-test: calloc done cp=%s", cp ? "ok" : "FAIL");
+        if (cp) {
+            free(cp);
+            plog("heap-test: calloc free ok");
+        }
+    }
+    probe_emit(out, &used, out_len, "HEAP malloc(64) calloc(1,64) tested (see trace for result)");
 
     probe_emit(out, &used, out_len, "==== box64_probe_paths END ====");
     plog("box64_probe_paths END used=%zu okmask=0x%x", used, okmask);

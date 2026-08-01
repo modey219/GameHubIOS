@@ -223,11 +223,28 @@ class Box64Bridge {
         Self.log("initialize() complete, isInitialized=\(isInitialized), memory = \(Self.memoryUsageMB())MB")
     }
 
+    private static let probeLock = NSLock()
+    private static var probeInFlight = false
+
     /// Runs the C matrix probe (box64_probe_paths) on a background thread with a
     /// 20s cap and dumps the buffer + trace into diag.log. Called both after
     /// bundled-binary extraction and from initialize() so we get syscall data
     /// even when the launch path hangs before the probe.
+    ///
+    /// build-372: the probe thread may hang forever inside a raw syscall (or
+    /// calloc under LiveContainer), so on timeout we must NOT free probePtr
+    /// (the thread may still write into it → use-after-free → launch crash).
+    /// We leak the 32KB buffer on timeout instead, and skip re-entry.
     func runEarlyProbe() {
+        Self.probeLock.lock()
+        if Self.probeInFlight {
+            Self.writeDiag("early_probe_skipped (already in flight)")
+            Self.probeLock.unlock()
+            return
+        }
+        Self.probeInFlight = true
+        Self.probeLock.unlock()
+
         let docsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? "/tmp"
         let homePath = NSHomeDirectory()
         Self.writeDiag("early_probe_start")
@@ -291,9 +308,21 @@ class Box64Bridge {
         } else {
             Self.writeDiag("PROBE TRACE FILE: (missing)")
         }
-        probePtr.deinitialize(count: 32768)
-        probePtr.deallocate()
-        Self.writeDiag("early_probe_done")
+        // UAF guard: only free when the probe thread actually finished.
+        if !timedOut {
+            probePtr.deinitialize(count: 32768)
+            probePtr.deallocate()
+            Self.probeLock.lock()
+            Self.probeInFlight = false
+            Self.probeLock.unlock()
+            Self.writeDiag("early_probe_done")
+        } else {
+            // Probe hung (raw syscall / calloc under LiveContainer). The thread
+            // is still alive and may resume writing; LEAK the buffer (no UAF)
+            // and keep probeInFlight=true so launch-time never starts another.
+            Self.writeDiag("early_probe_leaked_buffer_thread_still_running")
+            Self.writeDiag("early_probe_done(leaked)")
+        }
     }
 
     private func setupEnvironment() {

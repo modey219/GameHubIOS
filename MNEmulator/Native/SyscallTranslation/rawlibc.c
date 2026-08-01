@@ -207,18 +207,21 @@ int box64_raw_fchdir(int fd) {
 }
 
 char *box64_raw_getcwd(char *buf, size_t n) {
+#if defined(SYS___getcwd) || defined(SYS_getcwd)
+    long r;
 #ifdef SYS___getcwd
-    long r = syscall(SYS___getcwd, buf, n);
-#elif defined(SYS_getcwd)
-    long r = syscall(SYS_getcwd, buf, n);
+    r = syscall(SYS___getcwd, buf, n);
 #else
-    (void)buf; (void)n;
-    errno = ENOSYS;
-    return NULL;
+    r = syscall(SYS_getcwd, buf, n);
 #endif
     if (r < 0)
         return NULL;
     return buf;
+#else
+    /* No getcwd syscall number exposed on this platform. libc getcwd is
+       proven to work under LiveContainer (see probe traces). */
+    return getcwd(buf, n);
+#endif
 }
 
 int box64_raw_pipe(int fds[2]) {

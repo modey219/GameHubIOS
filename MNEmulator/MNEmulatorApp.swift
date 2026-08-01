@@ -46,7 +46,7 @@ private func writeDiag(_ s: String) {
 struct MNEmulatorApp: App {
     init() {
         setupCrashHandler()
-        Box64Bridge.writeDiag("APP_BUILD rawlibc-lazy+earlyprobe")
+        Box64Bridge.writeDiag("APP_BUILD no-dlopen+matrix-rawsyscall")
     }
     @StateObject private var containerManager = ContainerManager()
     @StateObject private var jitManager = JITManager()

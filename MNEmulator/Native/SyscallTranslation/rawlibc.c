@@ -22,34 +22,22 @@
 #include <sys/syscall.h>
 #include <sys/dirent.h>
 #include <sys/uio.h>
-#include <dlfcn.h>
 #include <stdarg.h>
 
 #define RAW_DIRBUF_BLKSIZ 8192
 
 /* ================================================================== */
-/*  real syscall() routing                                            */
+/*  raw syscall() shim                                                 */
 /* ================================================================== */
 
-/* LiveContainer's dyld-insert interposer (fishhook/litehook rebinding) can
-   rebind the imported 'syscall' symbol to a broken function (wrong signature
-   → garbage results) or block it (hang forever). Resolve the GENUINE
-   libSystem syscall() via an explicit dlopen handle — dlsym on the defining
-   image bypasses any symbol rebinding — and route every raw syscall through
-   it. Resolution is LAZY (first rawlibc syscall) so no dlopen/dlsym happens
-   at image load time. */
-static long (*g_real_syscall)(int, ...) = NULL;
-
-static void rawlibc_resolve_syscall(void) {
-    if (g_real_syscall) return;
-    void *h = dlopen("/usr/lib/libSystem.B.dylib", RTLD_LAZY);
-    if (!h) h = dlopen("/usr/lib/libSystem.dylib", RTLD_LAZY);
-    if (h) g_real_syscall = (long (*)(int, ...))dlsym(h, "syscall");
-    if (!g_real_syscall) g_real_syscall = (long (*)(int, ...))syscall;
-}
-
+/* NOTE: resolving the genuine libSystem syscall() via dlopen+dlsym was
+   tried and ABANDONED — dlopen("/usr/lib/libSystem.B.dylib") HANGS at
+   runtime under LiveContainer (both at image-load time in some builds and
+   lazily on first use). We therefore call the plain `syscall` symbol and
+   rely on SYS_openat (which box64 uses for all opens) instead of the
+   legacy SYS_open. box64_probe_paths' matrix probe decides empirically
+   which syscall numbers actually complete. */
 static long rawlibc_syscall(int num, ...) {
-    if (!g_real_syscall) rawlibc_resolve_syscall();
     long a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0;
     va_list ap;
     va_start(ap, num);
@@ -59,7 +47,7 @@ static long rawlibc_syscall(int num, ...) {
     a4 = va_arg(ap, long);
     a5 = va_arg(ap, long);
     va_end(ap);
-    return g_real_syscall(num, a1, a2, a3, a4, a5);
+    return syscall(num, a1, a2, a3, a4, a5);
 }
 
 /* ================================================================== */

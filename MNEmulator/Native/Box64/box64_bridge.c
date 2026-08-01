@@ -99,14 +99,6 @@ static void plog(const char *fmt, ...) {
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
     probe_trace_append(buf);
-    if (g_trace_path[0]) {
-        int fd = box64_raw_open(g_trace_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (fd >= 0) {
-            box64_raw_write(fd, buf, strlen(buf));
-            box64_raw_write(fd, "\n", 1);
-            box64_raw_close(fd);
-        }
-    }
 }
 
 static const char *g_signal_names[32] = {
@@ -224,17 +216,10 @@ void set_c_diag_docs_path(const char *path) {
     if (!path || !path[0]) return;
     strncpy(g_docs_path, path, sizeof(g_docs_path) - 1);
     g_docs_path[sizeof(g_docs_path) - 1] = '\0';
-
-    char test_path[1032];
-    snprintf(test_path, sizeof(test_path), "%s/c_diag_test.txt", g_docs_path);
-    int fd = box64_raw_open(test_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd >= 0) {
-        const char *msg = "C file IO works!\n";
-        box64_raw_write(fd, msg, strlen(msg));
-        box64_raw_close(fd);
-    }
-
-    c_diag("set_c_diag_docs_path: OK");
+    /* NOTE: the previous diagnostic file-write test (box64_raw_open on
+       c_diag_test.txt) was removed: it hangs the launch thread under
+       LiveContainer. Raw syscall probes run safely inside box64_probe_paths
+       on their own watchdog-guarded thread. */
 }
 
 box64_context_t *box64_create(void) {
@@ -785,10 +770,10 @@ static void *bridge_trial_thread(void *arg) {
     errno = 0;
     switch (t->kind) {
     case TK_REAL_SC_OPEN:
-        t->r1 = g_libc_syscall_fn ? (int)g_libc_syscall_fn(SYS_open, t->path, O_RDONLY, 0L) : -1;
+        t->r1 = (int)syscall(SYS_open, t->path, O_RDONLY, 0L);
         t->r_errno = errno; break;
     case TK_REAL_SC_OPENAT:
-        t->r1 = g_libc_syscall_fn ? (int)g_libc_syscall_fn(SYS_openat, AT_FDCWD, t->path, O_RDONLY, 0L) : -1;
+        t->r1 = (int)syscall(SYS_openat, AT_FDCWD, t->path, O_RDONLY, 0L);
         t->r_errno = errno; break;
     case TK_RAW_OPEN:
         t->r1 = (int)syscall(SYS_open, t->path, O_RDONLY, 0L);
@@ -837,19 +822,16 @@ static void *bridge_trial_thread(void *arg) {
         t->r_errno = errno; break;
     }
     case TK_REAL_SC_MKDIR:
-        t->r1 = g_libc_syscall_fn ? (int)g_libc_syscall_fn(SYS_mkdir, t->path, 0755) : -1;
+        t->r1 = (int)syscall(SYS_mkdir, t->path, 0755);
         t->r_errno = errno; break;
     case TK_REAL_SC_UNLINK:
-        t->r1 = g_libc_syscall_fn ? (int)g_libc_syscall_fn(SYS_unlink, t->path) : -1;
+        t->r1 = (int)syscall(SYS_unlink, t->path);
         t->r_errno = errno; break;
     case TK_REAL_SC_CREATE: {
-        int fd = g_libc_syscall_fn
-                     ? (int)g_libc_syscall_fn(SYS_openat, AT_FDCWD, t->path,
-                                              O_WRONLY | O_CREAT | O_TRUNC, 0644)
-                     : -1;
+        int fd = (int)syscall(SYS_openat, AT_FDCWD, t->path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (fd >= 0) {
-            if (g_libc_syscall_fn) g_libc_syscall_fn(SYS_write, fd, "OK", 2L);
-            if (g_libc_syscall_fn) g_libc_syscall_fn(SYS_close, fd);
+            syscall(SYS_write, fd, "OK", 2L);
+            syscall(SYS_close, fd);
         }
         t->r1 = fd;
         t->r_errno = errno; break;
@@ -964,12 +946,11 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     out[0] = 0;
     size_t used = 0;
 
-    resolve_libc_pointers();
-    plog("libc resolve: syscall=%p open=%p stat=%p fstat=%p read=%p fopen=%p",
-         (void *)g_libc_syscall_fn, (void *)g_libc_open_fn, (void *)g_libc_stat_fn,
-         (void *)g_libc_fstat_fn, (void *)g_libc_read_fn, (void *)g_libc_fopen_fn);
-
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v361 (matrix) ====");
+    /* dlopen of libSystem.B.dylib HANGS at runtime under LiveContainer, so the
+       dlsym'd real-libc mechanisms are unavailable. Every TK_REAL_SC_*/TK_LIBC_*_DL
+       trial below will report FAIL via the g_libc_* == NULL guards. */
+    plog("NOTE: libSystem dlsym skipped (dlopen hangs under LiveContainer)");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v362 (matrix, no-dlopen) ====");
     probe_syscall_report(out, &used, out_len);
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
@@ -1028,9 +1009,8 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     /* ---- Phase 1: full op set on the critical path (wine64 realpath) ---- */
     probe_emit(out, &used, out_len, "---- matrix: wine64 (realpath) ----");
     int full_ops[] = {
-        TK_REAL_SC_OPENAT, TK_REAL_SC_OPEN, TK_RAW_OPENAT, TK_RAW_OPEN,
-        TK_LIBC_OPEN_DL, TK_LIBC_STAT_DL, TK_LIBC_FOPEN_DL, TK_RAW_STAT64,
-        TK_LIBC_OPEN
+        TK_RAW_OPENAT, TK_RAW_OPEN, TK_LIBC_OPEN_DL, TK_LIBC_STAT_DL,
+        TK_LIBC_FOPEN_DL, TK_RAW_STAT64, TK_LIBC_OPEN
     };
     unsigned okmask = 0;
     int p0_fd = probe_matrix_path("w64-real", rp_w64[0] ? rp_w64 : w64raw,
@@ -1042,9 +1022,8 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     int p2_ops[10];
     int n_p2 = 0;
     {
-        static const int want[] = { TK_REAL_SC_OPENAT, TK_REAL_SC_OPEN, TK_RAW_OPENAT,
-                                    TK_RAW_OPEN, TK_LIBC_OPEN_DL, TK_RAW_STAT64,
-                                    TK_LIBC_STAT_DL };
+        static const int want[] = { TK_RAW_OPENAT, TK_RAW_OPEN, TK_LIBC_OPEN_DL,
+                                    TK_RAW_STAT64, TK_LIBC_STAT_DL };
         for (int i = 0; i < (int)(sizeof(want) / sizeof(want[0])); i++)
             if (okmask & (1u << (unsigned)want[i]))
                 p2_ops[n_p2++] = want[i];
@@ -1089,7 +1068,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
         if (td && td[0]) {
             trial_t *t = (trial_t *)calloc(1, sizeof(trial_t));
             if (t) {
-                t->kind = TK_REAL_SC_OPENAT;
+                t->kind = TK_RAW_OPENAT;
                 t->path = td;
                 bridge_run_trial(t, "tmpdir-open", out, &used, out_len);
                 dirfd = t->r1;

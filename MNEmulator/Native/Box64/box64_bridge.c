@@ -521,8 +521,8 @@ static void probe_root(char *out, size_t *used, size_t cap, int idx, const char 
     struct stat s;
     errno = 0;
     plog("probe_root[%d]: stat(%s)", idx, path ? path : "(null)");
-    int acc = path ? access(path, F_OK) : -1;
-    plog("probe_root[%d]: access F_OK=%d errno=%d", idx, acc, errno);
+    int accRes = path ? access(path, F_OK) : -1;
+    plog("probe_root[%d]: access F_OK=%d errno=%d", idx, accRes, errno);
     int st = stat(path, &s);
     int st_errno = errno;
     plog("probe_root[%d]: stat done st=%d errno=%d", idx, st, st_errno);

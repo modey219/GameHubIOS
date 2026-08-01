@@ -535,7 +535,7 @@ class Box64Bridge {
         if exists { info += " isDir=\(isDir.boolValue)" }
         if let attrs = try? fm.attributesOfItem(atPath: path) {
             if let sz = attrs[FileAttributeKey.size] as? NSNumber { info += " size=\(sz.intValue)" }
-            if let type = attrs[FileAttributeKey.fileType] as? FileAttributeType { info += " type=\(type.rawValue)" }
+            if let type = attrs[FileAttributeKey.type] as? FileAttributeType { info += " type=\(type.rawValue)" }
             if let perm = attrs[FileAttributeKey.posixPermissions] as? NSNumber { info += " perm=\(String(format: "0%o", perm.intValue))" }
         }
         if let dest = try? fm.destinationOfSymbolicLink(atPath: path) {

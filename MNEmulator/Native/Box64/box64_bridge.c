@@ -54,7 +54,7 @@ void box64_set_probe_log_cb(box64_log_callback cb) { g_probe_log_cb = cb; }
 
 static char g_trace_path[1100] = {0};
 
-#define PROBE_TRACE_MAX 16384
+#define PROBE_TRACE_MAX 65536
 static char g_probe_trace[PROBE_TRACE_MAX];
 static size_t g_probe_trace_len = 0;
 static pthread_mutex_t g_probe_trace_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -757,15 +757,7 @@ static const char *trial_name(int kind) {
     }
 }
 
-static void bridge_msleep(int ms) {
-    struct timespec ts;
-    ts.tv_sec = ms / 1000;
-    ts.tv_nsec = (long)(ms % 1000) * 1000000L;
-    nanosleep(&ts, NULL);
-}
-
-static void *bridge_trial_thread(void *arg) {
-    trial_t *t = (trial_t *)arg;
+static void bridge_trial_execute(trial_t *t) {
     struct stat sb;
     errno = 0;
     switch (t->kind) {
@@ -841,45 +833,18 @@ static void *bridge_trial_thread(void *arg) {
         t->r_errno = ENOSYS;
         break;
     }
-    t->state = 2;
-    return NULL;
 }
 
-#define TRIAL_TIMEOUT_MS 1200
-
-/* Runs one trial. Returns: 0 = returned, -1 = HANG (thread abandoned),
-   -2 = spawn failure. Result is appended to `out` as a MATRIX line. */
+/* Runs one trial directly on the probe thread. Every raw syscall is bracketed
+   by plog so that if one HANGS the trace snapshot pinpoints the exact call.
+   No watchdog threads: LiveContainer's interposer makes pthread_create/
+   nanosleep unreliable, and leaked trial threads crashed the app on launch
+   (build-369). Returns 0 always; result appended to `out` as a MATRIX line. */
 static int bridge_run_trial(trial_t *t, const char *lbl, char *out, size_t *used, size_t cap) {
-    pthread_t tid;
-    pthread_attr_t attr;
     char line[320];
-
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    pthread_attr_setstacksize(&attr, 96 * 1024);
-    t->state = 1;
-    if (pthread_create(&tid, &attr, bridge_trial_thread, t) != 0) {
-        pthread_attr_destroy(&attr);
-        snprintf(line, sizeof(line), "MATRIX %s | %s = spawn-FAIL", lbl, trial_name(t->kind));
-        probe_emit(out, used, cap, line);
-        plog("trial %s: pthread_create FAILED", lbl);
-        return -2;
-    }
-    pthread_attr_destroy(&attr);
-
-    int waited = 0;
-    while (t->state == 1 && waited < TRIAL_TIMEOUT_MS) {
-        bridge_msleep(20);
-        waited += 20;
-    }
-    if (t->state == 1) {
-        t->state = 3;
-        snprintf(line, sizeof(line), "MATRIX %s | %s = HANG (>%dms)",
-                 lbl, trial_name(t->kind), TRIAL_TIMEOUT_MS);
-        probe_emit(out, used, cap, line);
-        plog("trial %s [%s]: HANG", lbl, trial_name(t->kind));
-        return -1;
-    }
+    plog("trial[%s] %s ENTER", lbl, trial_name(t->kind));
+    bridge_trial_execute(t);
+    plog("trial[%s] %s DONE r1=%d errno=%d", lbl, trial_name(t->kind), t->r1, t->r_errno);
 
     const char *op = trial_name(t->kind);
     if (t->r1 >= 0) {
@@ -894,13 +859,13 @@ static int bridge_run_trial(trial_t *t, const char *lbl, char *out, size_t *used
         snprintf(line, sizeof(line), "MATRIX %s | %s = FAIL errno=%d", lbl, op, t->r_errno);
     }
     probe_emit(out, used, cap, line);
-    plog("trial %s [%s]: r1=%d errno=%d", lbl, op, t->r1, t->r_errno);
     return 0;
 }
 
-/* Runs `kinds` (len `nk`) against `path`, in order, until one HANGS or spawns
-   fine. `ok` bitmask of kinds that RETURNED (no hang) is written to *okmask.
-   Returns the first fd>=0 obtained (for pipeline tests) or -1. */
+/* Runs `kinds` (len `nk`) against `path`, in order. `ok` bitmask of kinds
+   that returned is written to *okmask. Returns the first fd>=0 obtained
+   (for pipeline tests) or -1. NOTE: execution is sequential; a hung syscall
+   never returns, so only the ops before it get tested on this path. */
 static int probe_matrix_path(const char *lbl, const char *path, const int *kinds, int nk,
                              unsigned *okmask, int first_fd, char *out, size_t *used, size_t cap) {
     int got_fd = -1;
@@ -911,7 +876,7 @@ static int probe_matrix_path(const char *lbl, const char *path, const int *kinds
         t->path = path;
         t->fd = first_fd;
         int r = bridge_run_trial(t, lbl, out, used, cap);
-        if (r == -1) continue;                 /* hung — skip op for later paths */
+        (void)r;
         *okmask |= (1u << (unsigned)kinds[i]);
         if (got_fd < 0 && t->r1 >= 0 &&
             (kinds[i] == TK_REAL_SC_OPEN || kinds[i] == TK_REAL_SC_OPENAT ||
@@ -950,7 +915,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
        dlsym'd real-libc mechanisms are unavailable. Every REAL-SC and LIBC-DL
        trial below will report FAIL via the g_libc_* == NULL guards. */
     plog("NOTE: libSystem dlsym skipped (dlopen hangs under LiveContainer)");
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v362 (matrix, no-dlopen) ====");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v363 (direct, no-threads) ====");
     probe_syscall_report(out, &used, out_len);
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");

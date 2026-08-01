@@ -93,11 +93,16 @@ long box64_raw_syscall(int num, ...) {
     a6 = va_arg(ap, long);
     va_end(ap);
 
-    /* Darwin ARM64 uses the RAW syscall number in x16 (Apple's own stubs:
-       `mov x16, #SYS_fork; svc 0x80`). The SYSCALL_CONSTRUCT_UNIX class
-       encoding (2<<24) is an x86_64 convention and would index past the
-       unix sysent table on arm64. Do NOT add class bits here. */
-    long r = raw_kernel_syscall((long)num, a1, a2, a3, a4, a5, a6);
+    /* Darwin arm64 encodes the syscall CLASS in bits 31:28 of x16 (the arm64
+       exception vector dispatches on it). Apple libsyscall and Go's
+       darwin/arm64 stubs issue `mov x16, #SYSCALL_CONSTRUCT_UNIX(n); svc 0x80`
+       where SYSCALL_CONSTRUCT_UNIX(n) = (n | 0x2000000). A bare number with no
+       class bits is decoded under the MACH class on arm64, so e.g. raw 5
+       (getpid) aliases a blocking mach trap and HANGS (build-374 probe died on
+       exactly that trial). Always OR in the unix class bits; the raw-number
+       form remains available as box64_raw_syscall_raw for the bridge probe's
+       A/B comparison. */
+    long r = raw_kernel_syscall((long)num | 0x2000000L, a1, a2, a3, a4, a5, a6);
     if (r < 0) {
         errno = (int)(-r);
         return -1;
@@ -105,11 +110,10 @@ long box64_raw_syscall(int num, ...) {
     return r;
 }
 
-/* Same trap, but with the SYSCALL_CONSTRUCT_UNIX class bits pre-ORed into the
-   number. Diagnostic: build-373's raw-number openat hung while getcwd reported
-   ENOSYS(78), so we keep both encodings available and let the bridge probe
-   compare them before box64 settles on one. */
-long box64_raw_syscall_cls(int num, ...) {
+/* Raw-number variant: no class bits. Build-374's sanity trial proved a bare
+   raw `svc 0x80` HANGS on this device (mach-class decode of the low bits);
+   retained only so the bridge probe can confirm the encoding difference. */
+long box64_raw_syscall_raw(int num, ...) {
     long a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0;
     va_list ap;
     va_start(ap, num);
@@ -121,12 +125,29 @@ long box64_raw_syscall_cls(int num, ...) {
     a6 = va_arg(ap, long);
     va_end(ap);
 
-    long r = raw_kernel_syscall((long)num | 0x2000000L, a1, a2, a3, a4, a5, a6);
+    long r = raw_kernel_syscall((long)num, a1, a2, a3, a4, a5, a6);
     if (r < 0) {
         errno = (int)(-r);
         return -1;
     }
     return r;
+}
+
+/* Class-encoded variant: identical to box64_raw_syscall, which now defaults
+   to the SYSCALL_CONSTRUCT_UNIX class encoding. Kept as an alias so bridge
+   call sites that name the encoding explicitly stay correct. */
+long box64_raw_syscall_cls(int num, ...) {
+    long a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0;
+    va_list ap;
+    va_start(ap, num);
+    a1 = va_arg(ap, long);
+    a2 = va_arg(ap, long);
+    a3 = va_arg(ap, long);
+    a4 = va_arg(ap, long);
+    a5 = va_arg(ap, long);
+    a6 = va_arg(ap, long);
+    va_end(ap);
+    return box64_raw_syscall(num, a1, a2, a3, a4, a5, a6);
 }
 
 static long rawlibc_syscall(int num, ...) {

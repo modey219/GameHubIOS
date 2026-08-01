@@ -881,10 +881,10 @@ static void bridge_trial_execute(trial_t *t) {
            number". */
         char kb[1024];
 #if defined(SYS___getcwd)
-        long r = box64_raw_syscall(SYS___getcwd, kb, (long)sizeof(kb));
+        long r = box64_raw_syscall_raw(SYS___getcwd, kb, (long)sizeof(kb));
         plog("getcwd-raw: using SYS___getcwd=%d", (int)SYS___getcwd);
 #elif defined(SYS_getcwd)
-        long r = box64_raw_syscall(SYS_getcwd, kb, (long)sizeof(kb));
+        long r = box64_raw_syscall_raw(SYS_getcwd, kb, (long)sizeof(kb));
         plog("getcwd-raw: using SYS_getcwd=%d", (int)SYS_getcwd);
 #else
         long r = -1;
@@ -910,7 +910,7 @@ static void bridge_trial_execute(trial_t *t) {
         t->r_errno = errno; break;
     }
     case TK_KERNEL_GETPID_RAW:
-        t->r1 = (int)box64_raw_syscall(SYS_getpid);
+        t->r1 = (int)box64_raw_syscall_raw(SYS_getpid);
         t->r_errno = errno; break;
     case TK_KERNEL_GETPID_CLS:
         t->r1 = (int)box64_raw_syscall_cls(SYS_getpid);
@@ -959,7 +959,7 @@ static void bridge_trial_execute(trial_t *t) {
         t->r1 = (int)box64_raw_syscall_cls(SYS_openat, AT_FDCWD, t->path, O_RDONLY, 0L);
         t->r_errno = errno; break;
     case TK_KERNEL_OPENAT_RAW:
-        t->r1 = (int)box64_raw_syscall(SYS_openat, AT_FDCWD, t->path, O_RDONLY, 0L);
+        t->r1 = (int)box64_raw_syscall_raw(SYS_openat, AT_FDCWD, t->path, O_RDONLY, 0L);
         t->r_errno = errno; break;
     case TK_LIBC_FOPEN_PLAIN: {
         FILE *f = fopen(t->path, "rb");
@@ -1095,7 +1095,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
        dlsym'd real-libc mechanisms are unavailable. Every REAL-SC and LIBC-DL
        trial below will report FAIL via the g_libc_* == NULL guards. */
     plog("NOTE: libSystem dlsym skipped (dlopen hangs under LiveContainer)");
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v366 (kernel-svc raw vs cls) ====");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v367 (svc class-encoded default) ====");
     probe_syscall_report(out, &used, out_len);
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");
@@ -1152,16 +1152,15 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
     probe_emit(out, &used, out_len, l1);
 
     /* ---- Phase 1: pure kernel sanity — no paths, cannot hang ----
-       getpid/getcwd through the raw svc trap in BOTH encodings (raw number
-       vs class-encoded 0x2000000). This settles whether the arm64 kernel
-       accepts raw syscall numbers at all. build-373's kernel-svc-getcwd
-       reported errno=78 (ENOSYS); the getcwd trial logs which constant or
-       compile fallback produced it. */
+       getpid/getcwd through the raw svc trap. build-374 died on the very
+       first sanity trial (raw getpid HANGS — mach-class decode of the bare
+       number), so the CLASS-ENCODED trials run FIRST here and the raw ones
+       last; box64_raw_syscall now defaults to the 0x2000000 encoding. */
     probe_emit(out, &used, out_len, "---- kernel sanity: getpid/getcwd (svc raw vs cls) ----");
     unsigned long long okmask = 0;
     {
-        static const int sanity_ops[] = { TK_KERNEL_GETPID_RAW, TK_KERNEL_GETPID_CLS,
-                                          TK_KERNEL_GETCWD, TK_KERNEL_GETCWD_CLS };
+        static const int sanity_ops[] = { TK_KERNEL_GETPID_CLS, TK_KERNEL_GETCWD_CLS,
+                                          TK_KERNEL_GETPID_RAW, TK_KERNEL_GETCWD };
         probe_matrix_path("sanity", NULL, sanity_ops,
                           (int)(sizeof(sanity_ops) / sizeof(sanity_ops[0])),
                           &okmask, -1, out, &used, out_len);

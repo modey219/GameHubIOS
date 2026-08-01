@@ -29,10 +29,16 @@ extern "C" {
 long box64_raw_syscall(int num, ...);
 
 /* Class-encoded variant: ORs SYSCALL_CONSTRUCT_UNIX (2<<24 = 0x2000000) into
-   the number before trapping. x86_64 Darwin encodes unix syscalls this way;
-   arm64 libsyscall historically uses the raw number. The bridge probe
-   compares both to settle which encoding the iOS kernel accepts. */
+   the number before trapping. arm64 dispatches the syscall CLASS from bits
+   31:28 of x16 (Apple libsyscall / Go darwin/arm64 stubs use this encoding);
+   a bare number is decoded under the MACH class and can HANG. box64_raw_syscall
+   now defaults to this encoding. */
 long box64_raw_syscall_cls(int num, ...);
+
+/* Raw-number variant: no class bits. Build-374's sanity trial proved a bare
+   raw number HANGS at the trap on this device; kept only for the bridge
+   probe's A/B comparison. */
+long box64_raw_syscall_raw(int num, ...);
 
 /* ---- fd/path syscalls ---- */
 int box64_raw_open(const char *path, int flags, ...);

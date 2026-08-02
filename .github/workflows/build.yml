@@ -209,8 +209,19 @@ jobs:
               # whose src/wrapped/ sources are excluded on iOS, so a plain link can
               # never succeed. The tbd-subtraction below handles BOTH the wrapped*
               # gaps and the libc symbols correctly.
+              # Exclude ios_stubs.o + rawlibc.o from pass-A: they define strong
+              # exit/_exit/abort interposers that would collide with libSystem's
+              # strong copies (duplicate-symbol error). Their symbols are still
+              # subtracted from the gap list via nm objects/*.o below.
+              PASS_A_OBJS=""
+              for o in objects/*.o; do
+                  case "$o" in
+                      *ios_stubs.o|*rawlibc.o) ;;
+                      *) PASS_A_OBJS="$PASS_A_OBJS $o" ;;
+                  esac
+              done
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
-                  objects/*.o -o box64 -lm -lSystem -Wl,-undefined,dynamic_lookup 2>/tmp/box64_link_passA.log || \
+                  $PASS_A_OBJS -o box64 -lm -lSystem -Wl,-undefined,dynamic_lookup 2>/tmp/box64_link_passA.log || \
                   { echo "Pass-A link FAILED:"; tail -20 /tmp/box64_link_passA.log; exit 1; }
 
               nm -u box64 2>/dev/null | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_undef.txt

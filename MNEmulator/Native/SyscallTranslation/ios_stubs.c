@@ -5,6 +5,8 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
+#include <sys/syscall.h>
 #include "../Include/rawlibc.h"
 
 /* Box64 needs these Linux/glibc symbols that don't exist on iOS */
@@ -37,21 +39,88 @@ int __libc_dlclose(void *handle) { return dlclose(handle); }
 
 int of_convert(int x) { return x; }
 
-/* exit() interceptor — when Box64 source calls exit(), the -Dexit macro redirects here.
-   We just return instead of exiting, so the iOS app stays alive. */
-void box64_exit_intercept(int status) {
-    /* Write to the runner log if it exists */
-    const char *home = getenv("HOME");
-    if (home) {
-        char path[512];
-        snprintf(path, sizeof(path), "%s/Documents/box64_runner.log", home);
-        int fd = box64_raw_open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (fd >= 0) {
-            char buf[128];
-            int n = snprintf(buf, sizeof(buf), "[Stubs] exit(%d) intercepted — returning\n", status);
-            box64_raw_write(fd, buf, n);
-            box64_raw_close(fd);
-        }
+/* ------------------------------------------------------------------ */
+/* Process-wide exit/abort interposers (strong symbols).              */
+/*                                                                     */
+/* The app binary defines exit/_exit/_Exit/abort, so dyld binds EVERY  */
+/* call to these in the whole process (including Box64's function-     */
+/* pointer calls that the -Dexit/-D_exit CFLAGS macros can NOT reach). */
+/* Each one writes a marker line to the stub log, then performs the    */
+/* real action (raw svc for exit family, raise(SIGABRT) for abort so   */
+/* the runner's signal handler can catch and recover it).              */
+/* ------------------------------------------------------------------ */
+
+static char g_stub_log_path[512] = {0};
+
+void box64_stub_set_log_path(const char *path) {
+    if (!path || !path[0]) return;
+    strncpy(g_stub_log_path, path, sizeof(g_stub_log_path) - 1);
+    g_stub_log_path[sizeof(g_stub_log_path) - 1] = '\0';
+}
+
+static const char *stub_log_effective_path(char *buf, size_t cap) {
+    if (g_stub_log_path[0]) {
+        strncpy(buf, g_stub_log_path, cap - 1);
+        buf[cap - 1] = '\0';
+        return buf;
     }
+    const char *home = getenv("HOME");
+    if (!home) home = "/tmp";
+    snprintf(buf, cap, "%s/Documents/box64_runner.log", home);
+    return buf;
+}
+
+static void stub_exit_log(const char *what, int code) {
+    char path[512];
+    stub_log_effective_path(path, sizeof(path));
+    int fd = box64_raw_open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) return;
+    char buf[160];
+    int n = snprintf(buf, sizeof(buf), "[Stub] %s(%d) called from pid=%d\n",
+                     what, code, (int)getpid());
+    if (n < 0) n = 0;
+    if ((size_t)n >= sizeof(buf)) n = (int)sizeof(buf) - 1;
+    box64_raw_write(fd, buf, (size_t)n);
+    box64_raw_fsync(fd);
+    box64_raw_close(fd);
+}
+
+/* exit() interceptor — when Box64 source calls exit(), the -Dexit macro
+   redirects here. We just return instead of exiting, so the iOS app stays
+   alive. Any exit() that reaches THIS function instead of the macro is a
+   function-pointer call, which the strong exit() below catches instead. */
+void box64_exit_intercept(int status) {
+    stub_exit_log("exit-intercept", status);
     /* Just return — don't let Box64 kill the iOS app */
+}
+
+/* Strong interposers. Note: ios_stubs.c is compiled WITHOUT the
+   -Dexit/-D_exit CFLAGS macros, so these are real function definitions. */
+
+__attribute__((noreturn)) void exit(int status) {
+    stub_exit_log("exit", status);
+    syscall(SYS_exit, status);
+    __builtin_unreachable();
+}
+
+__attribute__((noreturn)) void _exit(int status) {
+    stub_exit_log("_exit", status);
+    syscall(SYS_exit, status);
+    __builtin_unreachable();
+}
+
+__attribute__((noreturn)) void _Exit(int status) {
+    stub_exit_log("_Exit", status);
+    syscall(SYS_exit, status);
+    __builtin_unreachable();
+}
+
+__attribute__((noreturn)) void abort(void) {
+    stub_exit_log("abort", 134);
+    /* raise() delivers the signal; the runner's handler catches SIGABRT and
+       recovers (writes a [CRASH] marker), instead of us exiting directly. */
+    raise(SIGABRT);
+    /* Fallback if the handler chose to return (not longjmp): die for real. */
+    syscall(SYS_exit, 134);
+    __builtin_unreachable();
 }

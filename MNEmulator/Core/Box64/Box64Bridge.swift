@@ -499,9 +499,10 @@ class Box64Bridge {
         self.auditMagicBytes((wineInstallPath as NSString).appendingPathComponent("lib64/wine64"), label: "lib64_wine64_magic")
         Self.writeDiag("launchWine_fs_audit_end")
         Self.log("calling box64_launch_wine(), memory = \(Self.memoryUsageMB())MB...")
-        Self.writeDiag("box64_launch_enter")
+        Self.writeDiag("box64_launch_enter mem=\(Self.memoryUsageMB())MB")
         let rc: Int32 = autoreleasepool { box64_launch_wine(ctx, executablePath, nil) }
-        Self.writeDiag("box64_launch_exit rc=\(rc) errno=\(errno)")
+        Self.writeDiag("box64_launch_exit rc=\(rc) errno=\(errno) mem=\(Self.memoryUsageMB())MB")
+        Self.writeDiag("launchWine_post_launch_1")
         Self.log("box64_launch_wine returned \(rc), memory = \(Self.memoryUsageMB())MB")
         if rc != 0 {
             let cError = box64_get_wine_error()
@@ -515,6 +516,7 @@ class Box64Bridge {
             return result
         }
 
+        Self.writeDiag("launchWine_pre_success")
         Self.log("launchWine SUCCESS")
         _isRunning = true
         lock.unlock()
@@ -525,7 +527,7 @@ class Box64Bridge {
             let rerr = box64_runner_get_error().map { String(cString: $0) } ?? ""
             let rc = box64_runner_get_exit_code()
             let running = box64_runner_is_running()
-            Self.writeDiag("runner_poll3s running=\(running) status=\(status) exit=\(rc) err=\(rerr)")
+            Self.writeDiag("runner_poll3s running=\(running) status=\(status) exit=\(rc) err=\(rerr) mem=\(Self.memoryUsageMB())MB")
         }
 
         result.wineLaunched = true

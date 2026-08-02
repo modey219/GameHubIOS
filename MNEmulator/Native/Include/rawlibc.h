@@ -122,6 +122,10 @@ int box64_libc_syscall_getpid(void);
 int box64_libc_getpid(void);
 int box64_libc_getuid(void);
 
+/* Point the process-wide exit/abort interposers (ios_stubs.c) at the same
+   log file the runner uses, so every exit/abort call is captured. */
+void box64_stub_set_log_path(const char *path);
+
 #ifdef __cplusplus
 }
 #endif

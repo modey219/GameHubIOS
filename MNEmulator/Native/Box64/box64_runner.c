@@ -208,6 +208,8 @@ static void setup_logging(const char *prefix_path) {
     g_real_write = (ssize_t (*)(int, const void *, size_t))reallibc_resolve("write");
     g_real_close = (int (*)(int))reallibc_resolve("close");
     g_real_fsync = (int (*)(int))reallibc_resolve("fsync");
+    /* Point the exit/abort interposers at the same log file */
+    box64_stub_set_log_path(g_log_path);
     runner_log("[Runner] ===== Box64 In-Process Runner =====");
     runner_log("[Runner] Log path: %s (fd=%d)", g_log_path, g_log_fd);
     runner_log_sync();

@@ -1,7 +1,8 @@
 #ifndef _COMPAT_SYS_SEM_H
 #define _COMPAT_SYS_SEM_H
 #include <sys/types.h>
-struct semid_ds { void *sem_base; unsigned short sem_nsems; time_t sem_otime; time_t sem_ctime; };
+#include <sys/ipc.h>
+struct semid_ds { struct ipc_perm sem_perm; void *sem_base; unsigned short sem_nsems; time_t sem_otime; time_t sem_ctime; };
 struct sembuf { unsigned short sem_num; short sem_op; short sem_flg; };
 union semun { int val; struct semid_ds *buf; unsigned short *array; };
 #define SETVAL 16

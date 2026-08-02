@@ -19,6 +19,15 @@
 #define ELFDATA2LSB 1
 #define ELFDATA2MSB 2
 
+#define EV_NONE     0
+#define EV_CURRENT  1
+
+#define ELFOSABI_NONE      0
+#define ELFOSABI_SYSV      0
+#define ELFOSABI_LINUX     3
+
+#define EM_X86_64   62
+
 typedef uint16_t Elf32_Half;
 typedef uint32_t Elf32_Word;
 typedef int32_t Elf32_Sword;
@@ -224,6 +233,7 @@ typedef struct {
 #define STT_FILE        4
 #define STT_COMMON      5
 #define STT_TLS         6
+#define STT_GNU_IFUNC   10
 
 #define STV_DEFAULT     0
 #define STV_INTERNAL    1
@@ -273,8 +283,16 @@ typedef struct {
 #define R_X86_64_PLTOFF64   31
 #define R_X86_64_SIZE32     32
 #define R_X86_64_SIZE64     33
+#define R_X86_64_GOTPC32_TLSDESC 34
+#define R_X86_64_TLSDESC_CALL 35
+#define R_X86_64_TLSDESC    36
+#define R_X86_64_IRELATIVE  37
+#define R_X86_64_RELATIVE64 38
 #define R_X86_64_GOTPCRELX  41
 #define R_X86_64_REX_GOTPCRELX 42
+#define R_X86_64_NUM        43
+/* glibc spells it R_X86_64_JUMP_SLOT (box64 uses this); alias to be safe */
+#define R_X86_64_JUMP_SLOT  7
 
 #define DT_NULL         0
 #define DT_NEEDED       1
@@ -308,6 +326,12 @@ typedef struct {
 #define DT_GNU_VERNEED  0x6ffffffe
 #define DT_RELACOUNT    0x6ffffff9
 #define DT_RELCOUNT     0x6ffffffa
+/* glibc spellings used by box64's elfloader/elfparser */
+#define DT_VERSYM       0x6ffffff0
+#define DT_VERDEF       0x6ffffffc
+#define DT_VERDEFNUM    0x6ffffffd
+#define DT_VERNEED      0x6ffffffe
+#define DT_VERNEEDNUM   0x6fffffff
 
 #define AT_NULL         0
 #define AT_PHDR         3
@@ -339,10 +363,21 @@ typedef struct {
 #define SELFMAG         4
 
 #define R_386_NONE       0
+#define R_386_32         1
+#define R_386_PC32       2
+#define R_386_GOT32      3
+#define R_386_PLT32      4
 #define R_386_COPY       5
 #define R_386_GLOB_DAT  6
 #define R_386_JMP_SLOT  7
 #define R_386_RELATIVE  8
+#define R_386_GOTOFF    9
+#define R_386_GOTPC     10
+#define R_386_TLS_TPOFF 14
+#define R_386_TLS_GD_32 24
+#define R_386_TLS_DTPMOD32 35
+#define R_386_TLS_DTPOFF32 36
+#define R_386_TLS_TPOFF32 37
 
 #define GRP.jdesktop   1
 

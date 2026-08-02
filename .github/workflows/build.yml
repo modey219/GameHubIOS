@@ -95,6 +95,7 @@ jobs:
           CFLAGS="$CFLAGS -Wno-deprecated-declarations -Wno-missing-declarations"
           CFLAGS="$CFLAGS -Wno-missing-prototypes -Wno-strict-prototypes"
           CFLAGS="$CFLAGS -Wno-macro-redefined -Wno-error"
+          CFLAGS="$CFLAGS -ferror-limit=0"
           CFLAGS="$CFLAGS -include $COMPAT_DIR/ios_linux_compat.h"
           CFLAGS="$CFLAGS -DSTEP=1 -DSTACKALIGN=16"
           
@@ -140,11 +141,15 @@ jobs:
                   COMPILED=$((COMPILED + 1))
               else
                   FAILED=$((FAILED + 1))
-                  LAST_ERR=$(cat /tmp/box64_err_$$ 2>/dev/null | grep -i "error:" | head -1)
-                  if [ -z "$LAST_ERR" ]; then
-                      LAST_ERR=$(cat /tmp/box64_err_$$ 2>/dev/null | tail -1)
+                  # Print up to 30 error lines per file so one run shows the
+                  # FULL error list (-ferror-limit=0), not just the first.
+                  echo "=== FAIL: $src ===" >> compile_errors.log
+                  cat /tmp/box64_err_$$ 2>/dev/null | grep -i "error:" | head -30 >> compile_errors.log
+                  cat /tmp/box64_err_$$ 2>/dev/null | grep -i "error:" | head -30
+                  if ! grep -qi "error:" /tmp/box64_err_$$ 2>/dev/null; then
+                      cat /tmp/box64_err_$$ 2>/dev/null | tail -5
                   fi
-                  echo "FAIL: $(basename "$src"): $LAST_ERR"
+                  echo "=== end $src ===" >> compile_errors.log
               fi
               rm -f /tmp/box64_err_$$
           done
@@ -185,51 +190,55 @@ jobs:
               echo "Created libbox64.a: $(ls -lh "$OUTPUT_DIR/libbox64.a")"
               
               # Auto-generate stubs for undefined symbols that libSystem genuinely lacks.
-              echo "Generating stubs (plain-link gap probe — ld64 binds libc to libSystem)..."
+              echo "Generating stubs (dynamic_lookup link + tbd-filtered gap list)..."
               cd "$OUTPUT_DIR"
 
-              # Pass A: link box64 WITHOUT stubs and WITHOUT -undefined dynamic_lookup.
-              # The link is EXPECTED to fail: ld64 binds everything libSystem/libm
-              # provides and reports ONLY the genuine Linux-only gaps (gettid, prctl,
-              # ...) as "Undefined symbols". 
+              # Pass A: link box64 WITHOUT stubs using -undefined dynamic_lookup.
+              # The link SUCCEEDS, but nm -u then lists EVERY undefined symbol —
+              # INCLUDING libc entry points (open/getpid/stat/__error) that libSystem
+              # provides, because dynamic_lookup leaves them unbound (build-378 proved
+              # v370's gap list still contained them, so the weak stubs shadowed
+              # libSystem in the app link). The gap list is therefore derived by
+              # SUBTRACTING what libSystem exports (parsed from the SDK .tbd stubs)
+              # and what our own objects define.
               #
-              # Why this is the correct probe: build-378 proved that a link with
-              # -Wl,-undefined,dynamic_lookup does NOT bind ANY symbol to libSystem
-              # (nm -u listed all ~899 undefined symbols INCLUDING open/getpid/stat/
-              # __error/...), so the generated weak stubs still shadowed libSystem in
-              # the app link — libc-real-getpid returned 1799466000 (real PID 4876),
-              # open returned its path argument, errno read the path string bytes.
-              if $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
-                  objects/*.o -o box64 -lm -lSystem 2>/tmp/box64_link_passA.log; then
-                  echo "Pass-A link SUCCEEDED — no genuine gaps, zero stubs needed"
-                  : > /tmp/final_stubs.txt
-              elif grep -q "Undefined symbols" /tmp/box64_link_passA.log; then
-                  grep -E '^  "_' /tmp/box64_link_passA.log \
-                      | sed 's/^  "_//; s/", referenced from:.*//' \
-                      | sort -u > /tmp/final_stubs.txt
-                  STUB_COUNT=$(wc -l < /tmp/final_stubs.txt)
-                  echo "Symbols needing stubs (not in libSystem/libm): $STUB_COUNT"
-                  cat /tmp/final_stubs.txt
-              else
-                  echo "Pass-A link FAILED for an unexpected reason:"
-                  tail -30 /tmp/box64_link_passA.log
-                  exit 1
-              fi
+              # v371 tried a plain ld64 link instead (no dynamic_lookup) so the
+              # "Undefined symbols" errors would BE the gap list — that FAILED:
+              # box64's library.o references hundreds of wrapped*_init/_fini symbols
+              # whose src/wrapped/ sources are excluded on iOS, so a plain link can
+              # never succeed. The tbd-subtraction below handles BOTH the wrapped*
+              # gaps and the libc symbols correctly.
+              $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
+                  objects/*.o -o box64 -lm -lSystem -Wl,-undefined,dynamic_lookup 2>/tmp/box64_link_passA.log || \
+                  { echo "Pass-A link FAILED:"; tail -20 /tmp/box64_link_passA.log; exit 1; }
+
+              nm -u box64 2>/dev/null | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_undef.txt
+
+              # Symbols provided by libSystem (SDK .tbd stubs) + defined by our objects.
+              grep -hoE '_[A-Za-z0-9_]+' "$SDK"/usr/lib/*.tbd "$SDK"/usr/lib/system/*.tbd 2>/dev/null \
+                  | sed 's/^_//' | sort -u > /tmp/libsystem_syms.txt
+              nm objects/*.o 2>/dev/null | grep -v ' U ' | awk '{print $NF}' | sed 's/^_//' | sort -u >> /tmp/libsystem_syms.txt
+              sort -u /tmp/libsystem_syms.txt -o /tmp/libsystem_syms.txt
+
+              comm -23 /tmp/all_undef.txt /tmp/libsystem_syms.txt > /tmp/final_stubs.txt
+              STUB_COUNT=$(wc -l < /tmp/final_stubs.txt)
+              echo "Undefined total: $(wc -l < /tmp/all_undef.txt) | libSystem+own: $(wc -l < /tmp/libsystem_syms.txt) | genuine gaps: $STUB_COUNT"
+              echo "--- gap list ---"
+              cat /tmp/final_stubs.txt
 
               # Safety gate: real libc entry points must NEVER be stubbed. If any of
-              # these appears in the gap list, libSystem was not linked in Pass A and
-              # the probe is broken — refuse to build a corrupt app again.
+              # these appears in the gap list, the tbd filter failed — refuse to build
+              # a corrupt app again.
               if grep -qxE 'open|openat|close|read|write|stat|fstat|lseek|mkdir|unlink|fopen|getpid|getuid|geteuid|getgid|getegid|getppid|syscall|__error|access|opendir|readdir|mmap|munmap|malloc|free|memcpy|strlen|printf|snprintf|dlopen|dlsym|dlclose|pthread_create|realpath|getcwd' /tmp/final_stubs.txt; then
-                  echo "FATAL: Pass-A gap list still contains real libc symbols — libSystem was NOT linked in the probe link!"
+                  echo "FATAL: gap list still contains real libc symbols — the tbd filter failed!"
                   grep -E 'open|getpid|stat|__error|syscall|write|close|read|mkdir' /tmp/final_stubs.txt
-                  tail -40 /tmp/box64_link_passA.log
                   exit 1
               fi
 
               # Generate stubs C file — NO system headers at all to avoid macro conflicts
               {
                   echo '// Auto-generated stubs for symbols libSystem does NOT provide'
-                  echo '// Gap list from a plain ld64 link (undefined-symbol errors)'
+                  echo '// Gap list = dynamic_lookup nm -u minus SDK .tbd exports minus our own definitions'
                   echo ''
                   while IFS= read -r sym; do
                       [ -z "$sym" ] && continue
@@ -249,7 +258,7 @@ jobs:
               $AR rcs "$OUTPUT_DIR/libbox64.a" objects/*.o auto_stubs.o
               echo "Updated libbox64.a with stubs: $(ls -lh "$OUTPUT_DIR/libbox64.a")"
 
-              # Pass B: relink box64 normally (stubs now satisfy only the Linux-only gaps)
+              # Pass B: relink box64 normally (stubs now satisfy only the genuine gaps)
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
                   objects/*.o auto_stubs.o \
                   -o box64 -lm -lSystem
@@ -422,6 +431,14 @@ jobs:
         with:
           name: build-log
           path: build.log
+          retention-days: 5
+
+      - name: Upload compile errors
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-errors
+          path: compile_errors.log
           retention-days: 5
 
       - name: Inject bundled binaries into .app

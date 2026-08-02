@@ -10,6 +10,7 @@
 #include <setjmp.h>
 #include <sys/socket.h>
 #include <stdio.h>
+#include <asm/unistd.h>   /* full Linux __NR_* table for x64syscall.c etc. */
 
 /* ======== Glibc type aliases ======== */
 typedef sigset_t __sigset_t;
@@ -202,6 +203,12 @@ static inline int sched_yield(void) { return 0; }
 #define fclose(...)     box64_raw_fclose(__VA_ARGS__)
 #define fread(...)      box64_raw_fread(__VA_ARGS__)
 #define fwrite(...)     box64_raw_fwrite(__VA_ARGS__)
+/* glibc 64-bit-offset aliases — route onto the same raw layer (off_t is
+   64-bit on iOS anyway; these must NOT be left as undefined gaps or the ELF
+   loader gets a weak empty stub and silently fails to parse wine64) */
+#define fseeko64(...)   fseeko(__VA_ARGS__)
+#define ftello64(...)   ftello(__VA_ARGS__)
+#define fopen64(...)    fopen(__VA_ARGS__)
 #define fseek(...)      box64_raw_fseek(__VA_ARGS__)
 #define fseeko(...)     box64_raw_fseeko(__VA_ARGS__)
 #define ftell(...)      box64_raw_ftell(__VA_ARGS__)

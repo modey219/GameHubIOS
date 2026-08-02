@@ -758,6 +758,8 @@ enum {
     TK_KERNEL_GETEUID_CLS = 52,/* svc cls SYS_geteuid */
     TK_KERNEL_GETGID_CLS = 53, /* svc cls SYS_getgid */
     TK_KERNEL_GETEGID_CLS = 54,/* svc cls SYS_getegid */
+    TK_LIBC_REAL_GETPID = 55,  /* direct libc getpid() — ABI-sanity control */
+    TK_LIBC_REAL_GETUID = 56,  /* direct libc getuid() — ABI-sanity control */
     TK_COUNT
 };
 
@@ -829,6 +831,8 @@ static const char *trial_name(int kind) {
     case TK_KERNEL_GETEUID_CLS: return "kernel-svc-geteuid(cls)";
     case TK_KERNEL_GETGID_CLS: return "kernel-svc-getgid(cls)";
     case TK_KERNEL_GETEGID_CLS: return "kernel-svc-getegid(cls)";
+    case TK_LIBC_REAL_GETPID: return "libc-real-getpid";
+    case TK_LIBC_REAL_GETUID: return "libc-real-getuid";
     default: return "?";
     }
 }
@@ -1084,6 +1088,12 @@ static void bridge_trial_execute(trial_t *t) {
         t->r_errno = errno; break;
     case TK_KERNEL_GETEGID_CLS:
         t->r1 = (int)box64_raw_syscall(SYS_getegid);
+        t->r_errno = errno; break;
+    case TK_LIBC_REAL_GETPID:
+        t->r1 = box64_libc_getpid();
+        t->r_errno = errno; break;
+    case TK_LIBC_REAL_GETUID:
+        t->r1 = box64_libc_getuid();
         t->r_errno = errno; break;
     default:
         t->r1 = -1;

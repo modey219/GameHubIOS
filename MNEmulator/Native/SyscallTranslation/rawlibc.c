@@ -647,3 +647,15 @@ int box64_libc_syscall_openat(const char *path, int flags) {
 int box64_libc_syscall_getpid(void) {
     return (int)syscall(SYS_getpid);
 }
+
+/* Argless libc calls — the ABI-sanity control: if THESE return clean small
+   ints (pid ~4663, uid ~501) on a probe thread, the Swift->C->libc plumbing
+   is good and any garbage from box64_libc_open/stat/mkdir is REAL interposer
+   behavior. If these are ALSO garbage, the measurement path itself is broken. */
+int box64_libc_getpid(void) {
+    return (int)getpid();
+}
+
+int box64_libc_getuid(void) {
+    return (int)getuid();
+}

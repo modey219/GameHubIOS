@@ -247,10 +247,10 @@ class Box64Bridge {
     /// hang-prone so they get a shorter budget to fit more into the 20s quota.
     private static func trialTimeout(_ kind: Int32) -> TimeInterval {
         switch kind {
-        case 0, 1, 40...47:
+        case 0, 1, 40...47, 55, 56:
             return 2.0
         default:
-            return 1.5
+            return 1.0
         }
     }
 
@@ -311,15 +311,20 @@ class Box64Bridge {
         Self.writeDiag("trial paths: wine64=\(wine64) scratch=\(scratch)")
 
         var trials: [TrialSpec] = []
-        // Pass A — real-libc baseline first (most valuable, must not be lost),
-        // then interposed `syscall` symbol, then raw svc traps (hang-prone).
+        // Pass A — ABI-sanity FIRST: argless pure-libc calls must return clean
+        // small ints (pid ~4663, uid ~501) to prove the Swift->C->libc plumbing.
+        // build-376: libc-real-open/stat/mkdir RETURNED but with garbage values;
+        // we need the controls before the file ops to know if that's real
+        // interposer behavior or a broken measurement path.
+        let abiTrials: [TrialSpec] = [
+            TrialSpec(kind: 55, label: "libc-real-getpid", path: nil, fd: -1),
+            TrialSpec(kind: 56, label: "libc-real-getuid", path: nil, fd: -1),
+            TrialSpec(kind: 46, label: "libc-real-syscall-getpid", path: nil, fd: -1),
+        ]
         let libcTrials: [TrialSpec] = [
             TrialSpec(kind: 40, label: "libc-real-open", path: wine64, fd: -1),
             TrialSpec(kind: 41, label: "libc-real-stat", path: wine64, fd: -1),
-            TrialSpec(kind: 42, label: "libc-real-fopen", path: wine64, fd: -1),
             TrialSpec(kind: 47, label: "libc-real-mkdir", path: scratch, fd: -1),
-            TrialSpec(kind: 45, label: "libc-real-syscall-openat", path: wine64, fd: -1),
-            TrialSpec(kind: 46, label: "libc-real-syscall-getpid", path: nil, fd: -1),
         ]
         let symbolTrials: [TrialSpec] = [
             TrialSpec(kind: 0, label: "syscall-symbol-open", path: wine64, fd: -1),
@@ -343,7 +348,12 @@ class Box64Bridge {
             TrialSpec(kind: 28, label: "svc-getpid(cls)", path: nil, fd: -1),
             TrialSpec(kind: 27, label: "svc-getpid(raw)", path: nil, fd: -1),
         ]
-        trials = libcTrials + symbolTrials + svcTrials
+        // build-376: libc-real-fopen HUNG (leaked a thread). Run it LAST so it
+        // can never block the svc matrix; quota will skip it if over budget.
+        let fopenTrial: [TrialSpec] = [
+            TrialSpec(kind: 42, label: "libc-real-fopen", path: wine64, fd: -1),
+        ]
+        trials = abiTrials + libcTrials + symbolTrials + svcTrials + fopenTrial
 
         // Pass B — fd-based trials. Use the real-libc-open fd if we got one
         // (proves fstat/read on a REAL fd); otherwise -1 (still proves the

@@ -119,6 +119,8 @@ FILE *box64_libc_fopen(const char *path, const char *mode);
 int box64_libc_mkdir(const char *path);
 int box64_libc_syscall_openat(const char *path, int flags);
 int box64_libc_syscall_getpid(void);
+int box64_libc_getpid(void);
+int box64_libc_getuid(void);
 
 #ifdef __cplusplus
 }

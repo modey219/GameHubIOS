@@ -130,12 +130,13 @@ void box64_stub_set_log_path(const char *path);
    and the strong exit/_exit/_Exit interposers MUST NOT return into the call site
    (UB — silently killed the whole app in v375). On the runner thread with the exit
    land-pad armed this siglongjmps to the runner's pad so the app survives and the
-   runner thread ends cleanly; otherwise it does a raw syscall(SYS_exit).
-   Declared WEAK: box64_runner.o is compiled by the app target, not CI's libbox64.a,
-   so in the CI Pass-B link (and any link without box64_runner.o) this resolves to
-   NULL and ios_stubs.c falls back to a raw syscall(SYS_exit). In the app the strong
-   box64_runner.o definition wins. */
-__attribute__((noreturn)) void box64_runner_handle_exit(int status) __attribute__((weak));
+   runner thread ends cleanly; otherwise it does a raw syscall(SYS_exit). */
+__attribute__((noreturn)) void box64_runner_handle_exit(int status);
+
+/* The runner wires its exit sink in at startup (setup_logging). ios_stubs.c
+   calls this instead of referencing box64_runner_handle_exit directly so CI's
+   libbox64.a (which has no box64_runner.o) stays linkable. */
+void box64_stub_set_exit_sink(void (*fn)(int));
 
 #ifdef __cplusplus
 }

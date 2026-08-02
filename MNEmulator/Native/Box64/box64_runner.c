@@ -241,6 +241,9 @@ static void setup_logging(const char *prefix_path) {
     g_real_fsync = (int (*)(int))reallibc_resolve("fsync");
     /* Point the exit/abort interposers at the same log file */
     box64_stub_set_log_path(g_log_path);
+    /* Wire the noreturn exit sink so box64's exit()/_exit()/_Exit() calls route
+       through the exit land-pad below instead of hard-killing the app. */
+    box64_stub_set_exit_sink((void (*)(int))box64_runner_handle_exit);
     runner_log("[Runner] ===== Box64 In-Process Runner =====");
     runner_log("[Runner] Log path: %s (fd=%d)", g_log_path, g_log_fd);
     runner_log_sync();

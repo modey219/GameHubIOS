@@ -53,6 +53,16 @@ int of_convert(int x) { return x; }
 
 static char g_stub_log_path[512] = {0};
 
+/* Set by box64_runner at startup (box64_stub_set_exit_sink): the noreturn exit
+   handler that siglongjmps to the runner's exit land-pad. NULL when the runner
+   hasn't started (e.g. CI links, or exit before runner init) — then we fall back
+   to a raw syscall exit. Keeps libbox64.a linkable without box64_runner.o. */
+static void (*g_exit_sink)(int) = NULL;
+
+void box64_stub_set_exit_sink(void (*fn)(int)) {
+    g_exit_sink = fn;
+}
+
 void box64_stub_set_log_path(const char *path) {
     if (!path || !path[0]) return;
     strncpy(g_stub_log_path, path, sizeof(g_stub_log_path) - 1);
@@ -92,13 +102,13 @@ static void stub_exit_log(const char *what, int code) {
     stub_log_raw(buf);
 }
 
-/* Exit hand-off: box64_runner_handle_exit is weak (see rawlibc.h). In the app it
-   resolves to box64_runner.o's strong definition and never returns (siglongjmp or
-   raw syscall exit). In a link without box64_runner.o (CI Pass B) it is NULL, so
-   we fall back to the raw syscall — still never returning, still noreturn. */
+/* Exit hand-off: g_exit_sink is wired by the runner at startup. When set it never
+   returns (siglongjmp to the pad, or raw syscall exit). When NULL (CI Pass B, or
+   exit before runner init) we fall back to the raw syscall — still never
+   returning, still noreturn. */
 static __attribute__((noreturn)) void exit_via_runner_or_raw(int status) {
-    if (box64_runner_handle_exit) {
-        box64_runner_handle_exit(status);
+    if (g_exit_sink) {
+        g_exit_sink(status);
     }
     syscall(SYS_exit, status);
     for (;;) {}

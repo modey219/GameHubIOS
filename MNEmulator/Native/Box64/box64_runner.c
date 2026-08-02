@@ -338,6 +338,25 @@ static void *wine_thread_func(void *arg) {
     x64emu_t *emu = NULL;
     elfheader_t *elf_header = NULL;
 
+    /* v378 diagnostic: which box64rc source could have set BOX64_EXIT, and is
+       NORCFILES actually active? Log existence of the two likely files and the
+       relevant env vars so the culprit is identifiable in box64_runner.log. */
+    {
+        const char *norcfiles = getenv("BOX64_NORCFILES");
+        const char *envfile = getenv("BOX64_ENVFILE");
+        runner_log("[Runner] rcstate: BOX64_NORCFILES=%s BOX64_ENVFILE=%s",
+                   norcfiles ? norcfiles : "(unset)", envfile ? envfile : "(unset)");
+        const char *home = getenv("HOME");
+        char rcpath[512];
+        struct stat st;
+        snprintf(rcpath, sizeof(rcpath), "%s/.box64rc", home ? home : "/");
+        runner_log("[Runner] rcstate: %s -> %s", rcpath,
+                   box64_raw_stat(rcpath, &st) == 0 ? "EXISTS" : "absent");
+        runner_log("[Runner] rcstate: /etc/box64.box64rc -> %s",
+                   box64_raw_stat("/etc/box64.box64rc", &st) == 0 ? "EXISTS" : "absent");
+        runner_log_sync();
+    }
+
     runner_log("[Runner] Calling initialize(%d)", argc);
     runner_log_sync();
     int ret = initialize(argc, argv, environ, &emu, &elf_header, 1);

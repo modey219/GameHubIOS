@@ -418,6 +418,12 @@ class Box64Bridge {
     }
 
     private func setupEnvironment() {
+        // v378: disable ALL box64rc config files (embedded default_rcfile,
+        // $HOME/.box64rc, /etc/box64.box64rc, $BOX64_ENVFILE). A device-side rc
+        // file with a shared "[*] BOX64_EXIT=1" entry set box64env.exit during
+        // box64 InitializeEnvFiles(), which made applyCustomRules() call exit(0)
+        // (env.c:302) and kill the wine thread right after initialize(3).
+        safeSetenv("BOX64_NORCFILES", "1", 1)
         safeSetenv("BOX64_DYNAREC", "0", 1)
         safeSetenv("BOX64_NOBANNED", "1", 1)
         safeSetenv("BOX64_LOG", "1", 1)

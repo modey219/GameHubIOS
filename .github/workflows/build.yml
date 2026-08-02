@@ -254,7 +254,13 @@ jobs:
                   echo ''
                   while IFS= read -r sym; do
                       [ -z "$sym" ] && continue
-                      echo "__attribute__((weak)) void $sym(void) {}"
+                      # v379: return 0/NULL instead of garbage. A `void sym(void){}`
+                      # stub leaves x0 = first ARG on arm64, so pointer/boolean
+                      # callers saw a non-NULL "value" for every gap symbol (GetEnv
+                      # made BOX64_EXIT look set -> exit(0)). Returning 0 keeps the
+                      # function address non-NULL (pointer checks still pass) but
+                      # makes value-returning callers see NULL/0.
+                      echo "__attribute__((weak)) long $sym(void) { return 0; }"
                   done < /tmp/final_stubs.txt
               } > auto_stubs.c
 

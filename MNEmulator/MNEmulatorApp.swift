@@ -46,7 +46,7 @@ private func writeDiag(_ s: String) {
 struct MNEmulatorApp: App {
     init() {
         setupCrashHandler()
-        Box64Bridge.writeDiag("APP_BUILD kernel-svc-v369")
+        Box64Bridge.writeDiag("APP_BUILD kernel-svc-v370")
     }
     @StateObject private var containerManager = ContainerManager()
     @StateObject private var jitManager = JITManager()

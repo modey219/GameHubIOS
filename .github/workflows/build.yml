@@ -184,83 +184,51 @@ jobs:
               $AR rcs "$OUTPUT_DIR/libbox64.a" *.o
               echo "Created libbox64.a: $(ls -lh "$OUTPUT_DIR/libbox64.a")"
               
-              # Auto-generate stubs for all undefined symbols
-              echo "Generating stubs for undefined symbols..."
+              # Auto-generate stubs for undefined symbols that libSystem genuinely lacks.
+              echo "Generating stubs (two-pass: stub-free link, then stub only the real gaps)..."
               cd "$OUTPUT_DIR"
-              
-              # Find undefined symbols not defined in our objects
-              # Use robust approach: undefined = symbols with ' U ' in nm output
-              nm objects/*.o 2>/dev/null | grep ' U ' | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_undef.txt
-              
-              # Defined = everything else (T, D, B, A, R, C, c, S, s, t, d, b, a, r, g, G, W, w, etc.)
-              nm objects/*.o 2>/dev/null | grep -v ' U ' | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/all_def.txt
-              
-              # Missing = undefined in our objects, not defined in our objects
-              comm -23 /tmp/all_undef.txt /tmp/all_def.txt > /tmp/missing_syms.txt
-              
-              MISSING_COUNT=$(wc -l < /tmp/missing_syms.txt)
-              echo "Total missing symbols: $MISSING_COUNT"
-              head -20 /tmp/missing_syms.txt
-              
-              # Remove symbols that are already defined in our objects (prevent duplicates)
-              comm -12 /tmp/all_def.txt /tmp/missing_syms.txt > /tmp/dup_syms.txt
-              DUP_COUNT=$(wc -l < /tmp/dup_syms.txt)
-              if [ "$DUP_COUNT" -gt 0 ]; then
-                  echo "Removing $DUP_COUNT already-defined symbols from stubs"
-                  comm -23 /tmp/missing_syms.txt /tmp/all_def.txt > /tmp/missing_syms_final.txt
-              else
-                  cp /tmp/missing_syms.txt /tmp/missing_syms_final.txt
-              fi
-              
+
+              # Pass A: link box64 WITHOUT any stubs using -undefined dynamic_lookup.
+              # nm -u on the result lists EXACTLY the symbols libSystem/libm do NOT
+              # provide (gettid, prctl, ...). The OLD approach stubbed EVERY undefined
+              # box64 symbol; the weak stubs then WON over libSystem's real symbols in
+              # the app link (ld64 resolves them within the archive), turning
+              # open/getpid/stat/__error/... into empty functions — every libc call in
+              # the app and the in-process box64 runner returned garbage
+              # (build-376/377 probe corruption + likely the box64 launch hang).
+              $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
+                  objects/*.o -o box64 -lm -Wl,-undefined,dynamic_lookup 2>/tmp/box64_link_passA.log || \
+                  { echo "Pass-A link FAILED:"; tail -20 /tmp/box64_link_passA.log; exit 1; }
+
+              nm -u box64 2>/dev/null | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/final_stubs.txt
+              STUB_COUNT=$(wc -l < /tmp/final_stubs.txt)
+              echo "Symbols needing stubs (not in libSystem/libm): $STUB_COUNT"
+              cat /tmp/final_stubs.txt
+
               # Generate stubs C file — NO system headers at all to avoid macro conflicts
               {
-                  echo '// Auto-generated stubs for missing Box64 symbols on iOS'
-                  echo '// No system headers to avoid macro expansion errors'
+                  echo '// Auto-generated stubs for symbols libSystem does NOT provide'
+                  echo '// Two-pass derived (nm -u box64 after a stub-free link)'
                   echo ''
                   while IFS= read -r sym; do
                       [ -z "$sym" ] && continue
-                      # Don't skip underscore symbols — __libc_* etc. are real refs
-                      # WEAK stubs: libc symbols (open/stat/write/...) must resolve to
-                      # the real libSystem definitions, not these empty stubs.
                       echo "__attribute__((weak)) void $sym(void) {}"
-                  done < /tmp/missing_syms_final.txt
+                  done < /tmp/final_stubs.txt
               } > auto_stubs.c
-              
+
               STUB_LINES=$(wc -l < auto_stubs.c)
               echo "Generated $STUB_LINES lines of stubs"
-              
+
               # Compile stubs — no warnings, no system headers needed
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
                   -w -ffreestanding -nostdinc \
                   -c auto_stubs.c -o auto_stubs.o
-              
-              # Post-compile: find any duplicate symbols between stubs and objects
-              # and remove them by filtering stubs
-              STUB_DEFS=$(nm auto_stubs.o 2>/dev/null | awk '{print $NF}' | sed 's/^_//' | sort -u)
-              OBJ_DEFS=$(nm objects/*.o 2>/dev/null | grep -v ' U ' | awk '{print $NF}' | sed 's/^_//' | sort -u)
-              DUPS=$(comm -12 <(echo "$STUB_DEFS") <(echo "$OBJ_DEFS"))
-              DUP_COUNT=$(echo "$DUPS" | grep -c . || true)
-              if [ "$DUP_COUNT" -gt 0 ]; then
-                  echo "Post-compile: filtering $DUP_COUNT duplicate symbols from stubs"
-                  # Re-generate stubs excluding duplicates
-                  {
-                      echo '// Auto-generated stubs (deduplicated)'
-                      while IFS= read -r sym; do
-                          [ -z "$sym" ] && continue
-                          echo "__attribute__((weak)) void $sym(void) {}"
-                      done < <(comm -23 <(echo "$STUB_DEFS") <(echo "$OBJ_DEFS"))
-                  } > auto_stubs_dedup.c
-                  $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
-                      -w -ffreestanding -nostdinc \
-                      -c auto_stubs_dedup.c -o auto_stubs.o
-                  echo "Recompiled deduplicated stubs"
-              fi
-              
-              # Add stubs to the static library so iOS app can link against them
+
+              # Add stubs to the static library so the iOS app can link against them
               $AR rcs "$OUTPUT_DIR/libbox64.a" objects/*.o auto_stubs.o
               echo "Updated libbox64.a with stubs: $(ls -lh "$OUTPUT_DIR/libbox64.a")"
-              
-              # Link as executable with stubs
+
+              # Pass B: relink box64 normally (stubs now satisfy only the Linux-only gaps)
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
                   objects/*.o auto_stubs.o \
                   -o box64 -lm

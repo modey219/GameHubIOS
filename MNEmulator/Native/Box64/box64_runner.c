@@ -41,6 +41,14 @@ static sigjmp_buf g_jmp_buf;
 static volatile int g_jmp_ready = 0;
 static pthread_t g_runner_thread_id;
 
+/* Exit landing pad: box64_exit_intercept (and the strong exit/_exit/_Exit
+   interposers) NEVER return — exit() is noreturn, and returning into the call
+   site is UB that silently killed the whole app in v375. They jump here instead
+   so the runner thread ends cleanly and the iOS app stays alive. */
+static sigjmp_buf g_exit_jmp_buf;
+static volatile int g_exit_jmp_ready = 0;
+static volatile int g_exit_status = 0;
+
 /* Real libc pointers captured in setup_logging so the async-signal handler
    never calls the reallibc shims (dlsym is not async-signal-safe). */
 static ssize_t (*g_real_write)(int, const void *, size_t) = NULL;
@@ -95,9 +103,32 @@ static void runner_log_sync(void) {
     runner_fsync();
 }
 
+/* Noreturn sink for every intercepted exit. Declared in rawlibc.h.
+   On the runner thread with the exit land-pad armed: siglongjmp back to
+   wine_thread_func so the app survives and we get a definitive end-line in the
+   runner log. Anywhere else (foreign thread, pad not armed): the real exit is
+   the only sane action — raw syscall so it can't loop back into us. */
+__attribute__((noreturn))
+void box64_runner_handle_exit(int status) {
+    int on_runner = pthread_equal(pthread_self(), g_runner_thread_id);
+    runner_log("[Runner] box64_runner_handle_exit(%d) on_runner=%d pad_armed=%d",
+               status, on_runner, g_exit_jmp_ready);
+    if (g_exit_jmp_ready && on_runner) {
+        g_exit_status = status;
+        g_exit_jmp_ready = 0;
+        siglongjmp(g_exit_jmp_buf, 1);
+    }
+    runner_log("[Runner] exit(%d) not recoverable here — raw syscall exit", status);
+    runner_log_sync();
+    syscall(SYS_exit, status);
+    for (;;) {}
+}
+
 /* box64_exit_intercept is defined in ios_stubs.c (compiled into libbox64.a)
    Box64 source files call exit()/_exit()/_Exit() which the -D macros redirect
-   there. Those functions just return, so the iOS app stays alive. */
+   there. Those functions (and the strong interposers) never return — they route
+   through box64_runner_handle_exit above, which lands on the exit pad armed in
+   wine_thread_func so the app survives. */
 
 static void signal_handler(int sig, siginfo_t *si, void *uc) {
     /* Everything here MUST be async-signal-safe. Manual conversions only. */
@@ -246,6 +277,28 @@ static void *wine_thread_func(void *arg) {
 
     setup_altstack();
     install_runner_signals();
+
+    /* Second landing pad, armed before initialize(): if Box64 calls exit()
+       (noreturn), box64_runner_handle_exit siglongjmps here instead of the
+       v375 UB return that killed the whole app. */
+    g_exit_jmp_ready = 1;
+    int exit_ret = sigsetjmp(g_exit_jmp_buf, 1);
+    if (exit_ret != 0) {
+        int code = g_exit_status;
+        runner_log("[Runner] Box64 exit(%d) intercepted — runner thread ending cleanly", code);
+        runner_log_sync();
+        pthread_mutex_lock(&g_runner_lock);
+        snprintf(g_runner_error, sizeof(g_runner_error),
+                 "Box64 exited with code %d", code);
+        snprintf(g_runner_status, sizeof(g_runner_status), "exited");
+        pthread_mutex_unlock(&g_runner_lock);
+        g_runner_exit_code = code;
+        g_runner_running = 0;
+        free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
+        free(wargs);
+        if (g_log_fd >= 0) { box64_raw_close(g_log_fd); g_log_fd = -1; }
+        return NULL;
+    }
 
     runner_log("[Runner] wine64_path=%s", wargs->wine64_path);
     runner_log("[Runner] game_exe=%s", wargs->game_exe ? wargs->game_exe : "(null)");

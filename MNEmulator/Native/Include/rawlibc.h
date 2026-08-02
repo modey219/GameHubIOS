@@ -126,6 +126,13 @@ int box64_libc_getuid(void);
    log file the runner uses, so every exit/abort call is captured. */
 void box64_stub_set_log_path(const char *path);
 
+/* Noreturn exit sink (box64_runner.c): exit() is noreturn, so box64_exit_intercept
+   and the strong exit/_exit/_Exit interposers MUST NOT return into the call site
+   (UB — silently killed the whole app in v375). On the runner thread with the exit
+   land-pad armed this siglongjmps to the runner's pad so the app survives and the
+   runner thread ends cleanly; otherwise it does a raw syscall(SYS_exit). */
+__attribute__((noreturn)) void box64_runner_handle_exit(int status);
+
 #ifdef __cplusplus
 }
 #endif

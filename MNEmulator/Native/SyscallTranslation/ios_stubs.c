@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <dlfcn.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -70,48 +71,72 @@ static const char *stub_log_effective_path(char *buf, size_t cap) {
     return buf;
 }
 
-static void stub_exit_log(const char *what, int code) {
+static void stub_log_raw(const char *msg) {
     char path[512];
     stub_log_effective_path(path, sizeof(path));
     int fd = box64_raw_open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd < 0) return;
-    char buf[160];
-    int n = snprintf(buf, sizeof(buf), "[Stub] %s(%d) called from pid=%d\n",
-                     what, code, (int)getpid());
-    if (n < 0) n = 0;
-    if ((size_t)n >= sizeof(buf)) n = (int)sizeof(buf) - 1;
-    box64_raw_write(fd, buf, (size_t)n);
+    box64_raw_write(fd, msg, strlen(msg));
+    box64_raw_write(fd, "\n", 1);
     box64_raw_fsync(fd);
     box64_raw_close(fd);
 }
 
+static void stub_exit_log(const char *what, int code) {
+    char buf[160];
+    int n = snprintf(buf, sizeof(buf), "[Stub] %s(%d) called from pid=%d",
+                     what, code, (int)getpid());
+    if (n < 0) n = 0;
+    if ((size_t)n >= sizeof(buf)) n = (int)sizeof(buf) - 1;
+    buf[n] = '\0';
+    stub_log_raw(buf);
+}
+
 /* exit() interceptor — when Box64 source calls exit(), the -Dexit macro
-   redirects here. We just return instead of exiting, so the iOS app stays
-   alive. Any exit() that reaches THIS function instead of the macro is a
-   function-pointer call, which the strong exit() below catches instead. */
+   redirects here. exit() is noreturn, so RETURNING into the call site is UB
+   that silently killed the whole app in v375. We NEVER return: we hand off to
+   box64_runner_handle_exit, which siglongjmps to the runner's exit landing pad
+   (or, off the runner thread, does a raw syscall exit). RA + dlsym symbol pin
+   down exactly which exit(0) call site fired. */
+__attribute__((noreturn))
 void box64_exit_intercept(int status) {
-    stub_exit_log("exit-intercept", status);
-    /* Just return — don't let Box64 kill the iOS app */
+    void *ra = __builtin_return_address(0);
+    char trc[240];
+    int n = snprintf(trc, sizeof(trc),
+                     "[Stub] exit-intercept(%d) called from pid=%d RA=0x%llx",
+                     status, (int)getpid(), (unsigned long long)(uintptr_t)ra);
+    Dl_info info;
+    if (dladdr(ra, &info) && info.dli_sname && n > 0 && (size_t)n < sizeof(trc)) {
+        snprintf(trc + n, sizeof(trc) - (size_t)n, " in %s+0x%lx",
+                 info.dli_sname,
+                 (unsigned long)((uintptr_t)ra - (uintptr_t)info.dli_saddr));
+    }
+    stub_log_raw(trc);
+    box64_runner_handle_exit(status);
+    for (;;) {}
 }
 
 /* Strong interposers. Note: ios_stubs.c is compiled WITHOUT the
-   -Dexit/-D_exit CFLAGS macros, so these are real function definitions. */
+   -Dexit/-D_exit CFLAGS macros, so these are real function definitions.
+   All exit-family calls route through box64_runner_handle_exit: on the runner
+   thread it recovers via the exit land-pad (app survives); elsewhere it does
+   the real raw syscall exit (a genuine exit still exits). */
 
 __attribute__((noreturn)) void exit(int status) {
     stub_exit_log("exit", status);
-    syscall(SYS_exit, status);
+    box64_runner_handle_exit(status);
     __builtin_unreachable();
 }
 
 __attribute__((noreturn)) void _exit(int status) {
     stub_exit_log("_exit", status);
-    syscall(SYS_exit, status);
+    box64_runner_handle_exit(status);
     __builtin_unreachable();
 }
 
 __attribute__((noreturn)) void _Exit(int status) {
     stub_exit_log("_Exit", status);
-    syscall(SYS_exit, status);
+    box64_runner_handle_exit(status);
     __builtin_unreachable();
 }
 

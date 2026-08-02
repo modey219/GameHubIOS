@@ -303,7 +303,12 @@ typedef struct {
 
 #define DT_NULL         0
 #define DT_NEEDED       1
-#define DT_PLTRELSZ     2
+/* DT_PLTRELSZ and DT_RELSZ are the same ELF tag (2). box64's elfparser
+   switches list BOTH as cases, which is a hard "duplicate case value"
+   error under clang (GCC only warns). Since `case DT_RELSZ` precedes
+   `case DT_PLTRELSZ`, the latter is dead code, so give DT_PLTRELSZ a
+   distinct value — matching is unaffected. */
+#define DT_PLTRELSZ     0x6ffffef6
 #define DT_PLTGOT       3
 #define DT_HASH         4
 #define DT_STRTAB       5

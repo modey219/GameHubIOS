@@ -105,6 +105,21 @@ void box64_raw_rewinddir(DIR *d);
 void box64_raw_seekdir(DIR *d, long off);
 long box64_raw_telldir(DIR *d);
 
+/* ---- REAL-libc probe shims (build-376) ----
+   rawlibc.c compiles WITHOUT the redirect macros, so these call the genuine
+   (interposable) libc symbols — the "plain libc" baseline for the bridge
+   probe. Every other box64 source has open/stat/read/mkdir/... macro-redirected
+   onto the box64_raw_* traps, so this is the only place real libc file ops
+   are reachable. */
+int box64_libc_open(const char *path);
+int box64_libc_stat(const char *path, struct stat *sb);
+int box64_libc_fstat(int fd, struct stat *sb);
+ssize_t box64_libc_read(int fd, void *buf, size_t n);
+FILE *box64_libc_fopen(const char *path, const char *mode);
+int box64_libc_mkdir(const char *path);
+int box64_libc_syscall_openat(const char *path, int flags);
+int box64_libc_syscall_getpid(void);
+
 #ifdef __cplusplus
 }
 #endif

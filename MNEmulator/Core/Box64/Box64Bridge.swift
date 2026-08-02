@@ -226,15 +226,63 @@ class Box64Bridge {
     private static let probeLock = NSLock()
     private static var probeInFlight = false
 
-    /// Runs the C matrix probe (box64_probe_paths) on a background thread with a
-    /// 20s cap and dumps the buffer + trace into diag.log. Called both after
-    /// bundled-binary extraction and from initialize() so we get syscall data
-    /// even when the launch path hangs before the probe.
-    ///
-    /// build-372: the probe thread may hang forever inside a raw syscall (or
-    /// calloc under LiveContainer), so on timeout we must NOT free probePtr
-    /// (the thread may still write into it → use-after-free → launch crash).
-    /// We leak the 32KB buffer on timeout instead, and skip re-entry.
+    /// build-376 per-trial probe: each trial runs on its OWN thread with a
+    /// 2s timeout, so a hung svc kills only that trial's thread and the rest
+    /// of the matrix still completes (the old single-thread probe died at the
+    /// very first hanging trial, build-374/375). Hung threads are leaked
+    /// (never freed — they may still be executing a kernel trap), and the
+    /// total budget is capped ~16s so startup is not delayed beyond the old
+    /// 20s probe.
+    private struct TrialSpec {
+        let kind: Int32
+        let label: String
+        let path: String?
+        let fd: Int32
+    }
+
+    private static let trialThreadsLock = NSLock()
+    private static var leakedTrialThreads: [Thread] = []
+
+    /// Real-libc and symbol trials return (or hang) fast; raw svc traps are
+    /// hang-prone so they get a shorter budget to fit more into the 20s quota.
+    private static func trialTimeout(_ kind: Int32) -> TimeInterval {
+        switch kind {
+        case 0, 1, 40...47:
+            return 2.0
+        default:
+            return 1.5
+        }
+    }
+
+    private func runTrial(_ spec: TrialSpec, timeout: TimeInterval) -> String {
+        let sem = DispatchSemaphore(value: 0)
+        var r1: Int32 = -1
+        var r2: Int32 = -1
+        var re: Int32 = ENOSYS
+        let thread = Thread {
+            if let p = spec.path {
+                p.withCString { cp in
+                    _ = box64_probe_trial(spec.kind, cp, spec.fd, &r1, &r2, &re)
+                }
+            } else {
+                _ = box64_probe_trial(spec.kind, nil, spec.fd, &r1, &r2, &re)
+            }
+            sem.signal()
+        }
+        thread.name = "mn-trial-\(spec.label)"
+        thread.stackSize = 1 << 20
+        thread.start()
+        if sem.wait(timeout: .now() + timeout) == .timedOut {
+            // Thread still inside a hung kernel trap. Leak it (thread object
+            // retained below) so it can never be deallocated mid-trap.
+            Self.trialThreadsLock.lock()
+            Self.leakedTrialThreads.append(thread)
+            Self.trialThreadsLock.unlock()
+            return "HUNG(\(Int(timeout))s)"
+        }
+        return "r1=\(r1) r2=\(r2) errno=\(re)"
+    }
+
     func runEarlyProbe() {
         Self.probeLock.lock()
         if Self.probeInFlight {
@@ -246,52 +294,96 @@ class Box64Bridge {
         Self.probeLock.unlock()
 
         let docsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? "/tmp"
-        let homePath = NSHomeDirectory()
         Self.writeDiag("early_probe_start")
-        let probePtr = UnsafeMutablePointer<CChar>.allocate(capacity: 32768)
-        probePtr.initialize(repeating: 0, count: 32768)
-        let probeSem = DispatchSemaphore(value: 0)
-        let probeThread = Thread {
-            docsPath.withCString { d in
-                Bundle.main.bundlePath.withCString { b in
-                    NSTemporaryDirectory().withCString { t in
-                        homePath.withCString { h in
-                            box64_probe_paths(d, b, t, h, probePtr, 32768)
-                        }
+
+        let sysnums = UnsafeMutablePointer<CChar>.allocate(capacity: 2048)
+        sysnums.initialize(repeating: 0, count: 2048)
+        let snN = box64_probe_sysnums(sysnums, 2048)
+        if snN > 0 {
+            Self.writeDiag("SYSNUMS:\n\(String(cString: sysnums))")
+        } else {
+            Self.writeDiag("SYSNUMS: (empty)")
+        }
+        sysnums.deallocate()
+
+        let wine64 = docsPath + "/Wine/bin/wine64"
+        let scratch = NSTemporaryDirectory() + "/.__mn_trial_\(Int(Date().timeIntervalSince1970))"
+        Self.writeDiag("trial paths: wine64=\(wine64) scratch=\(scratch)")
+
+        var trials: [TrialSpec] = []
+        // Pass A — real-libc baseline first (most valuable, must not be lost),
+        // then interposed `syscall` symbol, then raw svc traps (hang-prone).
+        let libcTrials: [TrialSpec] = [
+            TrialSpec(kind: 40, label: "libc-real-open", path: wine64, fd: -1),
+            TrialSpec(kind: 41, label: "libc-real-stat", path: wine64, fd: -1),
+            TrialSpec(kind: 42, label: "libc-real-fopen", path: wine64, fd: -1),
+            TrialSpec(kind: 47, label: "libc-real-mkdir", path: scratch, fd: -1),
+            TrialSpec(kind: 45, label: "libc-real-syscall-openat", path: wine64, fd: -1),
+            TrialSpec(kind: 46, label: "libc-real-syscall-getpid", path: nil, fd: -1),
+        ]
+        let symbolTrials: [TrialSpec] = [
+            TrialSpec(kind: 0, label: "syscall-symbol-open", path: wine64, fd: -1),
+            TrialSpec(kind: 1, label: "syscall-symbol-openat", path: wine64, fd: -1),
+        ]
+        let svcTrials: [TrialSpec] = [
+            TrialSpec(kind: 23, label: "svc-mkdir(cls)", path: scratch, fd: -1),
+            TrialSpec(kind: 48, label: "svc-mkdir(raw)", path: scratch, fd: -1),
+            TrialSpec(kind: 29, label: "svc-getcwd(cls)", path: nil, fd: -1),
+            TrialSpec(kind: 17, label: "svc-getcwd(raw)", path: nil, fd: -1),
+            TrialSpec(kind: 51, label: "svc-getuid(cls)", path: nil, fd: -1),
+            TrialSpec(kind: 52, label: "svc-geteuid(cls)", path: nil, fd: -1),
+            TrialSpec(kind: 53, label: "svc-getgid(cls)", path: nil, fd: -1),
+            TrialSpec(kind: 54, label: "svc-getegid(cls)", path: nil, fd: -1),
+            TrialSpec(kind: 20, label: "svc-stat64(cls)", path: wine64, fd: -1),
+            TrialSpec(kind: 50, label: "svc-stat64(raw)", path: wine64, fd: -1),
+            TrialSpec(kind: 19, label: "svc-open(cls)", path: wine64, fd: -1),
+            TrialSpec(kind: 49, label: "svc-open(raw)", path: wine64, fd: -1),
+            TrialSpec(kind: 30, label: "svc-openat(cls)", path: wine64, fd: -1),
+            TrialSpec(kind: 31, label: "svc-openat(raw)", path: wine64, fd: -1),
+            TrialSpec(kind: 28, label: "svc-getpid(cls)", path: nil, fd: -1),
+            TrialSpec(kind: 27, label: "svc-getpid(raw)", path: nil, fd: -1),
+        ]
+        trials = libcTrials + symbolTrials + svcTrials
+
+        // Pass B — fd-based trials. Use the real-libc-open fd if we got one
+        // (proves fstat/read on a REAL fd); otherwise -1 (still proves the
+        // call RETURNS — EBADF — rather than hanging).
+        var realFd: Int32 = -1
+
+        let start = Date()
+        var idx = 0
+        for spec in trials {
+            if Date().timeIntervalSince(start) > 20.0 {
+                Self.writeDiag("TRIAL \(spec.label) -> SKIPPED(quota)")
+                continue
+            }
+            let result = runTrial(spec, timeout: Self.trialTimeout(spec.kind))
+            Self.writeDiag("TRIAL \(spec.label) -> \(result)")
+            if realFd < 0 && spec.kind == 40 {
+                let prefix = "r1="
+                if result.hasPrefix(prefix) {
+                    let comps = result.split(separator: " ")
+                    if let first = comps.first {
+                        let r1str = first.dropFirst(prefix.count)
+                        realFd = Int32(r1str) ?? -1
                     }
                 }
             }
-            probeSem.signal()
+            idx += 1
         }
-        probeThread.name = "mn-probe"
-        probeThread.stackSize = 2 << 20
-        probeThread.start()
-        let timedOut = probeSem.wait(timeout: .now() + 20) == .timedOut
-        if timedOut {
-            Self.writeDiag("PROBE TIMEOUT (20s) — continuing without probe data")
+        Self.writeDiag("trial_probe_done_after=\(Int(Date().timeIntervalSince(start)))s realFd=\(realFd)")
+
+        let fdTrials: [TrialSpec] = [
+            TrialSpec(kind: 43, label: "libc-real-fstat", path: nil, fd: realFd),
+            TrialSpec(kind: 44, label: "libc-real-read", path: nil, fd: realFd),
+            TrialSpec(kind: 25, label: "svc-fstat64", path: nil, fd: realFd),
+            TrialSpec(kind: 26, label: "svc-read", path: nil, fd: realFd),
+        ]
+        for spec in fdTrials {
+            let result = runTrial(spec, timeout: 2.0)
+            Self.writeDiag("TRIAL \(spec.label) -> \(result)")
         }
-        let probeText = String(cString: probePtr)
-        if !probeText.isEmpty {
-            Self.writeDiag("PROBE BUFFER (partial \(probeText.count) chars):\n\(probeText)")
-        } else {
-            Self.writeDiag("PROBE BUFFER: (empty)")
-        }
-        if !timedOut {
-            let probeFiles = [
-                ("docs", docsPath + "/box64_probe.log"),
-                ("tmpdir", NSTemporaryDirectory() + "/box64_probe.log"),
-                ("/tmp", "/tmp/box64_probe.log"),
-                ("home", homePath + "/box64_probe.log"),
-            ]
-            for (label, path) in probeFiles {
-                if let data = FileManager.default.contents(atPath: path),
-                   let content = String(data: data, encoding: .utf8), !content.isEmpty {
-                    Self.writeDiag("PROBE FILE [\(label)] \(path):\n\(content)")
-                } else {
-                    Self.writeDiag("PROBE FILE [\(label)] \(path): (missing)")
-                }
-            }
-        }
+
         let traceSnap = UnsafeMutablePointer<CChar>.allocate(capacity: 32768)
         traceSnap.initialize(repeating: 0, count: 32768)
         box64_probe_trace_snapshot(traceSnap, 32768)
@@ -308,21 +400,11 @@ class Box64Bridge {
         } else {
             Self.writeDiag("PROBE TRACE FILE: (missing)")
         }
-        // UAF guard: only free when the probe thread actually finished.
-        if !timedOut {
-            probePtr.deinitialize(count: 32768)
-            probePtr.deallocate()
-            Self.probeLock.lock()
-            Self.probeInFlight = false
-            Self.probeLock.unlock()
-            Self.writeDiag("early_probe_done")
-        } else {
-            // Probe hung (raw syscall / calloc under LiveContainer). The thread
-            // is still alive and may resume writing; LEAK the buffer (no UAF)
-            // and keep probeInFlight=true so launch-time never starts another.
-            Self.writeDiag("early_probe_leaked_buffer_thread_still_running")
-            Self.writeDiag("early_probe_done(leaked)")
-        }
+
+        Self.probeLock.lock()
+        Self.probeInFlight = false
+        Self.probeLock.unlock()
+        Self.writeDiag("early_probe_done")
     }
 
     private func setupEnvironment() {

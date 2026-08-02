@@ -60,6 +60,10 @@ int box64_probe_magic(void);
 void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir, const char *home, char *out, size_t out_len);
 void box64_probe_trace_snapshot(char *dst, size_t cap);
 void box64_set_probe_log_cb(box64_log_callback cb);
+/* build-376: single-trial probe (Swift runs each on its own thread with a
+   per-trial timeout, so one hung svc can't truncate the matrix). */
+int box64_probe_trial(int kind, const char *path, int fd, int *out_r1, int *out_r2, int *out_errno);
+int box64_probe_sysnums(char *out, size_t cap);
 
 int box64_runner_start(const char *wine64_path, const char *game_exe, const char *prefix_path);
 int box64_runner_stop(void);

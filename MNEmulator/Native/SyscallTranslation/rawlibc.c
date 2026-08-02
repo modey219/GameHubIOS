@@ -602,3 +602,48 @@ void box64_raw_seekdir(DIR *dir, long off) {
 long box64_raw_telldir(DIR *dir) {
     return (long)box64_raw_lseek(((struct _RawDir *)dir)->fd, 0, SEEK_CUR);
 }
+
+/* ================================================================== */
+/*  REAL-libc probe shims (build-376)                                  */
+/* ================================================================== */
+/*  rawlibc.c is compiled WITHOUT the ios_linux_compat.h redirect macros,
+    so every symbol referenced below is the genuine libc entry point —
+    exactly the ones LiveContainer interposes. The bridge probe calls these
+    to establish a "plain libc" baseline on-device: once the redirect macros
+    are gone, does real libc open/stat/fopen actually work? Which call hangs?
+    (Every other box64 source has open/stat/read/... macro-redirected onto
+    the box64_raw_* traps, so there is currently ZERO real-libc file-op data.) */
+
+int box64_libc_open(const char *path) {
+    return open(path, O_RDONLY);
+}
+
+int box64_libc_stat(const char *path, struct stat *sb) {
+    return stat(path, sb);
+}
+
+int box64_libc_fstat(int fd, struct stat *sb) {
+    return fstat(fd, sb);
+}
+
+ssize_t box64_libc_read(int fd, void *buf, size_t n) {
+    return read(fd, buf, n);
+}
+
+FILE *box64_libc_fopen(const char *path, const char *mode) {
+    return fopen(path, mode);
+}
+
+int box64_libc_mkdir(const char *path) {
+    return mkdir(path, 0755);
+}
+
+/* Interposed `syscall` symbol — build-372 proved syscall(SYS_openat, ...)
+   HANGS under LiveContainer while syscall(SYS___getcwd) passes through. */
+int box64_libc_syscall_openat(const char *path, int flags) {
+    return (int)syscall(SYS_openat, AT_FDCWD, path, flags, 0L);
+}
+
+int box64_libc_syscall_getpid(void) {
+    return (int)syscall(SYS_getpid);
+}

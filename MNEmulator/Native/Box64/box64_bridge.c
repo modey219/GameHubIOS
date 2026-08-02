@@ -743,6 +743,21 @@ enum {
     TK_LIBC_CREATE_PLAIN = 37, /* interposed plain open O_CREAT+write+close */
     TK_LIBC_UNLINK_PLAIN = 38, /* interposed plain unlink() */
     TK_LIBC_MKDIR_PLAIN = 39,  /* interposed plain mkdir() */
+    TK_LIBC_REAL_OPEN = 40,    /* real-libc open (rawlibc.c, no redirect macros) */
+    TK_LIBC_REAL_STAT = 41,    /* real-libc stat */
+    TK_LIBC_REAL_FOPEN = 42,   /* real-libc fopen */
+    TK_LIBC_REAL_FSTAT = 43,   /* real-libc fstat on t->fd */
+    TK_LIBC_REAL_READ = 44,    /* real-libc read on t->fd */
+    TK_LIBC_REAL_SYSCALL_OPENAT = 45, /* interposed syscall(SYS_openat) */
+    TK_LIBC_REAL_SYSCALL_GETPID = 46, /* interposed syscall(SYS_getpid) */
+    TK_LIBC_REAL_MKDIR = 47,   /* real-libc mkdir */
+    TK_KERNEL_MKDIR_RAW = 48,  /* svc raw SYS_mkdir — does the raw encoding work at all? */
+    TK_KERNEL_OPEN_RAW = 49,   /* svc raw SYS_open (low number 5) */
+    TK_KERNEL_STAT64_RAW = 50, /* svc raw SYS_stat64 */
+    TK_KERNEL_GETUID_CLS = 51, /* svc cls SYS_getuid (argless id family) */
+    TK_KERNEL_GETEUID_CLS = 52,/* svc cls SYS_geteuid */
+    TK_KERNEL_GETGID_CLS = 53, /* svc cls SYS_getgid */
+    TK_KERNEL_GETEGID_CLS = 54,/* svc cls SYS_getegid */
     TK_COUNT
 };
 
@@ -799,6 +814,21 @@ static const char *trial_name(int kind) {
     case TK_LIBC_CREATE_PLAIN: return "libc-create+write(plain)";
     case TK_LIBC_UNLINK_PLAIN: return "libc-unlink(plain)";
     case TK_LIBC_MKDIR_PLAIN: return "libc-mkdir(plain)";
+    case TK_LIBC_REAL_OPEN: return "libc-real-open";
+    case TK_LIBC_REAL_STAT: return "libc-real-stat";
+    case TK_LIBC_REAL_FOPEN: return "libc-real-fopen";
+    case TK_LIBC_REAL_FSTAT: return "libc-real-fstat";
+    case TK_LIBC_REAL_READ: return "libc-real-read";
+    case TK_LIBC_REAL_SYSCALL_OPENAT: return "libc-real-syscall-openat";
+    case TK_LIBC_REAL_SYSCALL_GETPID: return "libc-real-syscall-getpid";
+    case TK_LIBC_REAL_MKDIR: return "libc-real-mkdir";
+    case TK_KERNEL_MKDIR_RAW: return "kernel-svc-mkdir(raw)";
+    case TK_KERNEL_OPEN_RAW: return "kernel-svc-open(raw)";
+    case TK_KERNEL_STAT64_RAW: return "kernel-svc-stat64(raw)";
+    case TK_KERNEL_GETUID_CLS: return "kernel-svc-getuid(cls)";
+    case TK_KERNEL_GETEUID_CLS: return "kernel-svc-geteuid(cls)";
+    case TK_KERNEL_GETGID_CLS: return "kernel-svc-getgid(cls)";
+    case TK_KERNEL_GETEGID_CLS: return "kernel-svc-getegid(cls)";
     default: return "?";
     }
 }
@@ -1004,11 +1034,97 @@ static void bridge_trial_execute(trial_t *t) {
     case TK_LIBC_MKDIR_PLAIN:
         t->r1 = mkdir(t->path, 0755);
         t->r_errno = errno; break;
+    case TK_LIBC_REAL_OPEN:
+        t->r1 = box64_libc_open(t->path);
+        t->r_errno = errno; break;
+    case TK_LIBC_REAL_STAT:
+        t->r1 = box64_libc_stat(t->path, &sb);
+        t->r2 = (t->r1 == 0) ? (int)sb.st_size : -1;
+        t->r_errno = errno; break;
+    case TK_LIBC_REAL_FOPEN: {
+        FILE *f = box64_libc_fopen(t->path, "rb");
+        t->r1 = f ? fileno(f) : -1;
+        if (f) fclose(f);
+        t->r_errno = errno; break;
+    }
+    case TK_LIBC_REAL_FSTAT:
+        t->r1 = box64_libc_fstat(t->fd, &sb);
+        t->r2 = (t->r1 == 0) ? (int)sb.st_size : -1;
+        t->r_errno = errno; break;
+    case TK_LIBC_REAL_READ:
+        t->r1 = (int)box64_libc_read(t->fd, t->rbuf, 4);
+        t->r_errno = errno; break;
+    case TK_LIBC_REAL_SYSCALL_OPENAT:
+        t->r1 = box64_libc_syscall_openat(t->path, O_RDONLY);
+        t->r_errno = errno; break;
+    case TK_LIBC_REAL_SYSCALL_GETPID:
+        t->r1 = box64_libc_syscall_getpid();
+        t->r_errno = errno; break;
+    case TK_LIBC_REAL_MKDIR:
+        t->r1 = box64_libc_mkdir(t->path);
+        t->r_errno = errno; break;
+    case TK_KERNEL_MKDIR_RAW:
+        t->r1 = (int)box64_raw_syscall_raw(SYS_mkdir, t->path, 0755L);
+        t->r_errno = errno; break;
+    case TK_KERNEL_OPEN_RAW:
+        t->r1 = (int)box64_raw_syscall_raw(SYS_open, t->path, O_RDONLY, 0L);
+        t->r_errno = errno; break;
+    case TK_KERNEL_STAT64_RAW:
+        t->r1 = (int)box64_raw_syscall_raw(SYS_stat64, t->path, &sb);
+        t->r2 = (t->r1 == 0) ? (int)sb.st_size : -1;
+        t->r_errno = errno; break;
+    case TK_KERNEL_GETUID_CLS:
+        t->r1 = (int)box64_raw_syscall(SYS_getuid);
+        t->r_errno = errno; break;
+    case TK_KERNEL_GETEUID_CLS:
+        t->r1 = (int)box64_raw_syscall(SYS_geteuid);
+        t->r_errno = errno; break;
+    case TK_KERNEL_GETGID_CLS:
+        t->r1 = (int)box64_raw_syscall(SYS_getgid);
+        t->r_errno = errno; break;
+    case TK_KERNEL_GETEGID_CLS:
+        t->r1 = (int)box64_raw_syscall(SYS_getegid);
+        t->r_errno = errno; break;
     default:
         t->r1 = -1;
         t->r_errno = ENOSYS;
         break;
     }
+}
+
+/* Runs a SINGLE trial in the caller's context and returns its raw results.
+   build-376: the Swift side spawns one thread per trial with a per-trial
+   timeout, so a hung svc kills only that trial thread — the rest of the
+   probe matrix still completes. Returns 1; out_* written (0 on bad kind).
+   No plog here (threads may fire concurrently); trace stays clean. */
+static void probe_syscall_report(char *out, size_t *used, size_t cap);
+
+int box64_probe_trial(int kind, const char *path, int fd,
+                      int *out_r1, int *out_r2, int *out_errno) {
+    trial_t t;
+    memset(&t, 0, sizeof(t));
+    t.kind = kind;
+    t.path = path;
+    t.fd = fd;
+    if (out_r1) *out_r1 = -1;
+    if (out_r2) *out_r2 = -1;
+    if (out_errno) *out_errno = ENOSYS;
+    if (kind < 0 || kind >= TK_COUNT)
+        return 0;
+    bridge_trial_execute(&t);
+    if (out_r1) *out_r1 = t.r1;
+    if (out_r2) *out_r2 = t.r2;
+    if (out_errno) *out_errno = t.r_errno;
+    return 1;
+}
+
+/* Emits the syscall-number report into `out` for the Swift-side probe. */
+int box64_probe_sysnums(char *out, size_t cap) {
+    if (!out || cap < 64) return -1;
+    out[0] = 0;
+    size_t used = 0;
+    probe_syscall_report(out, &used, cap);
+    return (int)used;
 }
 
 /* Runs one trial directly on the probe thread. Every raw syscall is bracketed
@@ -1077,6 +1193,30 @@ static void probe_syscall_report(char *out, size_t *used, size_t cap) {
              (int)SYS_mkdir, (int)SYS_unlink);
     probe_emit(out, used, cap, line);
     plog("syscall report: %s", line + 8);
+#ifdef SYS_getpid
+    snprintf(line, sizeof(line), "SYSNUM SYS_getpid=%d", (int)SYS_getpid);
+    probe_emit(out, used, cap, line);
+#endif
+#ifdef SYS___getcwd
+    snprintf(line, sizeof(line), "SYSNUM SYS___getcwd=%d", (int)SYS___getcwd);
+    probe_emit(out, used, cap, line);
+#endif
+#ifdef SYS_getcwd
+    snprintf(line, sizeof(line), "SYSNUM SYS_getcwd=%d", (int)SYS_getcwd);
+    probe_emit(out, used, cap, line);
+#endif
+#ifdef SYS_close
+    snprintf(line, sizeof(line), "SYSNUM SYS_close=%d", (int)SYS_close);
+    probe_emit(out, used, cap, line);
+#endif
+#ifdef SYS_write
+    snprintf(line, sizeof(line), "SYSNUM SYS_write=%d", (int)SYS_write);
+    probe_emit(out, used, cap, line);
+#endif
+#ifdef SYS_access
+    snprintf(line, sizeof(line), "SYSNUM SYS_access=%d", (int)SYS_access);
+    probe_emit(out, used, cap, line);
+#endif
 }
 
 void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir, const char *home, char *out, size_t out_len) {
@@ -1095,7 +1235,7 @@ void box64_probe_paths(const char *docs, const char *bundle, const char *tmpdir,
        dlsym'd real-libc mechanisms are unavailable. Every REAL-SC and LIBC-DL
        trial below will report FAIL via the g_libc_* == NULL guards. */
     plog("NOTE: libSystem dlsym skipped (dlopen hangs under LiveContainer)");
-    probe_emit(out, &used, out_len, "==== box64_probe_paths v367 (svc class-encoded default) ====");
+    probe_emit(out, &used, out_len, "==== box64_probe_paths v368 (per-trial threads + real-libc baseline) ====");
     probe_syscall_report(out, &used, out_len);
     const char *env_home = getenv("HOME");
     const char *td = getenv("TMPDIR");

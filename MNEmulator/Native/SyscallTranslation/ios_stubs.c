@@ -56,10 +56,12 @@ static char g_stub_log_path[512] = {0};
 /* Set by box64_runner at startup (box64_stub_set_exit_sink): the noreturn exit
    handler that siglongjmps to the runner's exit land-pad. NULL when the runner
    hasn't started (e.g. CI links, or exit before runner init) — then we fall back
-   to a raw syscall exit. Keeps libbox64.a linkable without box64_runner.o. */
-static void (*g_exit_sink)(int) = NULL;
+   to a raw syscall exit. Keeps libbox64.a linkable without box64_runner.o.
+   Args: status, the caller's return address (RA pinpoints the exact exit(0) call
+   site in box64), and a dlsym'd "symbol+0xoffset" string. */
+static void (*g_exit_sink)(int, void *, const char *) = NULL;
 
-void box64_stub_set_exit_sink(void (*fn)(int)) {
+void box64_stub_set_exit_sink(void (*fn)(int, void *, const char *)) {
     g_exit_sink = fn;
 }
 
@@ -102,13 +104,27 @@ static void stub_exit_log(const char *what, int code) {
     stub_log_raw(buf);
 }
 
+/* Best-effort "symbol+0xoffset" for a return address. Used by the exit sink so
+   the runner logs exactly WHICH exit(0) call site fired. */
+static void format_where(void *ra, char *buf, size_t cap) {
+    if (!buf || cap == 0) return;
+    Dl_info info;
+    if (ra && dladdr(ra, &info) && info.dli_sname) {
+        snprintf(buf, cap, "%s+0x%lx",
+                 info.dli_sname,
+                 (unsigned long)((uintptr_t)ra - (uintptr_t)info.dli_saddr));
+    } else {
+        snprintf(buf, cap, "(no-symbol)");
+    }
+}
+
 /* Exit hand-off: g_exit_sink is wired by the runner at startup. When set it never
    returns (siglongjmp to the pad, or raw syscall exit). When NULL (CI Pass B, or
    exit before runner init) we fall back to the raw syscall — still never
    returning, still noreturn. */
-static __attribute__((noreturn)) void exit_via_runner_or_raw(int status) {
+static __attribute__((noreturn)) void exit_via_runner_or_raw(int status, void *ra, const char *where) {
     if (g_exit_sink) {
-        g_exit_sink(status);
+        g_exit_sink(status, ra, where);
     }
     syscall(SYS_exit, status);
     for (;;) {}
@@ -132,7 +148,9 @@ void box64_exit_intercept(int status) {
                  (unsigned long)((uintptr_t)ra - (uintptr_t)info.dli_saddr));
     }
     stub_log_raw(trc);
-    exit_via_runner_or_raw(status);
+    char where[160];
+    format_where(ra, where, sizeof(where));
+    exit_via_runner_or_raw(status, ra, where);
 }
 
 /* Strong interposers. Note: ios_stubs.c is compiled WITHOUT the
@@ -142,18 +160,27 @@ void box64_exit_intercept(int status) {
    the real raw syscall exit (a genuine exit still exits). */
 
 __attribute__((noreturn)) void exit(int status) {
+    void *ra = __builtin_return_address(0);
     stub_exit_log("exit", status);
-    exit_via_runner_or_raw(status);
+    char where[160];
+    format_where(ra, where, sizeof(where));
+    exit_via_runner_or_raw(status, ra, where);
 }
 
 __attribute__((noreturn)) void _exit(int status) {
+    void *ra = __builtin_return_address(0);
     stub_exit_log("_exit", status);
-    exit_via_runner_or_raw(status);
+    char where[160];
+    format_where(ra, where, sizeof(where));
+    exit_via_runner_or_raw(status, ra, where);
 }
 
 __attribute__((noreturn)) void _Exit(int status) {
+    void *ra = __builtin_return_address(0);
     stub_exit_log("_Exit", status);
-    exit_via_runner_or_raw(status);
+    char where[160];
+    format_where(ra, where, sizeof(where));
+    exit_via_runner_or_raw(status, ra, where);
 }
 
 __attribute__((noreturn)) void abort(void) {

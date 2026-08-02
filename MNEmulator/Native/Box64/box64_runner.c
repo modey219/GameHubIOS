@@ -48,6 +48,7 @@ static pthread_t g_runner_thread_id;
 static sigjmp_buf g_exit_jmp_buf;
 static volatile int g_exit_jmp_ready = 0;
 static volatile int g_exit_status = 0;
+static char g_exit_where[128] = {0};
 
 /* Real libc pointers captured in setup_logging so the async-signal handler
    never calls the reallibc shims (dlsym is not async-signal-safe). */
@@ -107,12 +108,26 @@ static void runner_log_sync(void) {
    On the runner thread with the exit land-pad armed: siglongjmp back to
    wine_thread_func so the app survives and we get a definitive end-line in the
    runner log. Anywhere else (foreign thread, pad not armed): the real exit is
-   the only sane action — raw syscall so it can't loop back into us. */
+   the only sane action — raw syscall so it can't loop back into us.
+   ra + where pin down the EXACT exit(0) call site (dlsym'd by ios_stubs.c),
+   discriminating the candidates inside box64's initialize(). */
 __attribute__((noreturn))
-void box64_runner_handle_exit(int status) {
+void box64_runner_handle_exit(int status, void *ra, const char *where) {
     int on_runner = pthread_equal(pthread_self(), g_runner_thread_id);
-    runner_log("[Runner] box64_runner_handle_exit(%d) on_runner=%d pad_armed=%d",
-               status, on_runner, g_exit_jmp_ready);
+    const char *ex = getenv("BOX64_EXIT");
+    const char *ver = getenv("BOX64_VERSION");
+    const char *winedbg = getenv("BOX64_WINEDBG");
+    const char *nobanner = getenv("BOX64_NOBANNER");
+    runner_log("[Runner] box64_runner_handle_exit(%d) on_runner=%d pad_armed=%d RA=0x%llx where=%s",
+               status, on_runner, g_exit_jmp_ready,
+               (unsigned long long)(uintptr_t)ra, where ? where : "(none)");
+    runner_log("[Runner]   env: BOX64_EXIT=%s BOX64_VERSION=%s BOX64_WINEDBG=%s BOX64_NOBANNER=%s",
+               ex ? ex : "(unset)", ver ? ver : "(unset)",
+               winedbg ? winedbg : "(unset)", nobanner ? nobanner : "(unset)");
+    if (where) {
+        strncpy(g_exit_where, where, sizeof(g_exit_where) - 1);
+        g_exit_where[sizeof(g_exit_where) - 1] = '\0';
+    }
     if (g_exit_jmp_ready && on_runner) {
         g_exit_status = status;
         g_exit_jmp_ready = 0;
@@ -218,21 +233,25 @@ static void setup_logging(const char *prefix_path) {
     const char *home = getenv("HOME");
     if (!home) home = "/tmp";
 
+    /* O_APPEND is REQUIRED: box64_exit_intercept writes its [Stub] marker via a
+       SEPARATE O_APPEND fd. If the runner's fd is not O_APPEND, the runner's next
+       write lands at ITS OWN stale offset and overwrites the [Stub] line (v376's
+       exit-intercept RA trace was silently clobbered this way). */
     if (g_runner_log_dir[0]) {
         box64_raw_mkdir(g_runner_log_dir, 0755);
         snprintf(g_log_path, sizeof(g_log_path), "%s/box64_runner.log", g_runner_log_dir);
-        g_log_fd = box64_raw_open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        g_log_fd = box64_raw_open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0644);
     }
     if (g_log_fd < 0) {
         char docs[1024];
         snprintf(docs, sizeof(docs), "%s/Documents", home);
         box64_raw_mkdir(docs, 0755);
         snprintf(g_log_path, sizeof(g_log_path), "%s/box64_runner.log", docs);
-        g_log_fd = box64_raw_open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        g_log_fd = box64_raw_open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0644);
     }
     if (g_log_fd < 0) {
         snprintf(g_log_path, sizeof(g_log_path), "%s/box64_runner.log", home);
-        g_log_fd = box64_raw_open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        g_log_fd = box64_raw_open(g_log_path, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0644);
     }
 
     /* Capture real libc for use in the async-signal crash handler */
@@ -243,7 +262,7 @@ static void setup_logging(const char *prefix_path) {
     box64_stub_set_log_path(g_log_path);
     /* Wire the noreturn exit sink so box64's exit()/_exit()/_Exit() calls route
        through the exit land-pad below instead of hard-killing the app. */
-    box64_stub_set_exit_sink((void (*)(int))box64_runner_handle_exit);
+    box64_stub_set_exit_sink((void (*)(int, void *, const char *))box64_runner_handle_exit);
     runner_log("[Runner] ===== Box64 In-Process Runner =====");
     runner_log("[Runner] Log path: %s (fd=%d)", g_log_path, g_log_fd);
     runner_log_sync();
@@ -288,7 +307,8 @@ static void *wine_thread_func(void *arg) {
     int exit_ret = sigsetjmp(g_exit_jmp_buf, 1);
     if (exit_ret != 0) {
         int code = g_exit_status;
-        runner_log("[Runner] Box64 exit(%d) intercepted — runner thread ending cleanly", code);
+        runner_log("[Runner] Box64 exit(%d) intercepted — runner thread ending cleanly (where=%s)",
+                   code, g_exit_where[0] ? g_exit_where : "(unknown)");
         runner_log_sync();
         pthread_mutex_lock(&g_runner_lock);
         snprintf(g_runner_error, sizeof(g_runner_error),

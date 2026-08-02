@@ -26,6 +26,13 @@
 #define ELFOSABI_SYSV      0
 #define ELFOSABI_LINUX     3
 
+#define EM_MIPS     8
+#define EM_PPC      20
+#define EM_PPC64    21
+#define EM_386      3
+#define EM_ARM      40
+#define EM_AARCH64  183
+#define EM_RISCV    243
 #define EM_X86_64   62
 
 typedef uint16_t Elf32_Half;
@@ -332,6 +339,19 @@ typedef struct {
 #define DT_VERDEFNUM    0x6ffffffd
 #define DT_VERNEED      0x6ffffffe
 #define DT_VERNEEDNUM   0x6fffffff
+#define DT_RELSZ        2
+#define DT_RELENT       19
+#define DT_RUNPATH      29
+#define DT_FLAGS        30
+#define DT_PREINIT_ARRAY    32
+#define DT_PREINIT_ARRAYSZ  33
+#define DT_FLAGS_1      0x6ffffffb
+
+#define DF_ORIGIN       0x00000001
+#define DF_SYMBOLIC     0x00000002
+#define DF_TEXTREL      0x00000004
+#define DF_BIND_NOW     0x00000008
+#define DF_STATIC_TLS   0x00000010
 
 #define AT_NULL         0
 #define AT_PHDR         3

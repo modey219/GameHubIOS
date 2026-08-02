@@ -185,30 +185,51 @@ jobs:
               echo "Created libbox64.a: $(ls -lh "$OUTPUT_DIR/libbox64.a")"
               
               # Auto-generate stubs for undefined symbols that libSystem genuinely lacks.
-              echo "Generating stubs (two-pass: stub-free link, then stub only the real gaps)..."
+              echo "Generating stubs (plain-link gap probe — ld64 binds libc to libSystem)..."
               cd "$OUTPUT_DIR"
 
-              # Pass A: link box64 WITHOUT any stubs using -undefined dynamic_lookup.
-              # nm -u on the result lists EXACTLY the symbols libSystem/libm do NOT
-              # provide (gettid, prctl, ...). The OLD approach stubbed EVERY undefined
-              # box64 symbol; the weak stubs then WON over libSystem's real symbols in
-              # the app link (ld64 resolves them within the archive), turning
-              # open/getpid/stat/__error/... into empty functions — every libc call in
-              # the app and the in-process box64 runner returned garbage
-              # (build-376/377 probe corruption + likely the box64 launch hang).
-              $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
-                  objects/*.o -o box64 -lm -Wl,-undefined,dynamic_lookup 2>/tmp/box64_link_passA.log || \
-                  { echo "Pass-A link FAILED:"; tail -20 /tmp/box64_link_passA.log; exit 1; }
+              # Pass A: link box64 WITHOUT stubs and WITHOUT -undefined dynamic_lookup.
+              # The link is EXPECTED to fail: ld64 binds everything libSystem/libm
+              # provides and reports ONLY the genuine Linux-only gaps (gettid, prctl,
+              # ...) as "Undefined symbols". 
+              #
+              # Why this is the correct probe: build-378 proved that a link with
+              # -Wl,-undefined,dynamic_lookup does NOT bind ANY symbol to libSystem
+              # (nm -u listed all ~899 undefined symbols INCLUDING open/getpid/stat/
+              # __error/...), so the generated weak stubs still shadowed libSystem in
+              # the app link — libc-real-getpid returned 1799466000 (real PID 4876),
+              # open returned its path argument, errno read the path string bytes.
+              if $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
+                  objects/*.o -o box64 -lm -lSystem 2>/tmp/box64_link_passA.log; then
+                  echo "Pass-A link SUCCEEDED — no genuine gaps, zero stubs needed"
+                  : > /tmp/final_stubs.txt
+              elif grep -q "Undefined symbols" /tmp/box64_link_passA.log; then
+                  grep -E '^  "_' /tmp/box64_link_passA.log \
+                      | sed 's/^  "_//; s/", referenced from:.*//' \
+                      | sort -u > /tmp/final_stubs.txt
+                  STUB_COUNT=$(wc -l < /tmp/final_stubs.txt)
+                  echo "Symbols needing stubs (not in libSystem/libm): $STUB_COUNT"
+                  cat /tmp/final_stubs.txt
+              else
+                  echo "Pass-A link FAILED for an unexpected reason:"
+                  tail -30 /tmp/box64_link_passA.log
+                  exit 1
+              fi
 
-              nm -u box64 2>/dev/null | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/final_stubs.txt
-              STUB_COUNT=$(wc -l < /tmp/final_stubs.txt)
-              echo "Symbols needing stubs (not in libSystem/libm): $STUB_COUNT"
-              cat /tmp/final_stubs.txt
+              # Safety gate: real libc entry points must NEVER be stubbed. If any of
+              # these appears in the gap list, libSystem was not linked in Pass A and
+              # the probe is broken — refuse to build a corrupt app again.
+              if grep -qxE 'open|openat|close|read|write|stat|fstat|lseek|mkdir|unlink|fopen|getpid|getuid|geteuid|getgid|getegid|getppid|syscall|__error|access|opendir|readdir|mmap|munmap|malloc|free|memcpy|strlen|printf|snprintf|dlopen|dlsym|dlclose|pthread_create|realpath|getcwd' /tmp/final_stubs.txt; then
+                  echo "FATAL: Pass-A gap list still contains real libc symbols — libSystem was NOT linked in the probe link!"
+                  grep -E 'open|getpid|stat|__error|syscall|write|close|read|mkdir' /tmp/final_stubs.txt
+                  tail -40 /tmp/box64_link_passA.log
+                  exit 1
+              fi
 
               # Generate stubs C file — NO system headers at all to avoid macro conflicts
               {
                   echo '// Auto-generated stubs for symbols libSystem does NOT provide'
-                  echo '// Two-pass derived (nm -u box64 after a stub-free link)'
+                  echo '// Gap list from a plain ld64 link (undefined-symbol errors)'
                   echo ''
                   while IFS= read -r sym; do
                       [ -z "$sym" ] && continue
@@ -231,7 +252,7 @@ jobs:
               # Pass B: relink box64 normally (stubs now satisfy only the Linux-only gaps)
               $CC -arch arm64 -mios-version-min=16.0 -isysroot "$SDK" \
                   objects/*.o auto_stubs.o \
-                  -o box64 -lm
+                  -o box64 -lm -lSystem
               chmod 755 box64
               echo "Created box64 executable: $(ls -la box64)"
           else

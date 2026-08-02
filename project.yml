@@ -54,6 +54,7 @@ targets:
           - "$(SRCROOT)/MNEmulator/Native/Box64Lib"
           - "$(SRCROOT)/MNEmulator/Native/Box64Lib/objects"
         OTHER_LDFLAGS:
+          - "-lSystem"
           - "-lbox64"
         OTHER_CFLAGS:
           - "-I$(SRCROOT)/MNEmulator/Native/Include"

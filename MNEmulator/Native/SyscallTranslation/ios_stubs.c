@@ -92,12 +92,22 @@ static void stub_exit_log(const char *what, int code) {
     stub_log_raw(buf);
 }
 
+/* Exit hand-off: box64_runner_handle_exit is weak (see rawlibc.h). In the app it
+   resolves to box64_runner.o's strong definition and never returns (siglongjmp or
+   raw syscall exit). In a link without box64_runner.o (CI Pass B) it is NULL, so
+   we fall back to the raw syscall — still never returning, still noreturn. */
+static __attribute__((noreturn)) void exit_via_runner_or_raw(int status) {
+    if (box64_runner_handle_exit) {
+        box64_runner_handle_exit(status);
+    }
+    syscall(SYS_exit, status);
+    for (;;) {}
+}
+
 /* exit() interceptor — when Box64 source calls exit(), the -Dexit macro
    redirects here. exit() is noreturn, so RETURNING into the call site is UB
-   that silently killed the whole app in v375. We NEVER return: we hand off to
-   box64_runner_handle_exit, which siglongjmps to the runner's exit landing pad
-   (or, off the runner thread, does a raw syscall exit). RA + dlsym symbol pin
-   down exactly which exit(0) call site fired. */
+   that silently killed the whole app in v375. We NEVER return. RA + dlsym
+   symbol pin down exactly which exit(0) call site fired. */
 __attribute__((noreturn))
 void box64_exit_intercept(int status) {
     void *ra = __builtin_return_address(0);
@@ -112,8 +122,7 @@ void box64_exit_intercept(int status) {
                  (unsigned long)((uintptr_t)ra - (uintptr_t)info.dli_saddr));
     }
     stub_log_raw(trc);
-    box64_runner_handle_exit(status);
-    for (;;) {}
+    exit_via_runner_or_raw(status);
 }
 
 /* Strong interposers. Note: ios_stubs.c is compiled WITHOUT the
@@ -124,20 +133,17 @@ void box64_exit_intercept(int status) {
 
 __attribute__((noreturn)) void exit(int status) {
     stub_exit_log("exit", status);
-    box64_runner_handle_exit(status);
-    __builtin_unreachable();
+    exit_via_runner_or_raw(status);
 }
 
 __attribute__((noreturn)) void _exit(int status) {
     stub_exit_log("_exit", status);
-    box64_runner_handle_exit(status);
-    __builtin_unreachable();
+    exit_via_runner_or_raw(status);
 }
 
 __attribute__((noreturn)) void _Exit(int status) {
     stub_exit_log("_Exit", status);
-    box64_runner_handle_exit(status);
-    __builtin_unreachable();
+    exit_via_runner_or_raw(status);
 }
 
 __attribute__((noreturn)) void abort(void) {

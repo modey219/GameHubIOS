@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/ucontext.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <setjmp.h>
@@ -40,6 +41,14 @@ static char g_runner_log_dir[512] = {0};
 static sigjmp_buf g_jmp_buf;
 static volatile int g_jmp_ready = 0;
 static pthread_t g_runner_thread_id;
+
+/* Last SIGSEGV/SIGBUS context, captured async-safe in signal_handler and then
+   symbolicated (dladdr is NOT async-signal-safe) after the runner recovers via
+   siglongjmp, so the exact crash site in box64 is identifiable. */
+static volatile uintptr_t g_crash_pc = 0;
+static volatile uintptr_t g_crash_lr = 0;
+static volatile uintptr_t g_crash_frames[12];
+static volatile int g_crash_nframes = 0;
 
 /* Exit landing pad: box64_exit_intercept (and the strong exit/_exit/_Exit
    interposers) NEVER return — exit() is noreturn, and returning into the call
@@ -145,6 +154,17 @@ void box64_runner_handle_exit(int status, void *ra, const char *where) {
    through box64_runner_handle_exit above, which lands on the exit pad armed in
    wine_thread_func so the app survives. */
 
+/* Async-signal-safe 64-bit hex writer (no libc, no dlsym). */
+static void runner_write_hex(uintptr_t v, int digits) {
+    char hx[16];
+    if (digits <= 0 || digits > 16) digits = 16;
+    for (int i = 0; i < digits; i++) {
+        int d = (int)((v >> (uintptr_t)((digits - 1 - i) * 4)) & 0xF);
+        hx[i] = (char)(d < 10 ? '0' + d : 'a' + d - 10);
+    }
+    runner_write(g_log_fd, hx, (size_t)digits);
+}
+
 static void signal_handler(int sig, siginfo_t *si, void *uc) {
     /* Everything here MUST be async-signal-safe. Manual conversions only. */
 
@@ -167,13 +187,50 @@ static void signal_handler(int sig, siginfo_t *si, void *uc) {
         }
         runner_write(g_log_fd, " addr=0x", 8);
         uintptr_t addr = si ? (uintptr_t)si->si_addr : 0;
-        char hx[16];
-        for (int i = 0; i < 16; i++) {
-            int d = (int)((addr >> (uintptr_t)(60 - i * 4)) & 0xF);
-            hx[i] = (char)(d < 10 ? '0' + d : 'a' + d - 10);
+        runner_write_hex(addr, 16);
+        /* arm64 ucontext: __ss has __pc/__lr/__fp(x29). Walk the frame-pointer
+           chain to get a rough backtrace for pinpointing the SIGSEGV site. */
+#if defined(__arm64__)
+        {
+            uintptr_t pc = 0, lr = 0, fp = 0;
+            ucontext_t *u = (ucontext_t *)uc;
+            if (u && u->uc_mcontext) {
+                pc = (uintptr_t)u->uc_mcontext->__ss.__pc;
+                lr = (uintptr_t)u->uc_mcontext->__ss.__lr;
+                fp = (uintptr_t)u->uc_mcontext->__ss.__fp;
+            }
+            runner_write(g_log_fd, "\n[CRASH] pc=0x", 14);
+            runner_write_hex(pc, 16);
+            runner_write(g_log_fd, " lr=0x", 6);
+            runner_write_hex(lr, 16);
+            runner_write(g_log_fd, " fp=0x", 6);
+            runner_write_hex(fp, 16);
+            runner_write(g_log_fd, "\n[CRASH] frames:", 16);
+            uintptr_t cur = fp;
+            int nf = 0;
+            for (int i = 0; i < 10; i++) {
+                if (!cur || (cur & 0xF) != 0 || cur > 0x8000000000000000ULL)
+                    break;
+                uintptr_t next = 0, ret = 0;
+                /* fp[0] = next fp, fp[1] = return address */
+                next = ((uintptr_t *)cur)[0];
+                ret = ((uintptr_t *)cur)[1];
+                runner_write(g_log_fd, " 0x", 3);
+                runner_write_hex(ret, 16);
+                if (nf < 12) g_crash_frames[nf] = ret;
+                nf++;
+                if (!next || next <= cur) break;
+                cur = next;
+            }
+            g_crash_nframes = nf;
+            g_crash_pc = pc;
+            g_crash_lr = lr;
+            runner_write(g_log_fd, "\n", 1);
         }
-        runner_write(g_log_fd, hx, 16);
+#else
+        (void)uc;
         runner_write(g_log_fd, "\n", 1);
+#endif
         runner_fsync();
     }
 
@@ -285,6 +342,29 @@ static void *wine_thread_func(void *arg) {
     if (crash_sig != 0) {
         /* We got here via siglongjmp from the signal handler */
         runner_log("[Runner] Recovered from signal %d — thread exiting safely", crash_sig);
+        if (g_crash_pc) {
+            Dl_info di;
+            char sym[256];
+            if (dladdr((void *)g_crash_pc, &di) && di.dli_sname) {
+                snprintf(sym, sizeof(sym), "%s+0x%lx", di.dli_sname,
+                         (unsigned long)((uintptr_t)g_crash_pc - (uintptr_t)di.dli_saddr));
+            } else {
+                snprintf(sym, sizeof(sym), "(no-symbol)");
+            }
+            runner_log("[Runner] crash pc=%s lr=0x%llx", sym,
+                       (unsigned long long)g_crash_lr);
+            for (int i = 0; i < g_crash_nframes && i < 12; i++) {
+                Dl_info fd;
+                char fsym[256];
+                if (dladdr((void *)g_crash_frames[i], &fd) && fd.dli_sname) {
+                    snprintf(fsym, sizeof(fsym), "%s+0x%lx", fd.dli_sname,
+                             (unsigned long)((uintptr_t)g_crash_frames[i] - (uintptr_t)fd.dli_saddr));
+                } else {
+                    snprintf(fsym, sizeof(fsym), "0x%llx", (unsigned long long)g_crash_frames[i]);
+                }
+                runner_log("[Runner]   #%d %s", i, fsym);
+            }
+        }
         runner_log_sync();
         pthread_mutex_lock(&g_runner_lock);
         snprintf(g_runner_error, sizeof(g_runner_error),

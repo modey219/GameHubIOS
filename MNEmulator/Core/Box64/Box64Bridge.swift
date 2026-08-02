@@ -519,6 +519,15 @@ class Box64Bridge {
         _isRunning = true
         lock.unlock()
         Self.writeDiag("launchWine_success")
+
+        DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 3) {
+            let status = box64_runner_get_status().map { String(cString: $0) } ?? "?"
+            let rerr = box64_runner_get_error().map { String(cString: $0) } ?? ""
+            let rc = box64_runner_get_exit_code()
+            let running = box64_runner_is_running()
+            Self.writeDiag("runner_poll3s running=\(running) status=\(status) exit=\(rc) err=\(rerr)")
+        }
+
         result.wineLaunched = true
         result.box64Output = "Wine launched via box64 bridge (thread-based)"
 

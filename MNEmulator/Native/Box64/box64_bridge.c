@@ -216,10 +216,10 @@ void set_c_diag_docs_path(const char *path) {
     if (!path || !path[0]) return;
     strncpy(g_docs_path, path, sizeof(g_docs_path) - 1);
     g_docs_path[sizeof(g_docs_path) - 1] = '\0';
-    /* NOTE: the previous diagnostic file-write test (box64_raw_open on
-       c_diag_test.txt) was removed: it hangs the launch thread under
-       LiveContainer. Raw syscall probes run safely inside box64_probe_paths
-       on their own watchdog-guarded thread. */
+    /* Point the runner at the same reachable Documents dir so box64_runner.log
+       always lands next to diag.log. (The earlier file-write test here hung the
+       launch thread under LiveContainer; raw probes stay on their own thread.) */
+    box64_runner_set_log_dir(path);
 }
 
 box64_context_t *box64_create(void) {
@@ -411,6 +411,8 @@ int box64_launch_wine(box64_context_t *ctx, const char *exe_path, char **extra_e
     bridge_log("[Bridge] calling box64_runner_start()...");
     int rc = box64_runner_start(wine_bin, exe_path, ctx->prefix_path);
     snprintf(buf, sizeof(buf), "[Bridge] box64_runner_start returned %d", rc);
+    bridge_log(buf);
+    snprintf(buf, sizeof(buf), "[Bridge] runner log=%s", box64_runner_get_log_path());
     bridge_log(buf);
     if (rc != 0) {
         snprintf(g_wine_error, sizeof(g_wine_error),

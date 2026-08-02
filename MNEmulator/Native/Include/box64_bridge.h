@@ -66,6 +66,7 @@ int box64_probe_trial(int kind, const char *path, int fd, int *out_r1, int *out_
 int box64_probe_sysnums(char *out, size_t cap);
 
 int box64_runner_start(const char *wine64_path, const char *game_exe, const char *prefix_path);
+void box64_runner_set_log_dir(const char *dir);
 int box64_runner_stop(void);
 int box64_runner_is_running(void);
 const char *box64_runner_get_error(void);

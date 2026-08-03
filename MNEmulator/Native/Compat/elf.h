@@ -216,13 +216,21 @@ typedef struct {
 #define SHT_NOTE        7
 #define SHT_NOBITS      8
 #define SHT_REL         9
+#define SHT_SHLIB       10
 #define SHT_DYNSYM      11
 #define SHT_INIT_ARRAY  14
 #define SHT_FINI_ARRAY  15
+#define SHT_PREINIT_ARRAY 16
+#define SHT_GROUP       17
+#define SHT_SYMTAB_SHNDX 18
+#define SHT_NUM         19
 #define SHT_GNU_HASH    0x6ffffff6
 #define SHT_GNU_VERSYM  0x6fffffff
 #define SHT_GNU_VERNEED 0x6ffffffe
-#define SHT_SHLIB       9
+#define SHT_LOPROC      0x70000000
+#define SHT_HIPROC      0x7fffffff
+#define SHT_LOUSER      0x80000000
+#define SHT_HIUSER      0xffffffff
 
 #define SHN_UNDEF       0
 #define SHN_ABS         0xfff1
@@ -351,6 +359,11 @@ typedef struct {
 #define DT_PREINIT_ARRAY    32
 #define DT_PREINIT_ARRAYSZ  33
 #define DT_FLAGS_1      0x6ffffffb
+/* DT_ENCODING is tag 21 in glibc, same as DT_DEBUG — box64's elfload_dump.c
+   switches list both, a hard "duplicate case value" error under clang.
+   DT_DEBUG precedes, so give DT_ENCODING a distinct dead-case value (same
+   trick as DT_PLTRELSZ above). Only affects dump formatting. */
+#define DT_ENCODING     0x6ffffe00
 
 #define DF_ORIGIN       0x00000001
 #define DF_SYMBOLIC     0x00000002

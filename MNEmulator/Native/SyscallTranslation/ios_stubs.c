@@ -409,24 +409,9 @@ int SchedYield(void)
     return sched_yield();
 }
 
-/* Hardware virtual counter + its fixed frequency on arm64 Apple silicon.
-   Matches box64's os/freq_wine.c. box64_rdtsc=0 (core.c) so these are
-   used directly as the guest TSC. */
-uint64_t ReadTSC(x64emu_t *emu)
-{
-    (void)emu;
-    uint64_t val;
-    __asm__ volatile("mrs %0, cntvct_el0" : "=r"(val));
-    return val;
-}
-
-uint64_t ReadTSCFrequency(x64emu_t *emu)
-{
-    (void)emu;
-    uint64_t val;
-    __asm__ volatile("mrs %0, cntfrq_el0" : "=r"(val));
-    return val;
-}
+/* Note: ReadTSC/ReadTSCFrequency are NOT defined here — src/os/freq_wine.c
+   is compiled on iOS and already provides the arm64 cntvct_el0/cntfrq_el0
+   implementations. Defining them here caused duplicate symbols at link. */
 
 /* getBridgeName is defined in src/tools/bridge.c (compiled on iOS). */
 extern const char *getBridgeName(void *addr);

@@ -201,17 +201,31 @@ int GetTID(void)
 }
 
 /* Custommem's Mmap/MmapAnon/ELF loader all funnel through InternalMmap. On
-   iOS anonymous PROT_EXEC requires MAP_JIT (kernel rejects RWX/RX without the
-   JIT flag + entitlement) — the app's emulator_mmap (syscall_core.c) already
-   proved this pattern works on-device, so mirror it here. libc mmap is NOT
-   DYLD-interposed, so plain mmap() is safe (only path/fd functions are). */
+   iOS anonymous PROT_EXEC requires MAP_JIT + the JIT entitlement (kernel
+   rejects RWX/RX otherwise). Box64's RWX bridge + guest text mappings call
+   here with PROT_EXEC: on a JIT-enabled session (StikDebug) the first attempt
+   with MAP_JIT succeeds; on a jitless session it fails with ENOTSUP/EPERM, so
+   we retry WITHOUT PROT_EXEC. That is safe — the interpreter only READS guest
+   code, it never executes host pages, so a non-exec RW mapping is sufficient.
+   libc mmap is NOT DYLD-interposed, so plain mmap() is safe (only path/fd
+   functions are). */
 void *InternalMmap(void *addr, unsigned long length, int prot, int flags, int fd, ssize_t offset)
 {
 #ifdef MAP_JIT
-    if (prot & PROT_EXEC)
+    int want_exec = (prot & PROT_EXEC) != 0;
+    if (want_exec)
         flags |= MAP_JIT;
 #endif
-    return mmap(addr, length, prot, flags, fd, offset);
+    void *ret = mmap(addr, length, prot, flags, fd, offset);
+#ifdef MAP_JIT
+    if (ret == MAP_FAILED && want_exec) {
+        int saved_errno = errno;
+        ret = mmap(addr, length, (prot & ~PROT_EXEC) | PROT_READ, flags & ~MAP_JIT, fd, offset);
+        if (ret == MAP_FAILED)
+            errno = saved_errno;
+    }
+#endif
+    return ret;
 }
 
 int InternalMunmap(void *addr, unsigned long length)

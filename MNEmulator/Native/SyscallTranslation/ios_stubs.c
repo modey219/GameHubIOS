@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <limits.h>
+#include <sched.h>
 #include <sys/syscall.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -384,4 +385,72 @@ __attribute__((noreturn)) void abort(void) {
     /* Fallback if the handler chose to return (not longjmp): die for real. */
     syscall(SYS_exit, 134);
     __builtin_unreachable();
+}
+
+/* ------------------------------------------------------------------ */
+/* Remaining os-layer functions that are self-contained (no box64       */
+/* internal structs needed). The box64-struct-dependent ones (segment  */
+/* base, syscall emu entry points) live in ios_os.c.                   */
+/*                                                                     */
+/* Without strong definitions here these fell into the auto-generated  */
+/* `long sym(void){return 0;}` weak stubs: IsBridgeSignature returned  */
+/* 0 so box64 never recognized its own native-call bridges, ReadTSC/   */
+/* ReadTSCFrequency returned 0 (garbage TSC timing), and the bridge    */
+/* logging names were NULL.                                            */
+/* ------------------------------------------------------------------ */
+
+int IsBridgeSignature(char s, char c)
+{
+    return s == 'S' && c == 'C';
+}
+
+int SchedYield(void)
+{
+    return sched_yield();
+}
+
+/* Hardware virtual counter + its fixed frequency on arm64 Apple silicon.
+   Matches box64's os/freq_wine.c. box64_rdtsc=0 (core.c) so these are
+   used directly as the guest TSC. */
+uint64_t ReadTSC(x64emu_t *emu)
+{
+    (void)emu;
+    uint64_t val;
+    __asm__ volatile("mrs %0, cntvct_el0" : "=r"(val));
+    return val;
+}
+
+uint64_t ReadTSCFrequency(x64emu_t *emu)
+{
+    (void)emu;
+    uint64_t val;
+    __asm__ volatile("mrs %0, cntfrq_el0" : "=r"(val));
+    return val;
+}
+
+/* getBridgeName is defined in src/tools/bridge.c (compiled on iOS). */
+extern const char *getBridgeName(void *addr);
+
+const char *GetBridgeName(void *p)
+{
+    return getBridgeName(p);
+}
+
+const char *GetNativeName(void *p, int lib)
+{
+    const char *n = GetBridgeName(p);
+    if (n)
+        return n;
+    Dl_info info;
+    if (dladdr(p, &info) && info.dli_sname) {
+        static __thread char native_name[500] = { 0 };
+        strcpy(native_name, info.dli_sname);
+        if (lib && info.dli_fname) {
+            strcat(native_name, "(");
+            strcat(native_name, info.dli_fname);
+            strcat(native_name, ")");
+        }
+        return native_name;
+    }
+    return NULL;
 }

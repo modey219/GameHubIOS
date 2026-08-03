@@ -33,6 +33,7 @@ targets:
           - "Native/Box64Lib/**"
           - "Native/Compat/**"
           - "Native/BundledBinaries/**"
+          - "Native/SyscallTranslation/ios_os.c"
     resources:
       - path: MNEmulator/Resources/Assets.xcassets
       - path: MNEmulator/Native/BundledBinaries

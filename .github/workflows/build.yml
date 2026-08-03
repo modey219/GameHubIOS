@@ -421,11 +421,22 @@ jobs:
           # FileManager.copyItem resolves symlinks, so materialize any that
           # remain as real files with the exact needed soname.
           mv lib/x86_64-linux-gnu/* ./ 2>/dev/null || true
-          rm -rf lib
-          for l in libpthread.so.0 libdl.so.2 librt.so.1; do
+          # The deb ALSO ships lib64/ld-linux-x86-64.so.2 as an ABSOLUTE symlink
+          # into the lib/ tree we just deleted. The real ld-linux-x86-64.so.2 is
+          # already at the glibc root (from lib/), so drop the leftover lib64/
+          # tree entirely — otherwise the dangling symlink breaks cp -R in the
+          # inject/ipa steps ("No such file or directory").
+          rm -rf lib lib64
+          # Materialize any remaining symlinks as real files so nothing in the
+          # bundle is a symlink (cp -R / FileManager.copyItem would dereference
+          # or fail on them). Dangling ones are simply dropped.
+          for l in $(find . -type l 2>/dev/null); do
             if [ -L "$l" ]; then
-              cp -L "$l" "$l.tmp"
-              mv -f "$l.tmp" "$l"
+              if cp -L "$l" "$l.tmp" 2>/dev/null; then
+                mv -f "$l.tmp" "$l"
+              else
+                rm -f "$l"
+              fi
             fi
           done
           chmod 755 *.so* ld-linux-x86-64.so.2 2>/dev/null || true
@@ -580,6 +591,11 @@ jobs:
           
           echo "=== Copying glibc (x86_64 guest libc for Box64) ==="
           cp -R "$BIN_SRC/glibc" "$BIN_DST/"
+          # Safety net: the bundle must contain zero broken symlinks or the later
+          # cp -r into build/Payload fails (macOS cp -R dereferences symlinks).
+          find "$BIN_DST/glibc" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
+          echo "=== glibc symlinks after copy ==="
+          find "$BIN_DST/glibc" -type l | wc -l
           
           echo "=== Copying MoltenVK ==="
           find "$BIN_SRC/MoltenVK" -type f | head -10

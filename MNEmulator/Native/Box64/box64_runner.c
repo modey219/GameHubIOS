@@ -38,6 +38,14 @@ static pthread_mutex_t g_runner_lock = PTHREAD_MUTEX_INITIALIZER;
    box64_runner_set_log_dir so the runner log lands somewhere reachable. */
 static char g_runner_log_dir[512] = {0};
 
+/* Exec-style argv handed to box64's initialize(): all strings live contiguously
+   in one writable buffer (g_argv_block) and g_box64_argv[] points into it.
+   Globals (not locals) so the value survives siglongjmp back to the crash/exit
+   landing pads, which free them. Only one runner thread runs at a time. */
+static char *g_argv_block = NULL;
+static char **g_box64_argv = NULL;
+static int g_box64_argc = 0;
+
 static sigjmp_buf g_jmp_buf;
 static volatile int g_jmp_ready = 0;
 static pthread_t g_runner_thread_id;
@@ -325,6 +333,79 @@ static void setup_logging(const char *prefix_path) {
     runner_log_sync();
 }
 
+static void free_box64_argv(void) {
+    if (g_argv_block) { free(g_argv_block); g_argv_block = NULL; }
+    if (g_box64_argv) { free(g_box64_argv); g_box64_argv = NULL; }
+    g_box64_argc = 0;
+}
+
+/* v383 fix for the box64_runner strlen(NULL) SIGSEGV (core.c:1116):
+   box64 resolves its OWN binary via ResolveFile(argv[0]="box64",
+   &box64_path) at core.c:1050. The box64_path collection is loaded from the
+   BOX64_PATH env var (NewBox64Context loadPath). The runner never set it, and
+   "box64" is not in the app CWD, so ResolveFile fell through to
+   box_realpath("box64") which fails → box64path stayed NULL →
+   box_strdup(NULL) → strlen(NULL) → SIGSEGV addr=0x0 in _platform_strlen.
+   Fix: point BOX64_PATH at the bundled Box64 dir, derived from wine64_path
+   ("<root>/Wine/bin/wine64" → "<root>/Box64"). */
+static void setup_box64_env(const char *wine64_path) {
+    if (!wine64_path || !wine64_path[0]) return;
+    const char *w = strstr(wine64_path, "/Wine/bin/wine64");
+    if (!w) w = strstr(wine64_path, "/Wine/bin/wine");
+    if (!w) return;
+    size_t rootlen = (size_t)(w - wine64_path);
+    char box64dir[1024];
+    int n = snprintf(box64dir, sizeof(box64dir), "%.*s/Box64", (int)rootlen, wine64_path);
+    if (n <= 0 || n >= (int)sizeof(box64dir)) return;
+    runner_log("[Runner] BOX64_PATH dir=%s", box64dir);
+    const char *existing = getenv("BOX64_PATH");
+    if (existing && existing[0]) {
+        char full[2048];
+        if (snprintf(full, sizeof(full), "%s:%s", existing, box64dir) < (int)sizeof(full))
+            setenv("BOX64_PATH", full, 1);
+    } else {
+        setenv("BOX64_PATH", box64dir, 1);
+    }
+    runner_log("[Runner] setenv BOX64_PATH -> %s", getenv("BOX64_PATH") ? getenv("BOX64_PATH") : "(nil)");
+}
+
+/* v383 fix for box64's argv shuffle (core.c:1465-1473): box64 rewrites the
+   guest args in place, shifting them down to argv[0], and requires the argv
+   strings to be contiguous and writable like a real shell invocation. The
+   previous layout passed a read-only literal ("box64") plus separately
+   strdup'd heap strings, so diff = prog - argv[0] was garbage and the shuffle
+   would write out of bounds / into read-only memory. Build one contiguous
+   writable buffer holding "box64\0<wine64>\0<game>\0" and a pointer array
+   into it, mirroring the old {box64, wine64, game, NULL} shape exactly. */
+static int build_box64_argv(const char *wine64_path, const char *game_exe) {
+    free_box64_argv();
+    const char *a0 = "box64";
+    const char *a1 = wine64_path ? wine64_path : "";
+    const char *a2 = game_exe ? game_exe : "";
+    size_t a0len = strlen(a0), a1len = strlen(a1), a2len = strlen(a2);
+    size_t total = a0len + 1 + a1len + 1 + a2len + 1;
+    g_argv_block = (char *)malloc(total);
+    if (!g_argv_block) return -1;
+    char *p = g_argv_block;
+    memcpy(p, a0, a0len + 1); p += a0len + 1;
+    memcpy(p, a1, a1len + 1); p += a1len + 1;
+    memcpy(p, a2, a2len + 1); p += a2len + 1;
+
+    g_box64_argc = game_exe ? 3 : 2;
+    g_box64_argv = (char **)calloc((size_t)g_box64_argc + 1, sizeof(char *));
+    if (!g_box64_argv) {
+        free(g_argv_block);
+        g_argv_block = NULL;
+        g_box64_argc = 0;
+        return -1;
+    }
+    g_box64_argv[0] = g_argv_block;
+    g_box64_argv[1] = g_argv_block + a0len + 1;
+    g_box64_argv[2] = g_argv_block + a0len + 1 + a1len + 1;
+    g_box64_argv[g_box64_argc] = NULL;
+    return 0;
+}
+
 static void *wine_thread_func(void *arg) {
     wine_runner_args_t *wargs = (wine_runner_args_t *)arg;
 
@@ -371,6 +452,7 @@ static void *wine_thread_func(void *arg) {
                  "Box64 crashed with signal %d", crash_sig);
         pthread_mutex_unlock(&g_runner_lock);
         g_runner_exit_code = -crash_sig;
+        free_box64_argv();
         free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
         free(wargs);
         if (g_log_fd >= 0) { box64_raw_close(g_log_fd); g_log_fd = -1; }
@@ -397,6 +479,7 @@ static void *wine_thread_func(void *arg) {
         pthread_mutex_unlock(&g_runner_lock);
         g_runner_exit_code = code;
         g_runner_running = 0;
+        free_box64_argv();
         free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
         free(wargs);
         if (g_log_fd >= 0) { box64_raw_close(g_log_fd); g_log_fd = -1; }
@@ -407,13 +490,28 @@ static void *wine_thread_func(void *arg) {
     runner_log("[Runner] game_exe=%s", wargs->game_exe ? wargs->game_exe : "(null)");
     runner_log("[Runner] prefix_path=%s", wargs->prefix_path ? wargs->prefix_path : "(null)");
 
-    const char *argv[] = {
-        "box64",
-        wargs->wine64_path,
-        wargs->game_exe ? wargs->game_exe : "",
-        NULL
-    };
-    int argc = wargs->game_exe ? 3 : 2;
+    /* v383: let box64 resolve its own binary (BOX64_PATH) and hand it a real
+       exec-style contiguous argv (see setup_box64_env / build_box64_argv). */
+    setup_box64_env(wargs->wine64_path);
+    if (build_box64_argv(wargs->wine64_path, wargs->game_exe) != 0) {
+        runner_log("[Runner] FAILED to build box64 argv");
+        runner_log_sync();
+        pthread_mutex_lock(&g_runner_lock);
+        snprintf(g_runner_error, sizeof(g_runner_error),
+                 "Failed to build box64 argv");
+        pthread_mutex_unlock(&g_runner_lock);
+        g_runner_running = 0;
+        g_runner_exit_code = -1;
+        free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
+        free(wargs);
+        if (g_log_fd >= 0) { box64_raw_close(g_log_fd); g_log_fd = -1; }
+        return NULL;
+    }
+    int argc = g_box64_argc;
+    const char **argv = (const char **)g_box64_argv;
+    runner_log("[Runner] box64 argv: argv[0]=%s argv[1]=%s argv[2]=%s",
+               argv[0], argv[1], g_box64_argc > 2 ? argv[2] : "(none)");
+    runner_log_sync();
 
     x64emu_t *emu = NULL;
     elfheader_t *elf_header = NULL;
@@ -451,6 +549,7 @@ static void *wine_thread_func(void *arg) {
         runner_log("[Runner] ERROR: %s", g_runner_error);
         g_runner_running = 0;
         g_runner_exit_code = -1;
+        free_box64_argv();
         free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
         free(wargs);
         if (g_log_fd >= 0) { box64_raw_close(g_log_fd); g_log_fd = -1; }
@@ -469,6 +568,7 @@ static void *wine_thread_func(void *arg) {
     g_runner_exit_code = ret;
     g_runner_running = 0;
 
+    free_box64_argv();
     free(wargs->wine64_path); free(wargs->game_exe); free(wargs->prefix_path);
     free(wargs);
     if (g_log_fd >= 0) { box64_raw_close(g_log_fd); g_log_fd = -1; }

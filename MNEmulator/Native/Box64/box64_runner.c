@@ -367,6 +367,26 @@ static void setup_box64_env(const char *wine64_path) {
         setenv("BOX64_PATH", box64dir, 1);
     }
     runner_log("[Runner] setenv BOX64_PATH -> %s", getenv("BOX64_PATH") ? getenv("BOX64_PATH") : "(nil)");
+
+    /* v387: point box64's emulated-lib search at the bundled x86_64 glibc
+       (<root>/glibc, next to <root>/Box64). Box64 reads BOX64_LD_LIBRARY_PATH
+       during NewBox64Context (core.c:490), which runs after this function in
+       wine_thread_func, so setting it here is guaranteed to take effect even
+       if Swift's setupEnvironment ordering changes. */
+    char glibcdir[1024];
+    int gl = snprintf(glibcdir, sizeof(glibcdir), "%.*s/glibc", (int)rootlen, wine64_path);
+    if (gl > 0 && gl < (int)sizeof(glibcdir)) {
+        const char *existing_ld = getenv("BOX64_LD_LIBRARY_PATH");
+        if (existing_ld && existing_ld[0]) {
+            char full[2048];
+            if (snprintf(full, sizeof(full), "%s:%s", glibcdir, existing_ld) < (int)sizeof(full))
+                setenv("BOX64_LD_LIBRARY_PATH", full, 1);
+        } else {
+            setenv("BOX64_LD_LIBRARY_PATH", glibcdir, 1);
+        }
+        runner_log("[Runner] setenv BOX64_LD_LIBRARY_PATH -> %s",
+                   getenv("BOX64_LD_LIBRARY_PATH") ? getenv("BOX64_LD_LIBRARY_PATH") : "(nil)");
+    }
 }
 
 /* v383 fix for box64's argv shuffle (core.c:1465-1473): box64 rewrites the

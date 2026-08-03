@@ -8,6 +8,7 @@ class Box64Bridge {
     private var box64InstallPath: String = ""
     private var wineInstallPath: String = ""
     private var graphicsInstallPath: String = ""
+    private var glibcInstallPath: String = ""
     private var ctx: UnsafeMutablePointer<box64_context_t>?
     private var _isRunning = false
 
@@ -101,6 +102,7 @@ class Box64Bridge {
         box64InstallPath = docs.appendingPathComponent("Box64").path
         wineInstallPath = docs.appendingPathComponent("Wine").path
         graphicsInstallPath = docs.appendingPathComponent("Graphics").path
+        glibcInstallPath = docs.appendingPathComponent("glibc").path
 
         try fm.createDirectory(at: docs.appendingPathComponent("Graphics"), withIntermediateDirectories: true)
 
@@ -125,6 +127,13 @@ class Box64Bridge {
         NSLog("[MNEmulator] extractWine done")
         Self.writeDiag("extractWine_done")
 
+        progressCallback?("Extracting glibc (x86_64 guest libc)...")
+        NSLog("[MNEmulator] extractGlibc start")
+        Self.writeDiag("extractGlibc_start")
+        try autoreleasepool { try self.extractGlibc() }
+        NSLog("[MNEmulator] extractGlibc done")
+        Self.writeDiag("extractGlibc_done")
+
         progressCallback?("Skipping optional graphics (MoltenVK/DXVK)...")
         NSLog("[MNEmulator] skipping MoltenVK + DXVK extraction (not needed for launch)")
 
@@ -144,8 +153,10 @@ class Box64Bridge {
         box64InstallPath = documentsPath.appendingPathComponent("Box64").path
         wineInstallPath = documentsPath.appendingPathComponent("Wine").path
         graphicsInstallPath = documentsPath.appendingPathComponent("Graphics").path
+        glibcInstallPath = documentsPath.appendingPathComponent("glibc").path
         Self.log("box64InstallPath = \(box64InstallPath)")
         Self.log("wineInstallPath = \(wineInstallPath)")
+        Self.log("glibcInstallPath = \(glibcInstallPath)")
         Self.writeDiag("init_env_start")
         setupEnvironment()
         Self.writeDiag("init_env_done")
@@ -434,6 +445,12 @@ class Box64Bridge {
         safeSetenv("HOME", (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory).appendingPathComponent("Wine").path, 1)
         Self.writeDiag("setupenv_home_done")
+        // v387: box64 has NO wrapped libc on iOS (stubs fail on purpose), so guest
+        // libc.so.6/libpthread/libdl/librt come from the bundled real x86_64 glibc
+        // in <docs>/glibc. Without this, NewLibrary's emulated-load fallback cannot
+        // find them and Wine dies during relocation.
+        safeSetenv("BOX64_LD_LIBRARY_PATH", glibcInstallPath, 1)
+        Self.writeDiag("setupenv_ld_library_done path=\(glibcInstallPath)")
         safeSetenv("MVK_CONFIG_LOG_LEVEL", "0", 1)
         safeSetenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "1", 1)
         safeSetenv("DXVK_LOG_LEVEL", "none", 1)
@@ -795,6 +812,35 @@ class Box64Bridge {
                 try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binPath)
             }
         }
+    }
+
+    private func extractGlibc() throws {
+        let fm = FileManager.default
+        let destLibc = (glibcInstallPath as NSString).appendingPathComponent("libc.so.6")
+        if isNonEmptyFile(destLibc) {
+            Self.log("extractGlibc: libc.so.6 already exists, skipping")
+            Self.writeDiag("extractGlibc: already_done")
+            return
+        }
+        try fm.createDirectory(atPath: glibcInstallPath, withIntermediateDirectories: true)
+        guard let bundledGlibc = findBundledResource("glibc", isDirectory: true) else {
+            Self.writeDiag("extractGlibc: bundled glibc directory NOT FOUND in app bundle")
+            Self.log("extractGlibc: bundled glibc directory NOT FOUND in app bundle")
+            return
+        }
+        Self.writeDiag("extractGlibc: source=\(bundledGlibc)")
+        Self.log("extractGlibc: source=\(bundledGlibc) dest=\(glibcInstallPath)")
+        var copied = 0, skipped = 0, failed = 0
+        try copyDirectoryRecursive(src: bundledGlibc, dst: glibcInstallPath, fm: fm, copied: &copied, skipped: &skipped, failed: &failed)
+        for name in ["libc.so.6", "libm.so.6", "ld-linux-x86-64.so.2", "libpthread.so.0", "libdl.so.2", "librt.so.1"] {
+            let p = (glibcInstallPath as NSString).appendingPathComponent(name)
+            if fm.fileExists(atPath: p) {
+                try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: p)
+            } else {
+                Self.log("extractGlibc: MISSING \(name)")
+            }
+        }
+        Self.writeDiag("extractGlibc: done copied=\(copied) skipped=\(skipped) failed=\(failed)")
     }
 
     private func copyDirectoryRecursive(src: String, dst: String, fm: FileManager, copied: inout Int, skipped: inout Int, failed: inout Int, progressCallback: ((String) -> Void)? = nil) throws {

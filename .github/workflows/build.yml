@@ -24,7 +24,7 @@ jobs:
 
       - name: Install tools
         run: |
-          brew install xcodegen cmake
+          brew install xcodegen cmake zstd
 
       # ==========================================
       # Step 1: Build Box64 executable for iOS
@@ -296,7 +296,22 @@ jobs:
                       # made BOX64_EXIT look set -> exit(0)). Returning 0 keeps the
                       # function address non-NULL (pointer checks still pass) but
                       # makes value-returning callers see NULL/0.
-                      echo "__attribute__((weak)) long $sym(void) { return 0; }"
+                      #
+                      # v387: wrapped*_init MUST return -1 (error). These symbols
+                      # back the wrappedlibs[] entries (src/wrapped/*.c are excluded
+                      # from the iOS build, so box64's src/librarian/library.c calls
+                      # a 0-returning stub for libc/libpthread/libdl init and treats
+                      # 0 as success -> marks libc LIB_WRAPPED with NULL symbolmap/
+                      # datamap khash tables -> kh_get(datamap, NULL, ...) -> SIGSEGV
+                      # addr=0x0 in getSymbolInMaps during wine64 relocation. On error
+                      # box64's NewLibrary falls back to initEmulatedLib, which loads
+                      # the bundled real x86_64 glibc via BOX64_LD_LIBRARY_PATH.
+                      case "$sym" in
+                          wrapped*_init)
+                              echo "__attribute__((weak)) long $sym(void) { return -1; }" ;;
+                          *)
+                              echo "__attribute__((weak)) long $sym(void) { return 0; }" ;;
+                      esac
                   done < /tmp/final_stubs.txt
               } > auto_stubs.c
 
@@ -374,6 +389,49 @@ jobs:
           rm -f dxvk.tar.gz
           echo "DXVK contents:"
           find MNEmulator/Native/BundledBinaries/DXVK -type f | head -20
+
+      - name: Download glibc (x86_64) for Box64
+        run: |
+          echo "=========================================="
+          echo "  Downloading x86_64 glibc for Box64"
+          echo "=========================================="
+          set -e
+          GLIBC_DIR="MNEmulator/Native/BundledBinaries/glibc"
+          rm -rf "$GLIBC_DIR"
+          mkdir -p "$GLIBC_DIR"
+          # Ubuntu 22.04 (jammy) amd64 libc6. Box64 emulates this real glibc for
+          # the guest Wine: the iOS build excludes src/wrapped/*.c, so libc's
+          # wrapped init now fails (stubs return -1) and NewLibrary loads these
+          # ELFs instead via BOX64_LD_LIBRARY_PATH. Provides libc.so.6, libm.so.6,
+          # ld-linux-x86-64.so.2, libpthread.so.0, libdl.so.2, librt.so.1,
+          # libresolv.so.2, libutil.so.1, libanl.so.1 etc.
+          curl -L -o "$GLIBC_DIR/libc6.deb" \
+            "http://archive.ubuntu.com/ubuntu/pool/main/g/glibc/libc6_2.35-0ubuntu3_amd64.deb"
+          cd "$GLIBC_DIR"
+          ar x libc6.deb
+          rm -f libc6.deb debian-binary
+          rm -f control.tar.* control.tar.gz control.tar.xz control.tar.zst
+          # data.tar.zst -> data.tar -> extract
+          zstd -d -q data.tar.zst -o data.tar
+          rm -f data.tar.zst
+          tar -xf data.tar
+          rm -f data.tar
+          # Flatten lib/x86_64-linux-gnu/* into the glibc root. On glibc>=2.34
+          # some names (libpthread/libdl/librt) are symlinks into libc; iOS
+          # FileManager.copyItem resolves symlinks, so materialize any that
+          # remain as real files with the exact needed soname.
+          mv lib/x86_64-linux-gnu/* ./ 2>/dev/null || true
+          rm -rf lib
+          for l in libpthread.so.0 libdl.so.2 librt.so.1; do
+            if [ -L "$l" ]; then
+              cp -L "$l" "$l.tmp"
+              mv -f "$l.tmp" "$l"
+            fi
+          done
+          chmod 755 *.so* ld-linux-x86-64.so.2 2>/dev/null || true
+          echo "glibc contents:"
+          ls -lh
+          file libc.so.6 libm.so.6 ld-linux-x86-64.so.2 libpthread.so.0 2>/dev/null || true
 
       - name: Bundle all binaries
         run: |
@@ -520,6 +578,9 @@ jobs:
           echo "=== Copying Wine ==="
           cp -R "$BIN_SRC/Wine" "$BIN_DST/"
           
+          echo "=== Copying glibc (x86_64 guest libc for Box64) ==="
+          cp -R "$BIN_SRC/glibc" "$BIN_DST/"
+          
           echo "=== Copying MoltenVK ==="
           find "$BIN_SRC/MoltenVK" -type f | head -10
           cp -R "$BIN_SRC/MoltenVK" "$BIN_DST/"
@@ -531,7 +592,9 @@ jobs:
           echo "=== App size after injection ==="
           du -sh "$APP_PATH"
           echo "=== Bundled binaries in app ==="
-          find "$BIN_DST" -name "box64" -o -name "wine64" -o -name "*.dylib" -o -name "*.dll" 2>/dev/null | head -20
+          find "$BIN_DST" -name "box64" -o -name "wine64" -o -name "libc.so.6" -o -name "*.dylib" -o -name "*.dll" 2>/dev/null | head -20
+          echo "=== glibc in app ==="
+          ls -la "$BIN_DST/glibc/" 2>/dev/null | head -30
           echo "=== All files in BundledBinaries ==="
           find "$BIN_DST" -type f | wc -l
 

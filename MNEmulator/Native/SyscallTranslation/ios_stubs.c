@@ -9,8 +9,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <limits.h>
 #include <sys/syscall.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include "../Include/rawlibc.h"
 
 /* Box64 needs these Linux/glibc symbols that don't exist on iOS */
@@ -40,6 +42,74 @@ x64emu_t *thread_get_emu(void) { return NULL; }
 void *__libc_dlopen_mode(const char *name, int mode) { return dlopen(name, mode); }
 void *__libc_dlsym(void *handle, const char *name) { return dlsym(handle, name); }
 int __libc_dlclose(void *handle) { return dlclose(handle); }
+
+/* ------------------------------------------------------------------ */
+/* glibc heap aliases (box64's box_malloc family).                    */
+/*                                                                     */
+/* box64's src/include/debug.h maps box_malloc/box_realloc/box_calloc/ */
+/* box_free/box_memalign to __libc_malloc/__libc_realloc/__libc_calloc */
+/* /__libc_free/__libc_memalign unless ANDROID or STATICBUILD. The     */
+/* file that normally defines those aliases is src/mallochook.c, which */
+/* is EXCLUDED from the iOS build. Without real implementations here   */
+/* the symbols fall into the auto-generated `long sym(void){return 0;}`*/
+/* weak stubs, so box_malloc/box_realloc/box_calloc returned NULL.     */
+/* The very first box_realloc in the process is at custommem.c:809     */
+/* (map64_customMalloc, reached from rbtree_init("blockstree") via     */
+/* wine_prereserve) — returning NULL there made rbtree.c write         */
+/* p_blocks[i].block = NULL → SIGSEGV at addr=0x0 (v380 crash).        */
+/* Strong definitions here override the weak auto-stubs at link time.  */
+/*                                                                     */
+/* libc malloc is NOT dyld-interposed (LiveContainer only interposes   */
+/* path/fd functions), so plain malloc/calloc/realloc/free are safe.   */
+/* ------------------------------------------------------------------ */
+void *__libc_malloc(size_t size) { return malloc(size); }
+
+void *__libc_calloc(size_t count, size_t size) { return calloc(count, size); }
+
+void *__libc_realloc(void *ptr, size_t size) { return realloc(ptr, size); }
+
+void __libc_free(void *ptr) { free(ptr); }
+
+void *__libc_memalign(size_t alignment, size_t size)
+{
+    void *p = NULL;
+    if (posix_memalign(&p, alignment, size) != 0)
+        return NULL;
+    return p;
+}
+
+/* box_strdup/box_realpath are also defined in the excluded mallochook.c.
+   debug.h declares them extern, so without strong definitions here they
+   fall into the same weak return-0 stubs and NULL out fullpath/argv/env
+   (core.c:1268-1269, elfloader.c, pathcoll.c, etc.). Mirror the exact
+   glibc-compatible semantics of mallochook.c. */
+char *box_strdup(const char *s)
+{
+    size_t len = strlen(s);
+    char *ret = (char *)calloc(1, len + 1);
+    if (!ret)
+        return NULL;
+    memcpy(ret, s, len);
+    return ret;
+}
+
+char *box_realpath(const char *path, char *ret)
+{
+    if (ret)
+        return realpath(path, ret);
+#ifdef PATH_MAX
+    size_t path_max = PATH_MAX;
+#else
+    size_t path_max = pathconf(path, _PC_PATH_MAX);
+    if (path_max <= 0)
+        path_max = 4096;
+#endif
+    char tmp[path_max];
+    char *p = realpath(path, tmp);
+    if (!p)
+        return NULL;
+    return box_strdup(tmp);
+}
 
 int of_convert(int x) { return x; }
 

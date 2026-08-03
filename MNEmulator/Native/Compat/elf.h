@@ -436,10 +436,10 @@ typedef struct {
 } Elf64_Verneed;
 
 typedef struct {
-    Elf64_Half vna_hash;
+    Elf64_Word vna_hash;
     Elf64_Half vna_flags;
     Elf64_Half vna_other;
-    Elf64_Half vna_name;
+    Elf64_Word vna_name;
     Elf64_Word vna_next;
 } Elf64_Vernaux;
 
@@ -467,10 +467,10 @@ typedef struct {
 } Elf32_Verneed;
 
 typedef struct {
-    Elf32_Half vna_hash;
+    Elf32_Word vna_hash;
     Elf32_Half vna_flags;
     Elf32_Half vna_other;
-    Elf32_Half vna_name;
+    Elf32_Word vna_name;
     Elf32_Word vna_next;
 } Elf32_Vernaux;
 

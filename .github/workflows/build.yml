@@ -86,6 +86,11 @@ jobs:
 
           echo "Patching complete."
 
+      - name: Patch Box64 version-check debug logging
+        run: |
+          BOX64_SRC="$PWD/Box64Source/box64"
+          cd "$BOX64_SRC"
+          python3 "$PWD/../../Scripts/patch_version_debug.py"
       - name: Build Box64 for iOS
         run: |
           echo "=========================================="

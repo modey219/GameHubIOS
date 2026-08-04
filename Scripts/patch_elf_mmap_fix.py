@@ -28,6 +28,18 @@
 #    the device stderr.log definitively shows WHICH check fails when the main
 #    ELF header cannot be parsed (v396 showed "Error: Reading elf header of
 #    ...wine64" with no parse message at all, which upstream code cannot do).
+#
+# v4xx hardening (v410 root cause: stale objects; the v410 binary's elfparser.o
+# printed none of the patched breadcrumbs even though the source had them):
+#  * ALL anchor-not-found paths now FAIL LOUDLY (previously WARNING-skip could
+#    silently build a non-diagnostic binary).
+#  * ParseElfHeader64 gains an ENTER breadcrumb BEFORE the fread, the fread rc,
+#    and ferror()/fileno() on the failure branch — a definitive fopen/read path
+#    audit that does not depend on any later check.
+#  * fopen (core.c) breadcrumb now also prints fileno().
+#  * A final verify() re-reads the patched sources and aborts on any miss.
+#  * build.yml additionally strings-checks the FINAL box64 binary, so a
+#    stale-object build is rejected on CI, not discovered on device.
 import subprocess
 import sys
 
@@ -103,7 +115,8 @@ def add_diag_markers(path):
     a1 = "head->multiblocks[n].flags = e->p_flags;"
     i1 = src.find(a1)
     if i1 < 0:
-        print("WARNING: diag marker anchor 1 not found in %s; skipping" % path)
+        print("ERROR: diag marker anchor 1 not found in %s (box64 source changed?); fix this script before building" % path)
+        sys.exit(1)
     else:
         marker = ("printf_log(LOG_INFO, \"[DBG] %s seg#%zu vaddr=0x%llx off=0x%llx "
                   "fsz=0x%llx msz=0x%llx flags=%x\\n\", head->name, i, "
@@ -117,7 +130,8 @@ def add_diag_markers(path):
     a2 = "                            if(file_read_size > e->p_filesz)\n                                file_read_size = e->p_filesz;"
     i2 = src.find(a2)
     if i2 < 0:
-        print("WARNING: diag marker anchor 2 not found in %s; skipping" % path)
+        print("ERROR: diag marker anchor 2 not found in %s (box64 source changed?); fix this script before building" % path)
+        sys.exit(1)
     else:
         marker = ("                            if(file_read_size > e->p_filesz)\n"
                   "                                file_read_size = e->p_filesz;\n"
@@ -143,7 +157,8 @@ def add_parse_breadcrumbs(elfloader_path, elfparser_path):
         open(elfloader_path, "w", encoding="utf-8").write(src)
         print("  inserted LoadAndCheckElfHeader breadcrumb")
     else:
-        print("WARNING: LCH breadcrumb anchor not found in %s; skipping" % elfloader_path)
+        print("ERROR: LCH breadcrumb anchor not found in %s (box64 source changed?); fix this script before building" % elfloader_path)
+        sys.exit(1)
 
     # Marker B: instrument the first fread of the ELF header and dump every
     # field that ParseElfHeader64 validates next. Runs only on success (the
@@ -159,20 +174,22 @@ def add_parse_breadcrumbs(elfloader_path, elfparser_path):
         return
     i = src.find(a)
     if i < 0:
-        print("WARNING: ParseElfHeader64 breadcrumb anchor not found in %s; skipping" % elfparser_path)
-        return
-    repl = """    if(fread(&header, sizeof(Elf64_Ehdr), 1, f)!=1) {
-        printf_log(LOG_NONE, "[MNEMU] ParseElfHeader64 fread(ehdr)!=1 for %s\\n", name);
+        print("ERROR: ParseElfHeader64 breadcrumb anchor not found in %s (box64 source changed?); fix this script before building" % elfparser_path)
+        sys.exit(1)
+    repl = """    printf_log(LOG_NONE, "[MNEMU] ParseElfHeader64 ENTER name=%s exec=%d f=%p fileno=%d\\n", name, exec, (void*)f, fileno(f));
+    int mn_rc = fread(&header, sizeof(Elf64_Ehdr), 1, f);
+    if(mn_rc!=1) {
+        printf_log(LOG_NONE, "[MNEMU] ParseElfHeader64 fread(ehdr)!=1 rc=%d fileno=%d ferror=%d for %s\\n", mn_rc, fileno(f), ferror(f), name);
         printf_log(level, "Cannot read ELF Header\\n");
         return NULL;
     }
-    printf_log(LOG_NONE, "[MNEMU] ParseElfHeader64 %s ehdr=%02X%02X%02X%02X cls=%u data=%u ver=%u osabi=%u type=%u mach=%u entry=0x%llx phoff=0x%llx shoff=0x%llx phnum=%u shnum=%u phent=%u shent=%u\\n", name, header.e_ident[0],header.e_ident[1],header.e_ident[2],header.e_ident[3],header.e_ident[EI_CLASS],header.e_ident[EI_DATA],header.e_ident[EI_VERSION],header.e_ident[EI_OSABI],header.e_type,header.e_machine,(unsigned long long)header.e_entry,(unsigned long long)header.e_phoff,(unsigned long long)header.e_shoff,header.e_phnum,header.e_shnum,header.e_phentsize,header.e_shentsize);"""
+    printf_log(LOG_NONE, "[MNEMU] ParseElfHeader64 %s ehdr=%02X%02X%02X%02X cls=%u data=%u ver=%u osabi=%u type=%u mach=%u entry=0x%llx phoff=0x%llx shoff=0x%llx phnum=%u shnum=%u phent=%u shent=%u fileno=%d\\n", name, header.e_ident[0],header.e_ident[1],header.e_ident[2],header.e_ident[3],header.e_ident[EI_CLASS],header.e_ident[EI_DATA],header.e_ident[EI_VERSION],header.e_ident[EI_OSABI],header.e_type,header.e_machine,(unsigned long long)header.e_entry,(unsigned long long)header.e_phoff,(unsigned long long)header.e_shoff,header.e_phnum,header.e_shnum,header.e_phentsize,header.e_shentsize,fileno(f));"""
     src = src.replace(a, repl, 1)
-    if "[MNEMU] ParseElfHeader64" not in src:
+    if "[MNEMU] ParseElfHeader64 ENTER" not in src:
         print("ERROR: ParseElfHeader64 breadcrumb insert verification failed in %s" % elfparser_path)
         sys.exit(1)
     open(elfparser_path, "w", encoding="utf-8").write(src)
-    print("  inserted ParseElfHeader64 breadcrumb")
+    print("  inserted ParseElfHeader64 breadcrumb (ENTER + fread rc + ferror/fileno + ehdr dump)")
 
 
 def add_core_markers(path):
@@ -191,8 +208,31 @@ def add_core_markers(path):
     print("Patched %s: fopen breadcrumb installed" % path)
 
 
+def verify():
+    checks = [
+        (ELFLOADER, "Cannot re-read elf block", "ELF large-page re-fill fix"),
+        (ELFLOADER, "[MNEMU] LoadAndCheckElfHeader", "LoadAndCheckElfHeader breadcrumb"),
+        (ELFLOADER, "[DBG] %s seg#", "loader seg-start marker"),
+        (ELFPARSER, "[MNEMU] ParseElfHeader64 ENTER", "ParseElfHeader64 ENTER breadcrumb"),
+        (ELFPARSER, "[MNEMU] ParseElfHeader64 fread(ehdr)!=1", "ParseElfHeader64 fread-fail breadcrumb"),
+        (COREC, "[MNEMU] fopen(", "fopen breadcrumb"),
+    ]
+    ok = True
+    for path, needle, what in checks:
+        if needle in open(path, encoding="utf-8").read():
+            print("  OK    %s (%s)" % (what, path))
+        else:
+            print("  MISS  %s (%s) needle=%s" % (what, path, needle))
+            ok = False
+    if not ok:
+        print("ERROR: build would produce a non-diagnostic binary; aborting")
+        sys.exit(1)
+    print("Patch verification passed: ELF fix + all [MNEMU] breadcrumbs present")
+
+
 apply(ELFLOADER)
 add_diag_markers(ELFLOADER)
 add_parse_breadcrumbs(ELFLOADER, ELFPARSER)
 add_core_markers(COREC)
-print("ELF segment large-page fix + v397 breadcrumbs installed")
+verify()
+print("ELF segment large-page fix + v4xx breadcrumbs installed and verified")

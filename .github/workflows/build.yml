@@ -33,6 +33,12 @@ jobs:
         run: |
           if [ ! -d "Box64Source/box64" ]; then
             git clone --depth 1 https://github.com/ptitSeb/box64.git Box64Source/box64
+          else
+            # Refresh a persisted tree so a stale checkout never silently
+            # diverges from upstream (v410's device log came from a tree whose
+            # elfloader/elfparser sources had moved but whose objects had not).
+            git -C Box64Source/box64 fetch --depth 1 origin main
+            git -C Box64Source/box64 reset --hard origin/main
           fi
 
       - name: Patch Box64 for iOS
@@ -105,6 +111,10 @@ jobs:
           
           BOX64_SRC="$PWD/Box64Source/box64"
           OUTPUT_DIR="$PWD/MNEmulator/Native/Box64Lib"
+          # Force a full recompile every build: a stale objects/ tree (v410
+          # compiled elfloader/elfparser from an older source revision) produces
+          # a binary whose behavior does not match the patched sources.
+          rm -rf "$OUTPUT_DIR/objects"
           mkdir -p "$OUTPUT_DIR/objects"
           
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
@@ -344,6 +354,19 @@ jobs:
                   -o box64 -lm -lSystem
               chmod 755 box64
               echo "Created box64 executable: $(ls -la box64)"
+
+              # Verify the diagnostic breadcrumbs are in the FINAL binary. A
+              # stale object (v410) would silently omit them; refuse to package
+              # so every device build is provably carrying the breadcrumbs.
+              if ! strings box64 2>/dev/null | grep -q "\[MNEMU\] ParseElfHeader64 ENTER"; then
+                  echo "ERROR: box64 binary missing ParseElfHeader64 breadcrumb (stale objects?); refusing to package"
+                  exit 1
+              fi
+              if ! strings box64 2>/dev/null | grep -q "\[MNEMU\] LoadAndCheckElfHeader"; then
+                  echo "ERROR: box64 binary missing LoadAndCheckElfHeader breadcrumb; refusing to package"
+                  exit 1
+              fi
+              echo "box64 binary verified: contains all [MNEMU] breadcrumbs"
           else
               echo "ERROR: No Box64 files compiled"
               exit 1

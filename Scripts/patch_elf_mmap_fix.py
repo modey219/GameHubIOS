@@ -9,17 +9,24 @@
 # falls inside the remapped range, restoring what the kernel zeroed (only that
 # range is writable; earlier segments may extend into read-only file-mapped
 # pages). Run from Box64Source/box64.
+#
+# Upstream 0db8df7 reworked the !try_mmap path: the anonymous remap now maps
+# with PROT_WRITE (deferred mprotect) and skips pages that are already mapped
+# (getProtection overlap-avoidance), which structurally prevents the wipe. This
+# re-read is kept as a defensive net for any residual case. If the anchor drifts
+# again (fresh clone, active upstream), WARN and skip instead of failing the
+# build so an unrelated patch churn can never block the pipeline again.
 import sys
 
 
 def apply(path):
     src = open(path, encoding="utf-8").read()
 
-    anchor = "setProtection_elf((uintptr_t)p, asize, prot);\n                head->multiblocks[n].p = p;\n                if (e->p_filesz && !mapped_file) {"
+    anchor = "setProtection_elf((uintptr_t)p, asize, prot);\n                head->multiblocks[n].p = p;\n                if (file_read_size) {"
     i = src.find(anchor)
     if i < 0:
-        print("ERROR: anchor not found in %s (box64 source changed?)" % path)
-        sys.exit(1)
+        print("WARNING: anchor not found in %s (box64 source changed?); skipping ELF large-page re-read patch" % path)
+        return
 
     if "Cannot re-read elf block" in src:
         print("%s: already patched, skipping" % path)
@@ -44,7 +51,7 @@ def apply(path):
                         uintptr_t j_end = j_start + head->multiblocks[j].size;
                         uintptr_t a = j_start > paddr ? j_start : paddr;
                         uintptr_t b = j_end < (paddr + asize) ? j_end : (paddr + asize);
-                        if(a < b) {
+                        if(a < b && (getProtection((uintptr_t)a) & PROT_WRITE)) {
                             fseeko64(head->file, head->multiblocks[j].offs + (off_t)(a - j_start), SEEK_SET);
                             if(fread((void*)a, b - a, 1, head->file)!=1) {
                                 printf_log(LOG_NONE, "Cannot re-read elf block for \\"%s\\"\\n", head->name);
@@ -53,7 +60,7 @@ def apply(path):
                         }
                     }
                 }
-                if (e->p_filesz && !mapped_file) {"""
+                if (file_read_size) {"""
     src = src.replace(anchor, reinsert, 1)
 
     if "Cannot re-read elf block" not in src:

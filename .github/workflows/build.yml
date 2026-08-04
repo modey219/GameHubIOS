@@ -31,14 +31,20 @@ jobs:
       # ==========================================
       - name: Clone Box64
         run: |
+          # Pinned to a known-good upstream ref that carries the 16K-host mmap
+          # fix (3c670ef "[MMAP] Fixed wine mappings on 16K hosts" + BIND_NOW
+          # support). Bump this ref to pull newer box64; the compat elf.h in
+          # MNEmulator/Native/Compat must define any new DT_DF_1_* macros.
+          BOX64_REF=3c670ef
           if [ ! -d "Box64Source/box64" ]; then
-            git clone --depth 1 https://github.com/ptitSeb/box64.git Box64Source/box64
+            git clone https://github.com/ptitSeb/box64.git Box64Source/box64
+            git -C Box64Source/box64 checkout "$BOX64_REF"
           else
             # Refresh a persisted tree so a stale checkout never silently
             # diverges from upstream (v410's device log came from a tree whose
             # elfloader/elfparser sources had moved but whose objects had not).
-            git -C Box64Source/box64 fetch --depth 1 origin main
-            git -C Box64Source/box64 reset --hard origin/main
+            git -C Box64Source/box64 fetch --depth 1 origin "$BOX64_REF"
+            git -C Box64Source/box64 reset --hard "$BOX64_REF"
           fi
 
       - name: Patch Box64 for iOS

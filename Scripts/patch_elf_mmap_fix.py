@@ -25,18 +25,23 @@ def apply(path):
 
     reinsert = """setProtection_elf((uintptr_t)p, asize, prot);
                 head->multiblocks[n].p = p;
-                // Large host pages (iOS 16KB / some ARM64 64KB): the anonymous
-                // MAP_FIXED remap above covers whole host page(s), so it wipes
+                // Large host pages (iOS 16KB / some ARM64 64KB): an ANONYMOUS
+                // MAP_FIXED remap covers whole host page(s) and therefore wipes
                 // the file bytes of earlier segments that share the same page(s).
                 // Re-read those segments' data from the ELF file to restore it.
-                for (int j = 0; j < n; ++j) {
-                    if(head->multiblocks[j].size &&
-                       head->multiblocks[j].paddr < (paddr + asize) &&
-                       (head->multiblocks[j].paddr + head->multiblocks[j].size) > paddr) {
-                        fseeko64(head->file, head->multiblocks[j].offs, SEEK_SET);
-                        if(fread((void*)head->multiblocks[j].paddr, head->multiblocks[j].size, 1, head->file)!=1) {
-                            printf_log(LOG_NONE, "Cannot re-read elf block for \\"%s\\"\\n", head->name);
-                            return 1;
+                // Skipped when this segment was file-mapped: the file map already
+                // provides every segment's bytes in that page and is read-only,
+                // so writing it back would SIGBUS.
+                if (!mapped_file) {
+                    for (int j = 0; j < n; ++j) {
+                        if(head->multiblocks[j].size &&
+                           head->multiblocks[j].paddr < (paddr + asize) &&
+                           (head->multiblocks[j].paddr + head->multiblocks[j].size) > paddr) {
+                            fseeko64(head->file, head->multiblocks[j].offs, SEEK_SET);
+                            if(fread((void*)head->multiblocks[j].paddr, head->multiblocks[j].size, 1, head->file)!=1) {
+                                printf_log(LOG_NONE, "Cannot re-read elf block for \\"%s\\"\\n", head->name);
+                                return 1;
+                            }
                         }
                     }
                 }

@@ -38,7 +38,24 @@ void enter_critical_section(void *emu) { (void)emu; }
 
 int my_GetGthreadsGotInitialized(void) { return 0; }
 
-x64emu_t *thread_get_emu(void) { return NULL; }
+/* Box64's real TLS-emu bookkeeping lives in src/libtools/threads.c, which is
+   EXCLUDED from the iOS build. Without it, thread_set_emu() fell into an
+   auto-generated no-op stub and thread_get_emu() returned NULL, so the main
+   emu was never registered. The loader's R_X86_64_IRELATIVE case
+   (elfloader.c:697) then called EmuCall(NULL, resolver) and dereferenced
+   emu->regs[_RBX] at offset 0x18 -> SIGSEGV addr=0x18 on libc's very first
+   IFUNC relocation. Store/return the emu pointer per-thread instead. The real
+   EmuCall/x64emu.c code (compiled with the real x64emu_t layout) only needs
+   the pointer value from us, so the placeholder struct here is fine. */
+static __thread x64emu_t *g_ios_emu = NULL;
+
+void thread_set_emu(x64emu_t *emu) { g_ios_emu = emu; }
+
+x64emu_t *thread_get_emu(void) { return g_ios_emu; }
+
+x64emu_t *thread_get_emu_no_create(void) { return g_ios_emu; }
+
+void thread_forget_emu(void) { g_ios_emu = NULL; }
 
 void *__libc_dlopen_mode(const char *name, int mode) { return dlopen(name, mode); }
 void *__libc_dlsym(void *handle, const char *name) { return dlsym(handle, name); }

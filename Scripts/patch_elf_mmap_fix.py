@@ -22,6 +22,10 @@ import sys
 def apply(path):
     src = open(path, encoding="utf-8").read()
 
+    if "Cannot re-read elf block" in src:
+        print("%s: re-read logic already present (upstream merged it); skipping" % path)
+        return
+
     anchor = "setProtection_elf((uintptr_t)p, asize, prot);\n                head->multiblocks[n].p = p;\n                if (file_read_size) {"
     i = src.find(anchor)
     if i < 0:
@@ -70,5 +74,44 @@ def apply(path):
     print("Patched %s: re-fill segments wiped by large-page MAP_FIXED remap" % path)
 
 
+def add_diag_markers(path):
+    src = open(path, encoding="utf-8").read()
+    if "[DBG] %s seg#" in src:
+        print("%s: diag markers already present, skipping" % path)
+        return
+
+    # Marker 1: print every PT_LOAD segment as it is reached, so a hang inside
+    # AllocLoadElfMemory is pinpointable to a segment in stderr.log even when
+    # BOX64_LOG only shows LOG_INFO.
+    a1 = "head->multiblocks[n].flags = e->p_flags;"
+    i1 = src.find(a1)
+    if i1 < 0:
+        print("WARNING: diag marker anchor 1 not found in %s; skipping" % path)
+    else:
+        marker = ("printf_log(LOG_INFO, \"[DBG] %s seg#%zu vaddr=0x%llx off=0x%llx "
+                  "fsz=0x%llx msz=0x%llx flags=%x\\n\", head->name, i, "
+                  "(unsigned long long)e->p_paddr, (unsigned long long)e->p_offset, "
+                  "(unsigned long long)e->p_filesz, (unsigned long long)e->p_memsz, e->p_flags);\n"
+                  "            " + a1)
+        src = src.replace(a1, marker, 1)
+        print("  inserted seg-start marker")
+
+    # Marker 2: confirm the file-mapped branch succeeded (that path prints nothing).
+    a2 = "                            if(file_read_size > e->p_filesz)\n                                file_read_size = e->p_filesz;"
+    i2 = src.find(a2)
+    if i2 < 0:
+        print("WARNING: diag marker anchor 2 not found in %s; skipping" % path)
+    else:
+        marker = ("                            if(file_read_size > e->p_filesz)\n"
+                  "                                file_read_size = e->p_filesz;\n"
+                  "                            printf_log(LOG_INFO, \"[DBG] %s file-map OK @%p size=0x%zx read=0x%zx\\n\", head->name, (void*)file_map_addr, file_size - file_map_delta, file_read_size);")
+        src = src.replace(a2, marker, 1)
+        print("  inserted file-map-OK marker")
+
+    open(path, "w", encoding="utf-8").write(src)
+    print("Patched %s: loader diag markers installed" % path)
+
+
 apply("src/elfs/elfloader.c")
+add_diag_markers("src/elfs/elfloader.c")
 print("ELF segment large-page fix installed")

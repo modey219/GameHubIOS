@@ -437,7 +437,7 @@ class Box64Bridge {
         safeSetenv("BOX64_NORCFILES", "1", 1)
         safeSetenv("BOX64_DYNAREC", "0", 1)
         safeSetenv("BOX64_NOBANNED", "1", 1)
-        safeSetenv("BOX64_LOG", "1", 1)
+        safeSetenv("BOX64_LOG", "2", 1)
         safeSetenv("BOX64_SHOWSEGV", "1", 1)
         safeSetenv("BOX64_SHOWEXIT", "1", 1)
         safeSetenv("BOX64_NOSSE", "1", 1)

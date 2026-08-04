@@ -91,6 +91,12 @@ jobs:
           BOX64_SRC="$PWD/Box64Source/box64"
           cd "$BOX64_SRC"
           python3 "$PWD/../../Scripts/patch_version_debug.py"
+
+      - name: Patch Box64 ELF segment load (large-page zeroing fix)
+        run: |
+          BOX64_SRC="$PWD/Box64Source/box64"
+          cd "$BOX64_SRC"
+          python3 "$PWD/../../Scripts/patch_elf_mmap_fix.py"
       - name: Build Box64 for iOS
         run: |
           echo "=========================================="

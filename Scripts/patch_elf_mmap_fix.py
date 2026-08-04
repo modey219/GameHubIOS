@@ -13,28 +13,45 @@
 # Upstream 0db8df7 reworked the !try_mmap path: the anonymous remap now maps
 # with PROT_WRITE (deferred mprotect) and skips pages that are already mapped
 # (getProtection overlap-avoidance), which structurally prevents the wipe. This
-# re-read is kept as a defensive net for any residual case. If the anchor drifts
-# again (fresh clone, active upstream), WARN and skip instead of failing the
-# build so an unrelated patch churn can never block the pipeline again.
+# re-read is kept as a defensive net for any residual case.
+#
+# v397 hardening:
+#  * A leftover patch in a stale/dirty tree (e.g. a previous build's edit was
+#    merged on top of a newer master) makes the tree a hybrid that behaves
+#    differently from ANY upstream revision. We now DETECT our own old patch
+#    ("Cannot re-read elf block") and restore the pristine file from git before
+#    re-applying, so we never silently build from a poisoned tree again.
+#  * If the apply anchor drifts, we FAIL LOUDLY instead of silently skipping,
+#    so a build can never silently lose this fix.
+#  * [MNEMU] LOG_NONE breadcrumbs are installed in fopen (core.c),
+#    LoadAndCheckElfHeader (elfloader.c) and ParseElfHeader64 (elfparser.c) so
+#    the device stderr.log definitively shows WHICH check fails when the main
+#    ELF header cannot be parsed (v396 showed "Error: Reading elf header of
+#    ...wine64" with no parse message at all, which upstream code cannot do).
+import subprocess
 import sys
+
+ELFLOADER = "src/elfs/elfloader.c"
+ELFPARSER = "src/elfs/elfparser.c"
+COREC = "src/core.c"
 
 
 def apply(path):
     src = open(path, encoding="utf-8").read()
 
     if "Cannot re-read elf block" in src:
-        print("%s: re-read logic already present (upstream merged it); skipping" % path)
-        return
+        print("%s: leftover re-read patch found (stale tree); restoring pristine file from git" % path)
+        r = subprocess.run(["git", "checkout", "--", path], capture_output=True)
+        if r.returncode != 0:
+            print("ERROR: git checkout -- %s failed (%s); refusing to build a poisoned tree" % (path, r.stderr.decode(errors="replace").strip()))
+            sys.exit(1)
+        src = open(path, encoding="utf-8").read()
 
     anchor = "setProtection_elf((uintptr_t)p, asize, prot);\n                head->multiblocks[n].p = p;\n                if (file_read_size) {"
     i = src.find(anchor)
     if i < 0:
-        print("WARNING: anchor not found in %s (box64 source changed?); skipping ELF large-page re-read patch" % path)
-        return
-
-    if "Cannot re-read elf block" in src:
-        print("%s: already patched, skipping" % path)
-        return
+        print("ERROR: anchor not found in %s (box64 source changed?); fix this script before building" % path)
+        sys.exit(1)
 
     reinsert = """setProtection_elf((uintptr_t)p, asize, prot);
                 head->multiblocks[n].p = p;
@@ -112,6 +129,70 @@ def add_diag_markers(path):
     print("Patched %s: loader diag markers installed" % path)
 
 
-apply("src/elfs/elfloader.c")
-add_diag_markers("src/elfs/elfloader.c")
-print("ELF segment large-page fix installed")
+def add_parse_breadcrumbs(elfloader_path, elfparser_path):
+    # Marker A: does LoadAndCheckElfHeader even reach ParseElfHeader64, and is
+    # box64_is32bits 1 (which would silently hit the ParseElfHeader32 stub)?
+    src = open(elfloader_path, encoding="utf-8").read()
+    a = "    elfheader_t *h = box64_is32bits?ParseElfHeader32(f, name, exec):ParseElfHeader64(f, name, exec);"
+    if "[MNEMU] LoadAndCheckElfHeader" in src:
+        print("%s: LCH breadcrumb already present, skipping" % elfloader_path)
+    elif src.find(a) >= 0:
+        marker = ("    printf_log(LOG_NONE, \"[MNEMU] LoadAndCheckElfHeader name=%s exec=%d box64_is32bits=%d f=%p\\n\", name, exec, box64_is32bits, (void*)f);\n"
+                  "    elfheader_t *h = box64_is32bits?ParseElfHeader32(f, name, exec):ParseElfHeader64(f, name, exec);")
+        src = src.replace(a, marker, 1)
+        open(elfloader_path, "w", encoding="utf-8").write(src)
+        print("  inserted LoadAndCheckElfHeader breadcrumb")
+    else:
+        print("WARNING: LCH breadcrumb anchor not found in %s; skipping" % elfloader_path)
+
+    # Marker B: instrument the first fread of the ELF header and dump every
+    # field that ParseElfHeader64 validates next. Runs only on success (the
+    # failure branch returns before it). A correct dump (7F 45 4C 46, class=2,
+    # mach=62) proves the file open+read work and the failure is downstream.
+    src = open(elfparser_path, encoding="utf-8").read()
+    a = """    if(fread(&header, sizeof(Elf64_Ehdr), 1, f)!=1) {
+        printf_log(level, "Cannot read ELF Header\\n");
+        return NULL;
+    }"""
+    if "[MNEMU] ParseElfHeader64" in src:
+        print("%s: ParseElfHeader64 breadcrumb already present, skipping" % elfparser_path)
+        return
+    i = src.find(a)
+    if i < 0:
+        print("WARNING: ParseElfHeader64 breadcrumb anchor not found in %s; skipping" % elfparser_path)
+        return
+    repl = """    if(fread(&header, sizeof(Elf64_Ehdr), 1, f)!=1) {
+        printf_log(LOG_NONE, "[MNEMU] ParseElfHeader64 fread(ehdr)!=1 for %s\\n", name);
+        printf_log(level, "Cannot read ELF Header\\n");
+        return NULL;
+    }
+    printf_log(LOG_NONE, "[MNEMU] ParseElfHeader64 %s ehdr=%02X%02X%02X%02X cls=%u data=%u ver=%u osabi=%u type=%u mach=%u entry=0x%llx phoff=0x%llx shoff=0x%llx phnum=%u shnum=%u phent=%u shent=%u\\n", name, header.e_ident[0],header.e_ident[1],header.e_ident[2],header.e_ident[3],header.e_ident[EI_CLASS],header.e_ident[EI_DATA],header.e_ident[EI_VERSION],header.e_ident[EI_OSABI],header.e_type,header.e_machine,(unsigned long long)header.e_entry,(unsigned long long)header.e_phoff,(unsigned long long)header.e_shoff,header.e_phnum,header.e_shnum,header.e_phentsize,header.e_shentsize);"""
+    src = src.replace(a, repl, 1)
+    if "[MNEMU] ParseElfHeader64" not in src:
+        print("ERROR: ParseElfHeader64 breadcrumb insert verification failed in %s" % elfparser_path)
+        sys.exit(1)
+    open(elfparser_path, "w", encoding="utf-8").write(src)
+    print("  inserted ParseElfHeader64 breadcrumb")
+
+
+def add_core_markers(path):
+    src = open(path, encoding="utf-8").read()
+    a = '    FILE *f = fopen(my_context->fullpath, "rb");'
+    if "[MNEMU] fopen(" in src:
+        print("%s: fopen breadcrumb already present, skipping" % path)
+        return
+    i = src.find(a)
+    if i < 0:
+        print("WARNING: fopen breadcrumb anchor not found in %s; skipping" % path)
+        return
+    marker = a + '\n    printf_log(LOG_NONE, "[MNEMU] fopen(%s)=%p errno=%d\\n", my_context->fullpath, (void*)f, errno);'
+    src = src.replace(a, marker, 1)
+    open(path, "w", encoding="utf-8").write(src)
+    print("Patched %s: fopen breadcrumb installed" % path)
+
+
+apply(ELFLOADER)
+add_diag_markers(ELFLOADER)
+add_parse_breadcrumbs(ELFLOADER, ELFPARSER)
+add_core_markers(COREC)
+print("ELF segment large-page fix + v397 breadcrumbs installed")

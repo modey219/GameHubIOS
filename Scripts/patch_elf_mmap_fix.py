@@ -5,8 +5,10 @@
 # same page. Small libs (libdl.so.2 / libpthread.so.0, ~0x4000 bytes = a single
 # 16KB page) end up with zeroed ELF headers, so box64 discards them for "missing
 # version GLIBC_2.2.5" and Wine never starts. After the MAP_FIXED remap, re-read
-# the file data of every previously loaded segment that overlaps the remapped
-# range, restoring what the kernel zeroed. Run from Box64Source/box64.
+# the file data of the overlapping part of every previously loaded segment that
+# falls inside the remapped range, restoring what the kernel zeroed (only that
+# range is writable; earlier segments may extend into read-only file-mapped
+# pages). Run from Box64Source/box64.
 import sys
 
 
@@ -28,17 +30,23 @@ def apply(path):
                 // Large host pages (iOS 16KB / some ARM64 64KB): an ANONYMOUS
                 // MAP_FIXED remap covers whole host page(s) and therefore wipes
                 // the file bytes of earlier segments that share the same page(s).
-                // Re-read those segments' data from the ELF file to restore it.
+                // Re-read the wiped bytes from the ELF file to restore them.
                 // Skipped when this segment was file-mapped: the file map already
                 // provides every segment's bytes in that page and is read-only,
                 // so writing it back would SIGBUS.
-                if (!mapped_file) {
+                // Only the bytes inside [paddr, paddr+asize) were wiped; earlier
+                // segments may extend into read-only file-mapped pages, so restore
+                // just the intersection with that (writable) anon region.
+                if (!mapped_file && (prot & PROT_WRITE)) {
                     for (int j = 0; j < n; ++j) {
-                        if(head->multiblocks[j].size &&
-                           head->multiblocks[j].paddr < (paddr + asize) &&
-                           (head->multiblocks[j].paddr + head->multiblocks[j].size) > paddr) {
-                            fseeko64(head->file, head->multiblocks[j].offs, SEEK_SET);
-                            if(fread((void*)head->multiblocks[j].paddr, head->multiblocks[j].size, 1, head->file)!=1) {
+                        if(!head->multiblocks[j].size) continue;
+                        uintptr_t j_start = head->multiblocks[j].paddr;
+                        uintptr_t j_end = j_start + head->multiblocks[j].size;
+                        uintptr_t a = j_start > paddr ? j_start : paddr;
+                        uintptr_t b = j_end < (paddr + asize) ? j_end : (paddr + asize);
+                        if(a < b) {
+                            fseeko64(head->file, head->multiblocks[j].offs + (off_t)(a - j_start), SEEK_SET);
+                            if(fread((void*)a, b - a, 1, head->file)!=1) {
                                 printf_log(LOG_NONE, "Cannot re-read elf block for \\"%s\\"\\n", head->name);
                                 return 1;
                             }

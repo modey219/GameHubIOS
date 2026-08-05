@@ -40,6 +40,17 @@
 #  * A final verify() re-reads the patched sources and aborts on any miss.
 #  * build.yml additionally strings-checks the FINAL box64 binary, so a
 #    stale-object build is rejected on CI, not discovered on device.
+#
+# v4xx gap fix (v398 device log: hang at libc.so.6 seg#4):
+#  * The file-mapped branch's pre-gap fread ([paddr, file_map_addr)) writes into
+#    pages that are ALREADY mapped by an earlier segment (that is exactly why
+#    the while-loop advanced file_map_addr past them) and are therefore already
+#    covered by the right bytes (ELF load-bias invariant: vaddr == p_offset mod
+#    page across LOADs). Re-reading them via fread() into file-mapped pages
+#    HANGS on iOS 16KB pages; the device log dies at "file-map OK ... read=0x3000"
+#    with no "Loading TLS block" line after. Set file_read_size = 0 so the
+#    redundant fread is skipped; every fread that remains writes into anonymous
+#    pages (the provably-working pattern).
 import subprocess
 import sys
 
@@ -105,19 +116,18 @@ def apply(path):
 
 def add_diag_markers(path):
     src = open(path, encoding="utf-8").read()
-    if "[DBG] %s seg#" in src:
-        print("%s: diag markers already present, skipping" % path)
-        return
 
     # Marker 1: print every PT_LOAD segment as it is reached, so a hang inside
     # AllocLoadElfMemory is pinpointable to a segment in stderr.log even when
     # BOX64_LOG only shows LOG_INFO.
-    a1 = "head->multiblocks[n].flags = e->p_flags;"
-    i1 = src.find(a1)
-    if i1 < 0:
-        print("ERROR: diag marker anchor 1 not found in %s (box64 source changed?); fix this script before building" % path)
-        sys.exit(1)
+    if "[DBG] %s seg#" in src:
+        print("%s: seg-start marker already present, skipping" % path)
     else:
+        a1 = "head->multiblocks[n].flags = e->p_flags;"
+        i1 = src.find(a1)
+        if i1 < 0:
+            print("ERROR: diag marker anchor 1 not found in %s (box64 source changed?); fix this script before building" % path)
+            sys.exit(1)
         marker = ("printf_log(LOG_INFO, \"[DBG] %s seg#%zu vaddr=0x%llx off=0x%llx "
                   "fsz=0x%llx msz=0x%llx flags=%x\\n\", head->name, i, "
                   "(unsigned long long)e->p_paddr, (unsigned long long)e->p_offset, "
@@ -128,16 +138,49 @@ def add_diag_markers(path):
 
     # Marker 2: confirm the file-mapped branch succeeded (that path prints nothing).
     a2 = "                            if(file_read_size > e->p_filesz)\n                                file_read_size = e->p_filesz;"
-    i2 = src.find(a2)
-    if i2 < 0:
-        print("ERROR: diag marker anchor 2 not found in %s (box64 source changed?); fix this script before building" % path)
-        sys.exit(1)
+    if "[DBG] %s file-map OK" in src:
+        print("%s: file-map-OK marker already present, skipping" % path)
     else:
+        i2 = src.find(a2)
+        if i2 < 0:
+            print("ERROR: diag marker anchor 2 not found in %s (box64 source changed?); fix this script before building" % path)
+            sys.exit(1)
         marker = ("                            if(file_read_size > e->p_filesz)\n"
                   "                                file_read_size = e->p_filesz;\n"
                   "                            printf_log(LOG_INFO, \"[DBG] %s file-map OK @%p size=0x%zx read=0x%zx\\n\", head->name, (void*)file_map_addr, file_size - file_map_delta, file_read_size);")
         src = src.replace(a2, marker, 1)
         print("  inserted file-map-OK marker")
+
+    # Gap fix (v4xx): the pre-gap fread is redundant AND hangs on iOS 16KB pages.
+    # The while-loop advanced file_map_addr past pages that are ALREADY mapped by
+    # an earlier segment of the same ELF, and the ELF load-bias invariant
+    # (vaddr == p_offset mod page across LOADs) guarantees those pages already
+    # hold this segment's bytes. fread() writing back into those file-mapped
+    # pages is what hangs (libc.so.6 seg#4, "file-map OK ... read=0x3000" then
+    # silence, no "Loading TLS block"). Force file_read_size = 0.
+    if "HANGS on iOS 16KB pages" in src:
+        print("%s: file-map gap fix already present, skipping" % path)
+    else:
+        a3 = """                            file_read_size = file_map_addr > head->multiblocks[n].paddr
+                                ? file_map_addr - head->multiblocks[n].paddr
+                                : 0;
+                            if(file_read_size > e->p_filesz)
+                                file_read_size = e->p_filesz;"""
+        i3 = src.find(a3)
+        if i3 < 0:
+            print("ERROR: file-map gap fix anchor not found in %s (box64 source changed?); fix this script before building" % path)
+            sys.exit(1)
+        repl = """                            // The pre-gap bytes [paddr, file_map_addr) are already
+                            // provided by earlier segments' mappings (that is why
+                            // the while-loop advanced file_map_addr past them); the
+                            // ELF load-bias invariant (vaddr == p_offset mod page)
+                            // guarantees those bytes are identical to this segment's.
+                            // Re-reading them via fread() writes into file-mapped
+                            // pages, which HANGS on iOS 16KB pages (libc.so.6 seg#4).
+                            // Skip the redundant read.
+                            file_read_size = 0;"""
+        src = src.replace(a3, repl, 1)
+        print("  applied file-map gap fix (skip redundant pre-gap fread)")
 
     open(path, "w", encoding="utf-8").write(src)
     print("Patched %s: loader diag markers installed" % path)
@@ -213,6 +256,7 @@ def verify():
         (ELFLOADER, "Cannot re-read elf block", "ELF large-page re-fill fix"),
         (ELFLOADER, "[MNEMU] LoadAndCheckElfHeader", "LoadAndCheckElfHeader breadcrumb"),
         (ELFLOADER, "[DBG] %s seg#", "loader seg-start marker"),
+        (ELFLOADER, "HANGS on iOS 16KB pages", "file-map gap fix"),
         (ELFPARSER, "[MNEMU] ParseElfHeader64 ENTER", "ParseElfHeader64 ENTER breadcrumb"),
         (ELFPARSER, "[MNEMU] ParseElfHeader64 fread(ehdr)!=1", "ParseElfHeader64 fread-fail breadcrumb"),
         (COREC, "[MNEMU] fopen(", "fopen breadcrumb"),

@@ -92,6 +92,7 @@ CASES_MAIN = """        case 24: // sys_sched_yield (iOS: compat inline returns 
             S_RAX = sched_yield();
             break;
         case 60: // sys_exit (iOS: must NOT reach Darwin exit - would kill the app)
+            printf_log(LOG_INFO, "[iOS] guest exit(%d) via sys_exit\n", (int)R_RDI);
             emu->quit = 1;
             emu->exit = 1;
             S_RAX = R_RDI;
@@ -132,6 +133,7 @@ CASES_MAIN = """        case 24: // sys_sched_yield (iOS: compat inline returns 
                 S_RAX = -errno;
             break;
         case 231: // sys_exit_group (iOS: must NOT reach Darwin exit)
+            printf_log(LOG_INFO, "[iOS] guest exit_group(%d) via sys_exit_group\n", (int)R_RDI);
             emu->quit = 1;
             emu->exit = 1;
             S_RAX = R_RDI;
@@ -142,6 +144,7 @@ CASES_MAIN = """        case 24: // sys_sched_yield (iOS: compat inline returns 
 CASES_LIBC = """        case 24: // sys_sched_yield (iOS: compat inline returns 0)
             return sched_yield();
         case 60: // sys_exit (iOS: must NOT reach Darwin exit)
+            printf_log(LOG_INFO, "[iOS] guest exit(%d) via my_syscall\n", (int)S_RSI);
             emu->quit = 1;
             emu->exit = 1;
             return S_RSI;
@@ -163,6 +166,7 @@ CASES_LIBC = """        case 24: // sys_sched_yield (iOS: compat inline returns 
         case 230: // sys_clock_nanosleep
             return clock_nanosleep(S_RSI, S_RDX, (void*)R_RCX, (void*)R_R8);
         case 231: // sys_exit_group (iOS: must NOT reach Darwin exit)
+            printf_log(LOG_INFO, "[iOS] guest exit_group(%d) via my_syscall\n", (int)S_RSI);
             emu->quit = 1;
             emu->exit = 1;
             return S_RSI;

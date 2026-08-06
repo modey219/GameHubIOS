@@ -330,7 +330,34 @@ static void setup_logging(const char *prefix_path) {
     box64_stub_set_exit_sink((void (*)(int, void *, const char *))box64_runner_handle_exit);
     runner_log("[Runner] ===== Box64 In-Process Runner =====");
     runner_log("[Runner] Log path: %s (fd=%d)", g_log_path, g_log_fd);
+    /* [DIAG] Redirect process stdout/stderr to the runner log so guest wine
+       stderr (e.g. "wine: could not load ntdll.so") and box64's ftrace all
+       land in box64_runner.log instead of the syslog/console gap. */
+    if (g_log_fd >= 0) {
+        box64_raw_dup2(g_log_fd, 1);
+        box64_raw_dup2(g_log_fd, 2);
+        runner_log("[Runner] stdout/stderr redirected to log fd");
+    }
     runner_log_sync();
+}
+
+static void dump_guest_env(void) {
+    runner_log("[Env] WINEDLLPATH=%s", getenv("WINEDLLPATH") ? getenv("WINEDLLPATH") : "(null)");
+    runner_log("[Env] WINEPREFIX=%s", getenv("WINEPREFIX") ? getenv("WINEPREFIX") : "(null)");
+    runner_log("[Env] WINEARCH=%s", getenv("WINEARCH") ? getenv("WINEARCH") : "(null)");
+    runner_log("[Env] WINEDEBUG=%s", getenv("WINEDEBUG") ? getenv("WINEDEBUG") : "(null)");
+    runner_log("[Env] BOX64_LD_LIBRARY_PATH=%s", getenv("BOX64_LD_LIBRARY_PATH") ? getenv("BOX64_LD_LIBRARY_PATH") : "(null)");
+    runner_log("[Env] BOX64_LOG=%s", getenv("BOX64_LOG") ? getenv("BOX64_LOG") : "(null)");
+    runner_log("[Env] BOX64_DYNAREC=%s", getenv("BOX64_DYNAREC") ? getenv("BOX64_DYNAREC") : "(null)");
+    int i, shown = 0;
+    for (i = 0; environ[i] && i < 300; i++) {
+        if (strstr(environ[i], "WINE") || strstr(environ[i], "BOX64_") ||
+            strstr(environ[i], "DISPLAY") || strstr(environ[i], "LD_LIBRARY")) {
+            runner_log("[Env] %s", environ[i]);
+            shown++;
+        }
+    }
+    runner_log("[Env] scanned %d matching entries from environ", shown);
 }
 
 static void free_box64_argv(void) {
@@ -554,6 +581,9 @@ static void *wine_thread_func(void *arg) {
                    box64_raw_stat("/etc/box64.box64rc", &st) == 0 ? "EXISTS" : "absent");
         runner_log_sync();
     }
+
+    dump_guest_env();
+    runner_log_sync();
 
     runner_log("[Runner] Calling initialize(%d)", argc);
     runner_log_sync();

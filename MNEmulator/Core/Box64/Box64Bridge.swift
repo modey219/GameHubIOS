@@ -712,6 +712,12 @@ class Box64Bridge {
         return size.intValue > 0
     }
 
+    private func fileSize(_ path: String) -> Int {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let size = attrs[.size] as? NSNumber else { return -1 }
+        return size.intValue
+    }
+
     private func auditPath(_ path: String, label: String) {
         let fm = FileManager.default
         var isDir: ObjCBool = false
@@ -756,19 +762,23 @@ class Box64Bridge {
         let fm = FileManager.default
         try fm.createDirectory(atPath: box64InstallPath, withIntermediateDirectories: true)
         let destination = (box64InstallPath as NSString).appendingPathComponent("box64")
-        if isNonEmptyFile(destination) { return }
-        if fm.fileExists(atPath: destination) {
-            try? fm.removeItem(atPath: destination)
-            Self.log("extractBox64: removed stale 0-byte file")
-        }
 
         guard let bundledPath = findBundledResource("box64", isDirectory: false) else {
             throw SetupError.box64Missing
         }
-        Self.log("extractBox64: source=\(bundledPath) dest=\(destination)")
         let srcExists = fm.fileExists(atPath: bundledPath)
         let srcAttrs = try? fm.attributesOfItem(atPath: bundledPath)
         let srcSize = (srcAttrs?[.size] as? NSNumber)?.intValue ?? -1
+        let dstSize = fileSize(destination)
+        Self.log("extractBox64: source=\(bundledPath) dest=\(destination) srcSize=\(srcSize) dstSize=\(dstSize)")
+        if isNonEmptyFile(destination) && srcSize == dstSize {
+            Self.log("extractBox64: box64 already up-to-date (size=\(dstSize)), skipping")
+            return
+        }
+        if fm.fileExists(atPath: destination) {
+            try? fm.removeItem(atPath: destination)
+            Self.log("extractBox64: removed stale box64 (old size=\(dstSize), new size=\(srcSize))")
+        }
         let dstDirExists = fm.fileExists(atPath: box64InstallPath)
         Self.log("extractBox64: srcExists=\(srcExists) srcSize=\(srcSize) dstDirExists=\(dstDirExists)")
         guard streamCopy(src: bundledPath, dst: destination, fm: fm) else {
@@ -785,17 +795,19 @@ class Box64Bridge {
     private func extractWine(progressCallback: ((String) -> Void)? = nil) throws {
         let fm = FileManager.default
         let wine64Dest = (wineInstallPath as NSString).appendingPathComponent("bin/wine64")
-        if isNonEmptyFile(wine64Dest) {
-            Self.log("extractWine: wine64 already exists and non-empty, skipping")
-            Self.writeDiag("extractWine: already_done")
-            return
-        }
-
         guard let bundledWineDir = findBundledResource("Wine", isDirectory: true) else {
             Self.writeDiag("extractWine: bundled Wine directory NOT FOUND in app bundle")
             throw SetupError.wineMissing
         }
-        Self.writeDiag("extractWine: source=\(bundledWineDir)")
+        let bundledWine64 = (bundledWineDir as NSString).appendingPathComponent("bin/wine64")
+        let srcWine64Size = fileSize(bundledWine64)
+        let dstWine64Size = fileSize(wine64Dest)
+        if isNonEmptyFile(wine64Dest) && srcWine64Size == dstWine64Size {
+            Self.log("extractWine: wine64 already up-to-date (size=\(dstWine64Size)), skipping")
+            Self.writeDiag("extractWine: already_done")
+            return
+        }
+        Self.writeDiag("extractWine: source=\(bundledWineDir) srcWine64Size=\(srcWine64Size) dstWine64Size=\(dstWine64Size)")
 
         try fm.createDirectory(atPath: wineInstallPath, withIntermediateDirectories: true)
 
@@ -862,11 +874,16 @@ class Box64Bridge {
                     try copyItemRecursive(child, childDst)
                 }
             } else {
+                let srcSize = fileSize(srcItem.path)
                 if fm.fileExists(atPath: dstItem.path),
                    let attrs = try? fm.attributesOfItem(atPath: dstItem.path),
                    let size = attrs[.size] as? NSNumber, size.intValue > 0 {
-                    skipped += 1
-                    return
+                    if srcSize == size.intValue {
+                        skipped += 1
+                        return
+                    }
+                    try? fm.removeItem(atPath: dstItem.path)
+                    Self.log("extract: replacing stale \(dstItem.lastPathComponent) (old size=\(size.intValue), new size=\(srcSize))")
                 }
                 do {
                     try fm.copyItem(at: srcItem, to: dstItem)

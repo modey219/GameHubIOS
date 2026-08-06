@@ -109,6 +109,18 @@ jobs:
           BOX64_SRC="$PWD/Box64Source/box64"
           cd "$BOX64_SRC"
           python3 "$PWD/../../Scripts/patch_elf_mmap_fix.py"
+
+      - name: Patch Box64 x64 syscall dispatch for Darwin
+        run: |
+          # Rewire x64syscall.c so 1:1-valid syscalls go through box64_raw_syscall
+          # (class-bit svc, immune to LiveContainer's libc interposer) and
+          # exit/exit_group/kill/getcwd/time/getdents64/clock_* are handled in
+          # switch cases instead of raw Darwin traps. Must run after the elf
+          # mmap fix (both edit src/ files; each patch detects stale state and
+          # restores via git before re-applying).
+          BOX64_SRC="$PWD/Box64Source/box64"
+          cd "$BOX64_SRC"
+          python3 "$PWD/../../Scripts/patch_x64syscall_darwin.py"
       - name: Build Box64 for iOS
         run: |
           echo "=========================================="
@@ -177,6 +189,7 @@ jobs:
           # Add our iOS stubs (without exit macro - stubs defines box64_exit_intercept)
           STUB_SRC="$PWD/MNEmulator/Native/SyscallTranslation/ios_stubs.c"
           RAW_SRC="$PWD/MNEmulator/Native/SyscallTranslation/rawlibc.c"
+          IOSSC_SRC="$PWD/MNEmulator/Native/SyscallTranslation/ios_syscalls.c"
           
           SRC_COUNT=$(echo $SOURCES | wc -w)
           echo "Found $SRC_COUNT source files + ios_stubs.c"
@@ -240,6 +253,25 @@ jobs:
               echo "ios_os.c: OK"
           else
               echo "ios_os.c: FAILED"
+              cat /tmp/box64_err_$$ 2>/dev/null | tail -5
+          fi
+          rm -f /tmp/box64_err_$$
+
+          # Compile ios_syscalls.c (Darwin my_* syscall helpers) WITH the compat
+          # header + box64 include dirs, WITHOUT the exit macros. Its strong
+          # my_open/my_stat/my_lstat/my_fstat/my_fstatat/my_readlink/my_mmap64/
+          # my_munmap/my_mprotect symbols replace the wrappedlibc.c definitions
+          # that are EXCLUDED from the iOS build; without them x64syscall.c's
+          # dispatch calls fell into the auto-generated weak `long sym(void)
+          # {return 0;}` stubs and every guest stat/open/mmap/mprotect syscall
+          # silently failed. ios_syscalls.o is NOT excluded from Pass-A: it
+          # defines no libSystem-colliding interposers.
+          echo "Compiling ios_syscalls.c (Darwin my_* syscall helpers)..."
+          if $CC $CFLAGS -c "$IOSSC_SRC" -o "$OUTPUT_DIR/objects/ios_syscalls.o" 2>/tmp/box64_err_$$; then
+              COMPILED=$((COMPILED + 1))
+              echo "ios_syscalls.c: OK"
+          else
+              echo "ios_syscalls.c: FAILED"
               cat /tmp/box64_err_$$ 2>/dev/null | tail -5
           fi
           rm -f /tmp/box64_err_$$

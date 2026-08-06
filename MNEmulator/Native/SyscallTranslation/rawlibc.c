@@ -369,13 +369,42 @@ char *box64_raw_getcwd(char *buf, size_t n) {
 }
 
 int box64_raw_pipe(int fds[2]) {
-#ifdef SYS_pipe
-    return (int)rawlibc_syscall(SYS_pipe, fds);
+#if defined(__aarch64__)
+    /* Darwin arm64 pipe() returns fd[0] in x0 and fd[1] in the x1 secondary
+       return register; the passed buffer is NOT filled by the kernel. Capture
+       both registers (rawlibc_syscall only keeps x0, which is why the old
+       implementation lost the second fd). */
+    long fd0, fd1;
+    __asm__ __volatile__(
+        "mov x16, %[num]\n"
+        "svc 0x80\n"
+        "b.cc 1f\n"
+        "neg x0, x0\n"
+        "1:\n"
+        "mov %[fd0], x0\n"
+        "mov %[fd1], x1\n"
+        : [fd0] "=r"(fd0), [fd1] "=r"(fd1)
+        : [num] "r"(42L | 0x2000000L)
+        : "x0", "x1", "x16", "cc", "memory");
+    if (fd0 < 0) {
+        errno = (int)(-fd0);
+        return -1;
+    }
+    fds[0] = (int)fd0;
+    fds[1] = (int)fd1;
+    return 0;
 #else
     (void)fds;
     errno = ENOSYS;
     return -1;
 #endif
+}
+
+ssize_t box64_raw_getdirentries64(int fd, void *buf, size_t nbytes, long *basep) {
+#ifndef SYS_getdirentries64
+#define SYS_getdirentries64 344
+#endif
+    return box64_raw_syscall(SYS_getdirentries64, fd, buf, nbytes, basep);
 }
 
 mode_t box64_raw_umask(mode_t mask) {

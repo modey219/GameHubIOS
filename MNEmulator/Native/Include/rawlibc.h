@@ -71,6 +71,7 @@ int box64_raw_chdir(const char *path);
 int box64_raw_fchdir(int fd);
 char *box64_raw_getcwd(char *buf, size_t n);
 int box64_raw_pipe(int fds[2]);
+ssize_t box64_raw_getdirentries64(int fd, void *buf, size_t nbytes, long *basep);
 mode_t box64_raw_umask(mode_t mask);
 int box64_raw_symlink(const char *a, const char *b);
 ssize_t box64_raw_readlink(const char *path, char *buf, size_t n);

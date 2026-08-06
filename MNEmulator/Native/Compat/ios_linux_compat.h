@@ -10,7 +10,7 @@
 #include <setjmp.h>
 #include <sys/socket.h>
 #include <stdio.h>
-#include <asm/unistd.h>   /* full Linux __NR_* table for x64syscall.c etc. */
+#include <asm/unistd.h>   /* Darwin-mapped __NR_* table (Compat/asm/unistd.h) */
 
 /* ======== Glibc type aliases ======== */
 typedef sigset_t __sigset_t;
@@ -61,23 +61,6 @@ typedef void *timer_t;
 typedef jmp_buf __jmp_buf;
 #endif
 
-/* ======== Linux syscall numbers (stubs for iOS) ======== */
-#ifndef __NR_lseek
-#define __NR_lseek 8
-#endif
-#ifndef __NR_gettid
-#define __NR_gettid 186
-#endif
-#ifndef __NR_prctl
-#define __NR_prctl 157
-#endif
-
-/* ======== Linux-specific struct stubs ======== */
-struct mmsghdr {
-    struct sockaddr *msg_hdr;
-    unsigned int msg_len;
-};
-
 /* ======== stat timestamp compat (macOS uses st_atimespec) ======== */
 #ifndef st_atim
 #define st_atim st_atimespec
@@ -109,32 +92,6 @@ static inline int dlinfo(void *handle, int request, void *info) {
 }
 
 /* ======== cpu_set_t — defined in sched.h compat, not here ======== */
-
-/* ======== More Linux syscall numbers ======== */
-#ifndef __NR_tgkill
-#define __NR_tgkill 131
-#endif
-#ifndef __NR_futex
-#define __NR_futex 202
-#endif
-#ifndef __NR_set_robust_list
-#define __NR_set_robust_list 999
-#endif
-#ifndef __NR_get_robust_list
-#define __NR_get_robust_list 999
-#endif
-#ifndef __NR_openat
-#define __NR_openat 56
-#endif
-#ifndef __NR_close_range
-#define __NR_close_range 999
-#endif
-#ifndef __NR_brk
-#define __NR_brk 45
-#endif
-#ifndef __NR_clone
-#define __NR_clone 56
-#endif
 
 /* ======== __jmp_buf_tag ======== */
 /* On macOS/iOS, setjmp.h defines jmp_buf but NOT struct __jmp_buf_tag.

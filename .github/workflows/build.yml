@@ -121,6 +121,17 @@ jobs:
           BOX64_SRC="$PWD/Box64Source/box64"
           cd "$BOX64_SRC"
           python3 "$PWD/../../Scripts/patch_x64syscall_darwin.py"
+      - name: Patch Box64 emulation quit-state diagnostics
+        run: |
+          # Instrument emulate()/Run()/EmuRun() to trace when emu->quit gets
+          # set before the main DynaRun. Without this, wine64 exits with
+          # "Emulation finished, EAX=0" and ZERO guest syscalls/output, meaning
+          # the interpreter never ran. Breadcrumbs land in box64_runner.log via
+          # the runner's dup2. Must run after the syscall patch (both edit
+          # src/ files; this patch restores stale state via git before applying).
+          BOX64_SRC="$PWD/Box64Source/box64"
+          cd "$BOX64_SRC"
+          python3 "$PWD/../../Scripts/patch_quit_diag.py"
       - name: Build Box64 for iOS
         run: |
           echo "=========================================="
@@ -402,6 +413,10 @@ jobs:
               fi
               if ! strings box64 2>/dev/null | grep -q "\[MNEMU\] LoadAndCheckElfHeader"; then
                   echo "ERROR: box64 binary missing LoadAndCheckElfHeader breadcrumb; refusing to package"
+                  exit 1
+              fi
+              if ! strings box64 2>/dev/null | grep -q "\[iOS\] emulate: pre-DynaRun"; then
+                  echo "ERROR: box64 binary missing quit-diag breadcrumb (stale objects?); refusing to package"
                   exit 1
               fi
               echo "box64 binary verified: contains all [MNEMU] breadcrumbs"

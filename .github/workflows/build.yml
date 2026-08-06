@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     name: Build IPA
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 120
     permissions:
       contents: write
@@ -20,7 +20,7 @@ jobs:
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '15.2'
+          xcode-version: 'latest'
 
       - name: Install tools
         run: |

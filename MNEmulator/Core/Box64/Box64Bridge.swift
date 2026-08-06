@@ -441,6 +441,10 @@ class Box64Bridge {
         safeSetenv("BOX64_SHOWSEGV", "1", 1)
         safeSetenv("BOX64_SHOWEXIT", "1", 1)
         safeSetenv("BOX64_NOSSE", "1", 1)
+        // v384 DIAG: per-instruction x86 trace to catch the guest RIP right
+        // before the SIGSEGV (addr=0x28270) inside libc.so.6 Init[0]. REMOVE
+        // after diagnosis — extremely verbose.
+        safeSetenv("BOX64_TRACE", "1", 1)
         Self.writeDiag("setupenv_home_start")
         safeSetenv("HOME", (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory).appendingPathComponent("Wine").path, 1)

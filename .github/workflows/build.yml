@@ -132,6 +132,18 @@ jobs:
           BOX64_SRC="$PWD/Box64Source/box64"
           cd "$BOX64_SRC"
           python3 "$PWD/../../Scripts/patch_quit_diag.py"
+      - name: Patch Box64 relocation diagnostics
+        run: |
+          # Per-emulated-lib runtime diagnostics for the SIGSEGV at guest
+          # 0x28270 (= libc.so.6's raw .got.plt value that was never biased by
+          # +delta). Logs parse-time dynamic fields, RelocateElfPlt64 inputs and
+          # the post-state of .got.plt[2..4] so one device run distinguishes
+          # "DT_PLTRELSZ parsed as 0 (cnt=0, JUMP_SLOT never applied)" from
+          # "delta==0 (lazy *p+=delta bias no-op)". Must run after the quit-diag
+          # patch (same src/ files, both idempotent).
+          BOX64_SRC="$PWD/Box64Source/box64"
+          cd "$BOX64_SRC"
+          python3 "$PWD/../../Scripts/patch_reloc_diag.py"
       - name: Build Box64 for iOS
         run: |
           echo "=========================================="
@@ -433,6 +445,14 @@ jobs:
               fi
               if ! strings box64 2>/dev/null | grep -q "\[iOS\] emulate: pre-DynaRun"; then
                   echo "ERROR: box64 binary missing quit-diag breadcrumb (stale objects?); refusing to package"
+                  exit 1
+              fi
+              if ! strings box64 2>/dev/null | grep -q "\[RELOC\] %s PLT in:"; then
+                  echo "ERROR: box64 binary missing reloc-diag breadcrumb (stale objects?); refusing to package"
+                  exit 1
+              fi
+              if ! strings box64 2>/dev/null | grep -q "\[RELOC\] %s PLT out:"; then
+                  echo "ERROR: box64 binary missing reloc-diag breadcrumb; refusing to package"
                   exit 1
               fi
               echo "box64 binary verified: contains all [MNEMU] breadcrumbs"

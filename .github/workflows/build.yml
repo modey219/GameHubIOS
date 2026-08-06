@@ -287,6 +287,22 @@ jobs:
           fi
           rm -f /tmp/box64_err_$$
 
+          # Compile src/dynarec/dynarec.c (DynaRun/DynaCall/EmuRun dispatchers)
+          # WITHOUT -DDYNAREC so it routes to the Box64 interpreter (Run() in
+          # src/emu/x64run.c, already in SOURCES). This file used to be missing
+          # from the build entirely, so DynaRun/DynaCall/EmuRun were auto-stubbed
+          # to `long sym(void){return 0;}` and the main emulation never executed
+          # a single guest instruction (post-DynaRun EAX=0, RIP/RSP unchanged).
+          echo "Compiling dynarec.c (interpreter dispatcher)..."
+          if $CC $CFLAGS -c "$BOX64_SRC/src/dynarec/dynarec.c" -o "$OUTPUT_DIR/objects/dynarec.o" 2>/tmp/box64_err_$$; then
+              COMPILED=$((COMPILED + 1))
+              echo "dynarec.c: OK"
+          else
+              echo "dynarec.c: FAILED"
+              cat /tmp/box64_err_$$ 2>/dev/null | tail -8
+          fi
+          rm -f /tmp/box64_err_$$
+
           echo ""
           echo "Compiled: $COMPILED / $SRC_COUNT (Failed: $FAILED)"
           

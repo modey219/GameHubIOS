@@ -232,8 +232,9 @@ int my_mprotect(x64emu_t *emu, void *addr, unsigned long len, int prot)
 /*  getdents / getdents64 over Darwin getdirentries64 (=344)          */
 /* ================================================================== */
 /* Linux has no getdirents64-equivalent on Darwin. We read native
-   struct dirent64 entries (Darwin layout: d_ino, d_seekoff, d_reclen,
-   d_namlen, d_type, d_name) and repack them into the x86_64 Linux layouts:
+   struct dirent entries (Darwin layout: d_ino, d_seekoff, d_reclen,
+   d_type, d_name[1024]; the name length is computed, Darwin has no
+   d_namlen field) and repack them into the x86_64 Linux layouts:
      - getdents64 (syscall 217): linux_dirent64  -> d_name at 19, d_type at 18
      - getdents   (syscall 78):  linux_dirent    -> d_name at 18, d_type in the
                                                     trailing byte (d_reclen-1)
@@ -266,14 +267,14 @@ static ssize_t getdents_read_native(int fd, void *buf, size_t count)
 ssize_t my_getdents64(x64emu_t *emu, int fd, void *guest, size_t count)
 {
     (void)emu;
-    struct dirent64 *nat;
+    struct dirent *nat;
     ssize_t n;
     size_t off = 0, used = 0;
     if (!guest || count < sizeof(ios_linux_dirent64_t)) {
         errno = EINVAL;
         return -1;
     }
-    nat = (struct dirent64 *)malloc(count);
+    nat = (struct dirent *)malloc(count);
     if (!nat) {
         errno = ENOMEM;
         return -1;
@@ -284,8 +285,8 @@ ssize_t my_getdents64(x64emu_t *emu, int fd, void *guest, size_t count)
         return n;
     }
     while (off < (size_t)n) {
-        struct dirent64 *e = (struct dirent64 *)((char *)nat + off);
-        size_t namlen = e->d_namlen;
+        struct dirent *e = (struct dirent *)((char *)nat + off);
+        size_t namlen = strnlen(e->d_name, sizeof(e->d_name));
         uint16_t reclen = (uint16_t)((19 + namlen + 1 + 7) & ~7ULL);
         if (used + reclen > count)
             break;
@@ -308,14 +309,14 @@ ssize_t my_getdents64(x64emu_t *emu, int fd, void *guest, size_t count)
 ssize_t my_getdents(x64emu_t *emu, int fd, void *guest, size_t count)
 {
     (void)emu;
-    struct dirent64 *nat;
+    struct dirent *nat;
     ssize_t n;
     size_t off = 0, used = 0;
     if (!guest || count < sizeof(ios_x86_dirent_t)) {
         errno = EINVAL;
         return -1;
     }
-    nat = (struct dirent64 *)malloc(count);
+    nat = (struct dirent *)malloc(count);
     if (!nat) {
         errno = ENOMEM;
         return -1;
@@ -326,8 +327,8 @@ ssize_t my_getdents(x64emu_t *emu, int fd, void *guest, size_t count)
         return n;
     }
     while (off < (size_t)n) {
-        struct dirent64 *e = (struct dirent64 *)((char *)nat + off);
-        size_t namlen = e->d_namlen;
+        struct dirent *e = (struct dirent *)((char *)nat + off);
+        size_t namlen = strnlen(e->d_name, sizeof(e->d_name));
         uint16_t reclen = (uint16_t)((18 + namlen + 1 + 7) & ~7ULL);
         if (used + reclen > count)
             break;

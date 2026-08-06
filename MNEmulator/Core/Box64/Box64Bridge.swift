@@ -451,6 +451,20 @@ class Box64Bridge {
         // find them and Wine dies during relocation.
         safeSetenv("BOX64_LD_LIBRARY_PATH", glibcInstallPath, 1)
         Self.writeDiag("setupenv_ld_library_done path=\(glibcInstallPath)")
+        // v388: wine-9.21 loader's load_ntdll() (loader/main.c) can only find
+        // ntdll.so via realpath("/proc/self/exe") or WINEDLLPATH; the third
+        // fallback is gated on get_self_exe() returning NULL, but on the Linux
+        // build it always returns the literal "/proc/self/exe" (non-NULL), so on
+        // iOS (no /proc) wine exits immediately without ever opening ntdll.so.
+        // WINEDLLPATH bypasses the dead realpath path entirely.
+        let wdlp = [
+            "lib/wine",         // standard wine-9.21-amd64 layout
+            "lib/wine64",       // alternate (WineHQ-style) layout
+            "lib64/wine",
+            "lib64/wine64"
+        ].map { (wineInstallPath as NSString).appendingPathComponent($0) }.joined(separator: ":")
+        safeSetenv("WINEDLLPATH", wdlp, 1)
+        Self.writeDiag("setupenv_winedllpath_done path=\(wdlp)")
         safeSetenv("MVK_CONFIG_LOG_LEVEL", "0", 1)
         safeSetenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "1", 1)
         safeSetenv("DXVK_LOG_LEVEL", "none", 1)

@@ -311,12 +311,15 @@ typedef struct {
 
 #define DT_NULL         0
 #define DT_NEEDED       1
-/* DT_PLTRELSZ and DT_RELSZ are the same ELF tag (2). box64's elfparser
-   switches list BOTH as cases, which is a hard "duplicate case value"
-   error under clang (GCC only warns). Since `case DT_RELSZ` precedes
-   `case DT_PLTRELSZ`, the latter is dead code, so give DT_PLTRELSZ a
-   distinct value — matching is unaffected. */
-#define DT_PLTRELSZ     0x6ffffef6
+/* v410 FIX: DT_PLTRELSZ (2) and DT_RELSZ (18) are DIFFERENT ELF tags.
+   v373 incorrectly defined DT_RELSZ as 2 (the DT_PLTRELSZ value), which
+   collided with `case DT_PLTRELSZ` in box64's elfparser.c under clang and
+   forced the v373 hack of giving DT_PLTRELSZ a bogus 0x6ffffef6 dead-case
+   value. Runtime effect: box64's `case DT_RELSZ` matched real tag 2 and
+   swallowed DT_PLTRELSZ into h->relsz, so h->pltsz stayed 0, RelocateElfPlt64
+   applied 0 JUMP_SLOT relocations and the first lazy GOT.plt call crashed
+   (SIGSEGV addr=0x28270 in libc.so.6 Init[0]). Restored spec values. */
+#define DT_PLTRELSZ     2
 #define DT_PLTGOT       3
 #define DT_HASH         4
 #define DT_STRTAB       5
@@ -352,7 +355,7 @@ typedef struct {
 #define DT_VERDEFNUM    0x6ffffffd
 #define DT_VERNEED      0x6ffffffe
 #define DT_VERNEEDNUM   0x6fffffff
-#define DT_RELSZ        2
+#define DT_RELSZ        18
 #define DT_RELENT       19
 #define DT_RUNPATH      29
 #define DT_FLAGS        30
@@ -361,8 +364,8 @@ typedef struct {
 #define DT_FLAGS_1      0x6ffffffb
 /* DT_ENCODING is tag 21 in glibc, same as DT_DEBUG — box64's elfload_dump.c
    switches list both, a hard "duplicate case value" error under clang.
-   DT_DEBUG precedes, so give DT_ENCODING a distinct dead-case value (same
-   trick as DT_PLTRELSZ above). Only affects dump formatting. */
+   DT_DEBUG precedes, so give DT_ENCODING a distinct dead-case value. Only
+   affects dump formatting. (This collision is real in glibc's elf.h; keep.) */
 #define DT_ENCODING     0x6ffffe00
 
 #define DF_ORIGIN       0x00000001

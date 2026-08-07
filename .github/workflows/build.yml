@@ -144,6 +144,25 @@ jobs:
           BOX64_SRC="$PWD/Box64Source/box64"
           cd "$BOX64_SRC"
           python3 "$PWD/../../Scripts/patch_reloc_diag.py"
+      - name: Verify DT_* relocation tags in compat elf.h
+        run: |
+          # v410 root cause: MNEmulator/Native/Compat/elf.h (which shadows the
+          # SDK's <elf.h> via -I$COMPAT_DIR) defined DT_RELSZ=2 and
+          # DT_PLTRELSZ=0x6ffffef6. box64's elfparser.c `case DT_RELSZ` then
+          # matched the real tag 2 and swallowed DT_PLTRELSZ into h->relsz, so
+          # h->pltsz stayed 0, RelocateElfPlt64 applied 0 JUMP_SLOT relocations
+          # and libc.so.6 Init[0] crashed on the raw .got.plt value 0x28270.
+          # ELF spec: DT_PLTRELSZ=2, DT_RELSZ=18. Refuse to build a broken tree.
+          ELF_H="$PWD/MNEmulator/Native/Compat/elf.h"
+          if ! grep -Eq '^#define[[:space:]]+DT_PLTRELSZ[[:space:]]+2([[:space:]]|$)' "$ELF_H"; then
+              echo "ERROR: compat elf.h DT_PLTRELSZ must be 2 (was 0x6ffffef6 in v373, breaking PLT relocation parsing)"
+              exit 1
+          fi
+          if ! grep -Eq '^#define[[:space:]]+DT_RELSZ[[:space:]]+18([[:space:]]|$)' "$ELF_H"; then
+              echo "ERROR: compat elf.h DT_RELSZ must be 18 (was wrongly 2, equal to DT_PLTRELSZ)"
+              exit 1
+          fi
+          echo "compat elf.h DT_PLTRELSZ=2 DT_RELSZ=18 verified"
       - name: Build Box64 for iOS
         run: |
           echo "=========================================="

@@ -58,6 +58,25 @@ static volatile uintptr_t g_crash_lr = 0;
 static volatile uintptr_t g_crash_frames[12];
 static volatile int g_crash_nframes = 0;
 
+/* v411: the emulated x86 context at crash time. box64's own SIGSEGV dumper
+   (my_box64signalhandler via init_signal_helper) is NEVER installed in the iOS
+   library build, so without this the guest RIP/regs at the fault are lost and
+   every crash reads as an opaque "SIGSEGV at NULL" inside the interpreter.
+   g_guest_emu is captured from initialize()'s output right before emulate();
+   the fields are read by raw offset because the runner cannot include box64's
+   internal x64emu_private.h. Layout on this build (arm64, no BOX32):
+   regs[16] @ 0x00 (order RAX RCX RDX RBX RSP RBP RSI RDI R8..R15),
+   eflags    @ 0x80,
+   ip (RIP)  @ 0x88,
+   old_ip    @ 0x570 (after xmm/ymm/x87/mmx/sw/top/fpu_stack/cw/dummy_cw/
+                      mxcsr/fpu_ld[8]/fpu_ll[8]/fpu_tags; compiler pads the
+                      fpu_ld array start to 0x428). */
+static volatile x64emu_t *g_guest_emu = NULL;
+static volatile uint64_t g_guest_regs[16];
+static volatile uint32_t g_guest_eflags = 0;
+static volatile uintptr_t g_guest_rip = 0;
+static volatile uintptr_t g_guest_oldip = 0;
+
 /* Exit landing pad: box64_exit_intercept (and the strong exit/_exit/_Exit
    interposers) NEVER return — exit() is noreturn, and returning into the call
    site is UB that silently killed the whole app in v375. They jump here instead
@@ -240,6 +259,27 @@ static void signal_handler(int sig, siginfo_t *si, void *uc) {
         runner_write(g_log_fd, "\n", 1);
 #endif
         runner_fsync();
+    }
+
+    /* Snapshot the emulated x86 registers (async-signal-safe: plain reads from
+       the heap-allocated emu box64 handed back from initialize()). Without this
+       the guest RIP at the fault is unknowable, because box64's own signal
+       dumper never runs on iOS. Raw offsets per x64emu_private.h; see the
+       comment on the globals above. */
+    {
+        const volatile x64emu_t *e = g_guest_emu;
+        for (int i = 0; i < 16; i++) g_guest_regs[i] = 0;
+        g_guest_eflags = 0;
+        g_guest_rip = 0;
+        g_guest_oldip = 0;
+        if (e) {
+            const volatile uint8_t *p = (const volatile uint8_t *)e;
+            for (int i = 0; i < 16; i++)
+                g_guest_regs[i] = *(const volatile uint64_t *)(p + 8 * i);
+            g_guest_eflags = *(const volatile uint32_t *)(p + 0x80);
+            g_guest_rip = *(const volatile uint64_t *)(p + 0x88);
+            g_guest_oldip = *(const volatile uint64_t *)(p + 0x570);
+        }
     }
 
     /* Only longjmp when the signal hit the runner thread. The sigaction is
@@ -469,7 +509,53 @@ static void *wine_thread_func(void *arg) {
     int crash_sig = sigsetjmp(g_jmp_buf, 1);
     if (crash_sig != 0) {
         /* We got here via siglongjmp from the signal handler */
+        /* Disarm the landing pad: the guest-memory reads below must not loop
+           back through the handler on a nested fault (they would siglongjmp
+           straight back here forever). */
+        g_jmp_ready = 0;
         runner_log("[Runner] Recovered from signal %d — thread exiting safely", crash_sig);
+        runner_log("[Runner] guest emu=%p", (void *)g_guest_emu);
+        runner_log("[Runner] guest RIP=0x%llx old_ip=0x%llx eflags=0x%08x",
+                   (unsigned long long)g_guest_rip,
+                   (unsigned long long)g_guest_oldip,
+                   (unsigned)g_guest_eflags);
+        runner_log("[Runner] guest RAX=0x%llx RCX=0x%llx RDX=0x%llx RBX=0x%llx",
+                   (unsigned long long)g_guest_regs[0],
+                   (unsigned long long)g_guest_regs[1],
+                   (unsigned long long)g_guest_regs[2],
+                   (unsigned long long)g_guest_regs[3]);
+        runner_log("[Runner] guest RSP=0x%llx RBP=0x%llx RSI=0x%llx RDI=0x%llx",
+                   (unsigned long long)g_guest_regs[4],
+                   (unsigned long long)g_guest_regs[5],
+                   (unsigned long long)g_guest_regs[6],
+                   (unsigned long long)g_guest_regs[7]);
+        runner_log("[Runner] guest R8=0x%llx R9=0x%llx R10=0x%llx R11=0x%llx R12=0x%llx R13=0x%llx R14=0x%llx R15=0x%llx",
+                   (unsigned long long)g_guest_regs[8],
+                   (unsigned long long)g_guest_regs[9],
+                   (unsigned long long)g_guest_regs[10],
+                   (unsigned long long)g_guest_regs[11],
+                   (unsigned long long)g_guest_regs[12],
+                   (unsigned long long)g_guest_regs[13],
+                   (unsigned long long)g_guest_regs[14],
+                   (unsigned long long)g_guest_regs[15]);
+        if (g_guest_rip == 0) {
+            runner_log("[Runner] GUEST BRANCHED TO ADDRESS 0 (NULL) — jmp/call/ret through a NULL pointer");
+        }
+        if (g_guest_emu) {
+            /* Guest memory is box64's direct map; the page was just executing
+               so reading a few opcode bytes is safe (guarded against RIP==0). */
+            uintptr_t rip = (uintptr_t)g_guest_rip;
+            if (rip) {
+                uint8_t op[16];
+                memset(op, 0, sizeof(op));
+                memcpy(op, (void *)rip, sizeof(op));
+                char hx[64];
+                hx[0] = '\0';
+                for (int i = 0; i < 16 && i * 3 + 2 < (int)sizeof(hx); i++)
+                    snprintf(hx + i * 3, sizeof(hx) - i * 3, "%02x ", op[i]);
+                runner_log("[Runner] guest opcode@RIP: %s", hx);
+            }
+        }
         if (g_crash_pc) {
             Dl_info di;
             char sym[256];
@@ -605,6 +691,10 @@ static void *wine_thread_func(void *arg) {
         if (g_log_fd >= 0) { box64_raw_close(g_log_fd); g_log_fd = -1; }
         return NULL;
     }
+
+    /* v411: remember the emulator so the crash handler can dump the guest
+       RIP/regs at the fault (box64's own SIGSEGV dumper never runs on iOS). */
+    g_guest_emu = emu;
 
     pthread_mutex_lock(&g_runner_lock);
     snprintf(g_runner_status, sizeof(g_runner_status), "emulating");
